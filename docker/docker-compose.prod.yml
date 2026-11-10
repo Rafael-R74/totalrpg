@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vtt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-vtt_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-vtt_db}
+    volumes:
+      - vtt_pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - vtt-internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: vtt-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - vtt_redisdata:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - vtt-internal
+
+volumes:
+  vtt_pgdata:
+  vtt_redisdata:
+
+networks:
+  vtt-internal:
+    driver: bridge
