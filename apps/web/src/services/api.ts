@@ -1,5 +1,8 @@
+import { SystemId } from '@totalrpg/shared';
+
 const API_URL = 'http://localhost:3333/api';
 
+// Interface do retorno de login/cadastro
 export interface AuthResponse {
   message: string;
   token: string;
@@ -10,40 +13,146 @@ export interface AuthResponse {
   };
 }
 
-// Função para cadastro de usuário
+// Interface de uma Campanha vinda do banco
+export interface CampaignData {
+  id: string;
+  name: string;
+  description?: string;
+  system: SystemId;
+  inviteCode: string;
+  createdAt: string;
+  dm?: { username: string };
+  characters?: Array<{
+    id: string;
+    name: string;
+    portraitUrl?: string;
+    owner: { username: string };
+  }>;
+}
+
+// Interface de um Convite Pendente
+export interface InviteData {
+  id: string;
+  status: string;
+  campaign: {
+    id: string;
+    name: string;
+    system: SystemId;
+    dm: { username: string };
+  };
+}
+
+// Interface de um Personagem no Cofre
+export interface CharacterData {
+  id: string;
+  name: string;
+  system: SystemId;
+  portraitUrl?: string;
+  campaign?: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+// Função auxiliar para recuperar o token salvo no cofre do navegador
+function getAuthHeader() {
+  const token = localStorage.getItem('totalrpg_token');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+}
+
+// Autenticação
 export async function registerUser(username: string, email: string, password: string): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/auth/register`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json', 
-    },
-    body: JSON.stringify({ username, email, password }), 
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, email, password }),
   });
-
   const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Erro ao realizar cadastro.');
-  }
-
+  if (!response.ok) throw new Error(data.error || 'Erro ao realizar cadastro.');
   return data;
 }
 
-// Função para login de usuário
 export async function loginUser(emailOrUsername: string, password: string): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/auth/login`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ emailOrUsername, password }),
   });
-
   const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao realizar login.');
+  return data;
+}
 
-  if (!response.ok) {
-    throw new Error(data.error || 'Erro ao realizar login.');
-  }
+// Campanhas (DM)
+export async function fetchDMCampaigns(): Promise<CampaignData[]> {
+  const response = await fetch(`${API_URL}/campaigns/dm`, {
+    headers: getAuthHeader()
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao buscar campanhas de mestre.');
+  return data;
+}
 
+export async function createCampaign(name: string, description: string, system: SystemId): Promise<CampaignData> {
+  const response = await fetch(`${API_URL}/campaigns`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ name, description, system }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao criar campanha.');
+  return data;
+}
+
+export async function sendCampaignInvite(campaignId: string, targetUsername: string): Promise<void> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/invite`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ targetUsername }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao enviar convite.');
+}
+
+// Campanhas (Player)
+export async function fetchPlayerCampaigns(): Promise<CampaignData[]> {
+  const response = await fetch(`${API_URL}/campaigns/player`, {
+    headers: getAuthHeader()
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao buscar campanhas de jogador.');
+  return data;
+}
+
+export async function fetchPlayerInvites(): Promise<InviteData[]> {
+  const response = await fetch(`${API_URL}/campaigns/invites`, {
+    headers: getAuthHeader()
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao buscar convites.');
+  return data;
+}
+
+// Personagens
+export async function fetchCharacters(): Promise<CharacterData[]> {
+  const response = await fetch(`${API_URL}/characters`, {
+    headers: getAuthHeader()
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao buscar personagens.');
+  return data;
+}
+
+export async function createCharacter(name: string, system: SystemId, portraitUrl?: string): Promise<CharacterData> {
+  const response = await fetch(`${API_URL}/characters`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ name, system, portraitUrl }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao criar personagem.');
   return data;
 }

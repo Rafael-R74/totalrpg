@@ -8,26 +8,27 @@ import {
   DiceRollResult
 } from '@totalrpg/shared';
 import { authRouter } from './routes/auth';
+import { campaignsRouter } from './routes/campaigns';
+import { charactersRouter } from './routes/characters';
 
-// 1. Criamos o aplicativo Express
 const app = express();
 
-// Middlewares: ensinam o Express a aceitar conexões externas e ler corpos em formato JSON
+
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 // Registramos as rotas de autenticação sob o prefixo /api/auth
 app.use('/api/auth', authRouter);
+app.use('/api/campaigns', campaignsRouter);
+app.use('/api/characters', charactersRouter);
 
 // Rota de teste básica da API
 app.get('/api/health', (req, res) => {
   res.json({ status: 'TotalRPG Backend & Database 100% Operacionais!' });
 });
 
-// 2. Criamos o servidor HTTP acoplado ao Express
 const httpServer = http.createServer(app);
 
-// 3. Acoplamos o Socket.io ao mesmo servidor HTTP
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
     origin: '*',
