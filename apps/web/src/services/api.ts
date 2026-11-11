@@ -1,5 +1,10 @@
-import { SystemId, FullCharacterPayload, SheetPermissions } from '@totalrpg/shared';
-
+import {
+  SystemId,
+  FullCharacterPayload,
+  SheetPermissions,
+  CompendiumEntryData,
+  SystemSkillDefinition,
+} from '@totalrpg/shared';
 const API_URL = 'http://localhost:3333/api';
 
 // Interface do retorno de login/cadastro
@@ -10,6 +15,7 @@ export interface AuthResponse {
     id: string;
     username: string;
     email: string;
+    isAdmin?: boolean;
   };
 }
 
@@ -188,5 +194,66 @@ export async function updateCharacter(
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao salvar ficha.');
+  return data;
+}
+
+// Compêndio e ambiente admin
+export interface CompendiumResponse {
+  entries: CompendiumEntryData[];
+  skills: SystemSkillDefinition[];
+}
+
+export async function fetchCompendium(system?: SystemId): Promise<CompendiumResponse> {
+  const query = system ? `?system=${system}` : '';
+  const response = await fetch(`${API_URL}/compendium${query}`, {
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao buscar compêndio.');
+  return data;
+}
+
+export async function seedCompendium(): Promise<{ message: string }> {
+  const response = await fetch(`${API_URL}/compendium/seed`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao inicializar compêndio.');
+  return data;
+}
+
+export async function createCompendiumEntry(
+  payload: Omit<CompendiumEntryData, 'id'>
+): Promise<CompendiumEntryData> {
+  const response = await fetch(`${API_URL}/compendium/entry`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao criar item no compêndio.');
+  return data;
+}
+
+export async function deleteCompendiumEntry(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/compendium/entry/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao remover item do compêndio.');
+}
+
+export async function upsertSystemSkill(
+  payload: Omit<SystemSkillDefinition, 'id'>
+): Promise<SystemSkillDefinition> {
+  const response = await fetch(`${API_URL}/compendium/skill`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao salvar perícia do sistema.');
   return data;
 }

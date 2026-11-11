@@ -12,6 +12,7 @@ import {
   createCharacter,
   sendCampaignInvite
 } from '../services/api';
+import { AdminPanel } from './AdminPanel';
 
 interface DashboardProps {
   currentUser: { id: string; username: string; email: string };
@@ -20,7 +21,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState<'player' | 'characters' | 'dm'>('player');
+  const [activeTab, setActiveTab] = useState<'player' | 'characters' | 'dm' | 'admin'>('player');
 
   const [dmCampaigns, setDmCampaigns] = useState<CampaignData[]>([]);
   const [playerCampaigns, setPlayerCampaigns] = useState<CampaignData[]>([]);
@@ -137,6 +138,17 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           }`}
         >
           👑 Mestre (DM)
+        </button>
+
+        <button
+          onClick={() => setActiveTab('admin')}
+          className={`pb-3 text-sm font-semibold transition cursor-pointer border-b-2 ${
+            activeTab === 'admin'
+              ? 'border-amber-500 text-amber-500'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          ⚙️ Painel Admin (Compêndio)
         </button>
       </div>
 
@@ -421,6 +433,8 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           )}
         </div>
       )}
+      {/* ABA: ADMIN (COMPÊNDIO & REGRAS) */}
+      {activeTab === 'admin' && <AdminPanel />}
     </div>
   );
 }
