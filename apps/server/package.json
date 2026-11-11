@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
-    "@totalrpg/shared": "workspace:*"
+    "@totalrpg/shared": "workspace:*",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

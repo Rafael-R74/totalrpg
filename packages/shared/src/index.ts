@@ -35,3 +35,39 @@ export interface RPGItem {
     attackData?: PreparedAttack;
     systemData: Record<string, unknown>;
 }
+
+// Perfis de usuários
+export type UserRole = 'dm' | 'player' | 'spectator';
+
+// Molde de resultados de rolagens
+export interface DiceRollResult {
+    id: string;
+    characterName: string;
+    label: string;
+    formula: string;
+    rolls: number[];
+    total: number;
+    timestamp: string;
+    system: SystemId;
+}
+
+// Eventos enviados pelo servidor para o cliente
+export interface ServerToClientEvents {
+    'vital:updated': (bar: VitalBar) => void;
+    'dice:rolled': (roll: DiceRollResult) => void;
+}
+
+// Eventos que o cliente envia para o servidor
+export interface ClientToServerEvents {
+    'session:join': (data: { campaignId: string; role: UserRole }) => void;
+    'vital:change': (data: { campaignId: string; bar: VitalBar }) => void;
+    'dice:roll': (data: {
+        campaignId: string;
+        characterName: string;
+        label: string;
+        sides: number;
+        count: number;
+        modifier: number;
+        system: SystemId;
+  }) => void;
+}
