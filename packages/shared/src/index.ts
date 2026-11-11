@@ -158,3 +158,55 @@ export interface CharacterAbility {
   description: string;
   damageFormula?: string; // Opcional: caso a magia/ritual cause dano ou cura direta (ex: "4d6")
 }
+
+// 15. Motor de Regras Dinâmico & Compêndio do Admin
+export type CompendiumCategory = 'power' | 'spell' | 'item' | 'origin' | 'condition';
+
+export type ModifierTargetType =
+  | 'attribute'      // Afeta um atributo base (ex: for, agi, forca, destreza)
+  | 'skill_bonus'    // Soma bônus numérico em uma perícia (ex: luta, pontaria, ou 'all')
+  | 'skill_dice'     // Soma ou subtrai dados d20 na rolagem (ex: +1d20 ou -1d20)
+  | 'vital_max'      // Altera o máximo de uma barra vital (pv, pm, pe, san)
+  | 'defense'        // Altera a Defesa do personagem
+  | 'attack_bonus'   // Soma no acerto de ataques
+  | 'damage_bonus'   // Soma no dano de ataques
+  | 'load_limit';    // Altera espaços máximos da mochila
+
+export interface RuleModifier {
+  id: string;
+  targetType: ModifierTargetType;
+  targetKey: string; // Ex: 'luta', 'pv', 'for', 'all', 'defense'
+  value: number;     // Ex: +2, -2, +5
+  scaleWithLevel?: boolean; // Se true, multiplica o valor pelo Nível (T20) ou escalona por NEX (Ordem)
+}
+
+export interface CompendiumEntryData {
+  id: string;
+  system: SystemId;
+  category: CompendiumCategory;
+  name: string;
+  description: string;
+  cost: number; // Custo em PM ou PE (0 se for passivo/item)
+  modifiers: RuleModifier[];
+  metadata?: {
+    circle?: number;        // Para magias/rituais (1º ao 5º círculo)
+    element?: string;       // Sangue, Morte, Conhecimento, Energia, Evocação...
+    execution?: string;     // Padrão, Movimento, Reação, Completa
+    range?: string;         // Curto, Médio, Pessoal, Toque
+    duration?: string;      // Cena, Instantânea, Sustentada
+    damageFormula?: string; // Ex: "2d8+4" ou "6d6"
+    critRange?: string;     // Ex: "19/x2"
+    slots?: number;         // Espaços ocupados no inventário
+    requirements?: string;  // Pré-requisitos em texto
+  };
+}
+
+export interface SystemSkillDefinition {
+  id: string;
+  system: SystemId;
+  skillKey: string;         // Ex: 'luta', 'ocultismo'
+  name: string;             // Ex: 'Luta', 'Ocultismo'
+  defaultAttribute: string; // Ex: 'for', 'int', 'forca'
+  trainedOnly: boolean;     // Se true, só pode rolar se for treinado
+  armorPenalty: boolean;    // Se true, sofre penalidade de carga/armadura
+}
