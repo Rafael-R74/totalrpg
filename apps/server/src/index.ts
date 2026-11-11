@@ -10,6 +10,7 @@ import {
 import { authRouter } from './routes/auth';
 import { campaignsRouter } from './routes/campaigns';
 import { charactersRouter } from './routes/characters';
+import { compendiumRouter } from './routes/compendium'; 
 
 const app = express();
 
@@ -21,7 +22,7 @@ app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/characters', charactersRouter);
-
+app.use('/api/compendium', compendiumRouter);
 // Rota de teste básica da API
 app.get('/api/health', (req, res) => {
   res.json({ status: 'TotalRPG Backend & Database 100% Operacionais!' });

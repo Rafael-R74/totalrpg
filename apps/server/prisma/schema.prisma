@@ -7,35 +7,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 1. Tabela de usuários
+// 1. Tabela de Usuários (Com flag de Administrador do Sistema)
 model User {
   id        String   @id @default(uuid())
   username  String   @unique
   email     String   @unique
-  password  String   
+  password  String
+  isAdmin   Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  characters      Character[]      
-  campaignsAsDM   Campaign[]       
-  receivedInvites CampaignInvite[] 
+  characters      Character[]
+  campaignsAsDM   Campaign[]
+  receivedInvites CampaignInvite[]
 }
 
-// 2. Tabela de aventuras
+// 2. Tabela de Aventuras (Com Travas do Mestre)
 model Campaign {
   id          String   @id @default(uuid())
-  name        String   
+  name        String
   description String?
-  system      String   
-  inviteCode  String   @unique 
+  system      String
+  inviteCode  String   @unique
   createdAt   DateTime @default(now())
 
-  // Controles do mestre
-  allowTrade            Boolean @default(false) 
-  lockAllSheets         Boolean @default(false) 
-  allowEditVitals       Boolean @default(true)  
-  allowEditInventory    Boolean @default(true)  
-  allowEditAbilities    Boolean @default(true)  
-  allowEditAttributes   Boolean @default(false) 
+  allowTrade          Boolean @default(false)
+  lockAllSheets       Boolean @default(false)
+  allowEditVitals     Boolean @default(true)
+  allowEditInventory  Boolean @default(true)
+  allowEditAbilities  Boolean @default(true)
+  allowEditAttributes Boolean @default(false)
 
   dmId String
   dm   User   @relation(fields: [dmId], references: [id])
@@ -44,10 +44,10 @@ model Campaign {
   invites    CampaignInvite[]
 }
 
-// 3. Tabela de convites
+// 3. Tabela de Convites
 model CampaignInvite {
   id        String   @id @default(uuid())
-  status    String   @default("PENDING") 
+  status    String   @default("PENDING")
   createdAt DateTime @default(now())
 
   campaignId String
@@ -59,22 +59,47 @@ model CampaignInvite {
   @@unique([campaignId, userId])
 }
 
-// 4. Tabela de personagens
+// 4. Tabela de Personagens
 model Character {
   id          String   @id @default(uuid())
   name        String
   portraitUrl String?
-  system      String   
-  
-  // Colunas de dados 
-  vitals      Json     
-  sheetData   Json     
-  inventory   Json     
-  attacks     Json     
+  system      String
+
+  vitals    Json
+  sheetData Json
+  inventory Json
+  attacks   Json
 
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
 
   campaignId String?
   campaign   Campaign? @relation(fields: [campaignId], references: [id])
+}
+
+// 5. Compêndio Global do Admin (Poderes, Magias/Rituais, Itens, Origens e Condições)
+model CompendiumEntry {
+  id          String   @id @default(uuid())
+  system      String   // "ordem-paranormal" ou "tormenta20"
+  category    String   // "power", "spell", "item", "origin", "condition"
+  name        String
+  description String
+  cost        Int      @default(0)
+  modifiers   Json     // Lista de RuleModifier[]
+  metadata    Json     // Objeto com circle, element, damageFormula, slots, etc.
+  createdAt   DateTime @default(now())
+}
+
+// 6. Perícias Dinâmicas dos Sistemas gerenciadas pelo Admin
+model SystemSkill {
+  id               String  @id @default(uuid())
+  system           String  // "ordem-paranormal" ou "tormenta20"
+  skillKey         String  // Ex: "luta", "ocultismo"
+  name             String  // Ex: "Luta", "Ocultismo"
+  defaultAttribute String  // Ex: "for", "int", "forca"
+  trainedOnly      Boolean @default(false)
+  armorPenalty     Boolean @default(false)
+
+  @@unique([system, skillKey])
 }

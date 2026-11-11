@@ -53,7 +53,8 @@ authRouter.post('/register', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        isAdmin: user.isAdmin
       }
     });
   } catch (error) {
@@ -102,10 +103,11 @@ authRouter.post('/login', async (req, res) => {
     return res.json({
       message: 'Login realizado com sucesso!',
       token,
-      user: {
+        user: {
         id: user.id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        isAdmin: user.isAdmin
       }
     });
   } catch (error) {
