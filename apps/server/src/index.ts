@@ -54,7 +54,7 @@ io.on('connection', (socket) => {
     }
 
     let diceTotal = 0;
-    if (system === 'ordem-paranormal') {
+    if (system === 'ordem-paranormal' && sides === 20) {
       diceTotal = Math.max(...rolls);
     } else {
       diceTotal = rolls.reduce((acc, curr) => acc + curr, 0);
