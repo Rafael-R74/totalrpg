@@ -1,4 +1,4 @@
-import { SystemId } from '@totalrpg/shared';
+import { SystemId, FullCharacterPayload, SheetPermissions } from '@totalrpg/shared';
 
 const API_URL = 'http://localhost:3333/api';
 
@@ -154,5 +154,39 @@ export async function createCharacter(name: string, system: SystemId, portraitUr
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao criar personagem.');
+  return data;
+}
+
+// Tipo que representa o personagem completo vindo do banco com os dados da campanha
+export interface FullCharacterResponse extends FullCharacterPayload {
+  campaign?: (SheetPermissions & {
+    id: string;
+    name: string;
+    dmId: string;
+  }) | null;
+}
+
+// Busca todos os dados de uma ficha específica
+export async function fetchCharacterById(id: string): Promise<FullCharacterResponse> {
+  const response = await fetch(`${API_URL}/characters/${id}`, {
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao carregar ficha.');
+  return data;
+}
+
+// Salva alterações da ficha no banco SQLite
+export async function updateCharacter(
+  id: string,
+  payload: Partial<FullCharacterPayload>
+): Promise<FullCharacterResponse> {
+  const response = await fetch(`${API_URL}/characters/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao salvar ficha.');
   return data;
 }
