@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Tabela de usuários
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String   @unique
+  password  String   
+  createdAt DateTime @default(now())
+
+  characters      Character[]      
+  campaignsAsDM   Campaign[]       
+  receivedInvites CampaignInvite[] 
+}
+
+// 2. Tabela de aventuras
+model Campaign {
+  id          String   @id @default(uuid())
+  name        String   
+  description String?
+  system      String   
+  inviteCode  String   @unique 
+  createdAt   DateTime @default(now())
+
+  // Controles do mestre
+  allowTrade            Boolean @default(false) 
+  lockAllSheets         Boolean @default(false) 
+  allowEditVitals       Boolean @default(true)  
+  allowEditInventory    Boolean @default(true)  
+  allowEditAbilities    Boolean @default(true)  
+  allowEditAttributes   Boolean @default(false) 
+
+  dmId String
+  dm   User   @relation(fields: [dmId], references: [id])
+
+  characters Character[]
+  invites    CampaignInvite[]
+}
+
+// 3. Tabela de convites
+model CampaignInvite {
+  id        String   @id @default(uuid())
+  status    String   @default("PENDING") 
+  createdAt DateTime @default(now())
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, userId])
+}
+
+// 4. Tabela de personagens
+model Character {
+  id          String   @id @default(uuid())
+  name        String
+  portraitUrl String?
+  system      String   
+  
+  // Colunas de dados 
+  vitals      Json     
+  sheetData   Json     
+  inventory   Json     
+  attacks     Json     
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+}
