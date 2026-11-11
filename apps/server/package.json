@@ -3,14 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@prisma/client": "^6.4.0",
     "@totalrpg/shared": "workspace:*",
     "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "prisma": "^6.4.0",
     "tsx": "^4.19.0"
   }
 }
