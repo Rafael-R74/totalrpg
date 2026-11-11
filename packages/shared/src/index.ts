@@ -16,25 +16,23 @@ export interface VitalBar {
 
 // Rolagens prontas para ataques
 export interface PreparedAttack {
-    id: string;
-    name: string;
-    hitFormula: string;
-    damageFormula: string;
-    critRange?: string;
-    costText?: string;
+  id: string;
+  name: string;
+  attackBonus: number;
+  diceCount: number;
+  damageFormula: string; // Ex: "1d10+4" ou "2d6"
+  critRange: string;     // Ex: "19/x2"
+  damageType: string;    // Ex: "Corte", "Balístico", "Sangue"
 }
 
 // Molde de itens
 export interface RPGItem {
-    id: string;
-    name: string;
-    description: string;
-    imageUrl?: string;
-    price: number;
-    isEquipable: boolean;
-    isEquipped: boolean;
-    attackData?: PreparedAttack;
-    systemData: Record<string, unknown>;
+  id: string;
+  name: string;
+  slots: number;         // Espaços ou peso que ocupa na mochila
+  quantity: number;
+  isEquipped: boolean;
+  description?: string;
 }
 
 // Perfis de usuários
@@ -150,4 +148,13 @@ export interface FullCharacterPayload {
   sheetData: OrdemSheetData | T20SheetData | Record<string, any>;
   inventory: RPGItem[];
   attacks: PreparedAttack[];
+}
+
+export interface CharacterAbility {
+  id: string;
+  name: string;
+  category: 'poder' | 'magia' | 'ritual' | 'origem' | 'classe';
+  cost: number;          // Custo em PM (T20) ou PE (Ordem)
+  description: string;
+  damageFormula?: string; // Opcional: caso a magia/ritual cause dano ou cura direta (ex: "4d6")
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { Dashboard } from './components/Dashboard';
+import { SheetContainer } from './components/sheets/SheetContainer';
 import { AuthResponse } from './services/api';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -8,7 +9,7 @@ import {
   VitalBar,
   DiceRollResult,
   ServerToClientEvents,
-  ClientToServerEvents
+  ClientToServerEvents,
 } from '@totalrpg/shared';
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
@@ -19,13 +20,13 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Estado que define se estamos navegando pelo Dashboard ou dentro de uma Mesa
   const [currentCampaignSession, setCurrentCampaignSession] = useState<{
     campaignId: string;
     role: 'dm' | 'player';
   } | null>(null);
 
-  // Estados da sessão ativa em tempo real
+  const [openedCharacterId, setOpenedCharacterId] = useState<string | null>(null);
+
   const [selectedSystem, setSelectedSystem] = useState<SystemId>('ordem-paranormal');
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
   const [hp, setHp] = useState<VitalBar>({
@@ -33,16 +34,17 @@ export default function App() {
     label: 'Pontos de Vida',
     current: 32,
     max: 40,
-    color: '#dc2626'
+    color: '#dc2626',
   });
 
-  useEffect(() => {
-    if (!currentUser || !currentCampaignSession) return;
+  const activeRoomId = currentCampaignSession?.campaignId || (currentUser ? `vault-${currentUser.id}` : '');
 
-    // Conecta na sala da aventura escolhida no Dashboard
+  useEffect(() => {
+    if (!currentUser || !activeRoomId) return;
+
     socket.emit('session:join', {
-      campaignId: currentCampaignSession.campaignId,
-      role: currentCampaignSession.role
+      campaignId: activeRoomId,
+      role: currentCampaignSession?.role || 'player',
     });
 
     socket.on('vital:updated', (updatedBar) => setHp(updatedBar));
@@ -52,37 +54,44 @@ export default function App() {
       socket.off('vital:updated');
       socket.off('dice:rolled');
     };
-  }, [currentUser, currentCampaignSession]);
+  }, [currentUser, activeRoomId, currentCampaignSession]);
 
   function handleLogout() {
     localStorage.removeItem('totalrpg_token');
     localStorage.removeItem('totalrpg_user');
     setCurrentUser(null);
     setCurrentCampaignSession(null);
+    setOpenedCharacterId(null);
   }
 
-  function rollDice(label: string, count: number, sides: number, modifier: number) {
-    if (!currentCampaignSession) return;
+  function triggerRoll(
+    characterName: string,
+    system: SystemId,
+    label: string,
+    count: number,
+    sides: number,
+    modifier: number
+  ) {
+    if (!activeRoomId) return;
     socket.emit('dice:roll', {
-      campaignId: currentCampaignSession.campaignId,
-      characterName: currentUser?.username || 'Anônimo',
+      campaignId: activeRoomId,
+      characterName,
       label,
       count,
       sides,
       modifier,
-      system: selectedSystem
+      system,
     });
   }
 
   function updateHp(newCurrent: number) {
-    if (!currentCampaignSession) return;
+    if (!activeRoomId) return;
     const clampedValue = Math.max(0, Math.min(hp.max, newCurrent));
     const updatedBar: VitalBar = { ...hp, current: clampedValue };
     setHp(updatedBar);
-    socket.emit('vital:change', { campaignId: currentCampaignSession.campaignId, bar: updatedBar });
+    socket.emit('vital:change', { campaignId: activeRoomId, bar: updatedBar });
   }
 
-  // 1. Se não estiver logado, exibe a tela de login/cadastro
   if (!currentUser) {
     return <AuthScreen onLoginSuccess={(authData: AuthResponse) => setCurrentUser(authData.user)} />;
   }
@@ -90,14 +99,16 @@ export default function App() {
   const hpPercent = Math.max(0, Math.min(100, (hp.current / hp.max) * 100));
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8 max-w-5xl mx-auto flex flex-col gap-6">
-      {/* Barra de Topo Global */}
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-7xl mx-auto flex flex-col gap-6">
       <header className="border-b border-zinc-800 pb-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-extrabold text-amber-500 tracking-wider">🎲 TotalRPG</h1>
-          {currentCampaignSession && (
+          {(currentCampaignSession || openedCharacterId) && (
             <button
-              onClick={() => setCurrentCampaignSession(null)}
+              onClick={() => {
+                setCurrentCampaignSession(null);
+                setOpenedCharacterId(null);
+              }}
               className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition cursor-pointer"
             >
               ← Voltar ao Dashboard
@@ -119,14 +130,66 @@ export default function App() {
         </div>
       </header>
 
-      {/* 2. Se não houver mesa aberta, exibe o Dashboard */}
-      {!currentCampaignSession ? (
+      {openedCharacterId ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          <div className="lg:col-span-2">
+            <SheetContainer
+              characterId={openedCharacterId}
+              currentUserId={currentUser.id}
+              onBack={() => setOpenedCharacterId(null)}
+              onRollDice={triggerRoll}
+            />
+          </div>
+
+          <div className="bg-zinc-900 p-5 rounded-xl border border-zinc-800 flex flex-col h-[600px] sticky top-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-zinc-200">🎲 Rolagens da Ficha</h2>
+              {rollHistory.length > 0 && (
+                <button
+                  onClick={() => setRollHistory([])}
+                  className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1">
+              {rollHistory.length === 0 ? (
+                <p className="text-zinc-500 text-xs text-center my-auto px-4">
+                  Clique em qualquer Atributo ou botão de Perícia na ficha ao lado para rolar os dados!
+                </p>
+              ) : (
+                rollHistory.map((roll) => (
+                  <div
+                    key={roll.id}
+                    className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 flex justify-between items-center"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-amber-500 text-xs">{roll.characterName}</span>
+                        <span className="text-[10px] text-zinc-500">{roll.timestamp}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-zinc-200 mt-0.5">{roll.label}</p>
+                      <p className="text-xs font-mono text-zinc-500 mt-1">
+                        {roll.formula} → [{roll.rolls.join(', ')}]
+                      </p>
+                    </div>
+                    <div className="text-2xl font-extrabold font-mono text-white bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-700">
+                      {roll.total}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : !currentCampaignSession ? (
         <Dashboard
           currentUser={currentUser}
           onEnterSession={(campaignId, role) => setCurrentCampaignSession({ campaignId, role })}
+          onOpenCharacter={(charId) => setOpenedCharacterId(charId)}
         />
       ) : (
-        /* 3. Se houver mesa aberta, exibe a sessão em tempo real */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="flex flex-col gap-6">
             <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800">
@@ -137,7 +200,7 @@ export default function App() {
                 </span>
               </div>
               <div className="flex gap-2">
-                {(['ordem-paranormal', 'tormenta20', 'duna'] as SystemId[]).map((sys) => (
+                {(['ordem-paranormal', 'tormenta20'] as SystemId[]).map((sys) => (
                   <button
                     key={sys}
                     onClick={() => setSelectedSystem(sys)}
@@ -177,48 +240,25 @@ export default function App() {
                 </button>
               </div>
             </div>
-
-            <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex flex-col gap-3">
-              <h2 className="font-semibold text-zinc-200">⚔️ Testar Rolagem com seu Usuário</h2>
-              <button
-                onClick={() => rollDice('Ataque com Katana (3d20+10)', 3, 20, 10)}
-                className="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex justify-between items-center cursor-pointer transition"
-              >
-                <span>Katana (Acerto)</span>
-                <span className="text-xs font-mono text-amber-400">3d20 + 10</span>
-              </button>
-            </div>
           </div>
 
           <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex flex-col h-[420px]">
             <h2 className="font-semibold text-zinc-200 mb-4">🎲 Últimas Rolagens da Mesa</h2>
             <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1">
-              {rollHistory.length === 0 ? (
-                <p className="text-zinc-500 text-sm text-center my-auto">
-                  Nenhuma rolagem feita ainda.
-                </p>
-              ) : (
-                rollHistory.map((roll) => (
-                  <div
-                    key={roll.id}
-                    className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 flex justify-between items-center"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-amber-500 text-sm">{roll.characterName}</span>
-                        <span className="text-xs text-zinc-500">{roll.timestamp}</span>
-                      </div>
-                      <p className="text-xs text-zinc-300">{roll.label}</p>
-                      <p className="text-xs font-mono text-zinc-500 mt-1">
-                        Dados: [{roll.rolls.join(', ')}] ({roll.system})
-                      </p>
-                    </div>
-                    <div className="text-2xl font-bold font-mono text-white bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-700">
-                      {roll.total}
-                    </div>
+              {rollHistory.map((roll) => (
+                <div
+                  key={roll.id}
+                  className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 flex justify-between items-center"
+                >
+                  <div>
+                    <span className="font-bold text-amber-500 text-sm">{roll.characterName}</span>
+                    <p className="text-xs text-zinc-300">{roll.label}</p>
                   </div>
-                ))
-              )}
+                  <div className="text-2xl font-bold font-mono text-white">
+                    {roll.total}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
