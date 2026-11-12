@@ -43,6 +43,7 @@ export type UserRole = 'dm' | 'player' | 'spectator';
 // Rolagem de dados
 export interface DiceRollResult {
   id: string;
+  rollerUserId?: string;
   characterName: string;
   label: string;
   formula: string;
@@ -60,6 +61,13 @@ export interface ServerToClientEvents {
   'dice:rolled': (result: DiceRollResult) => void;
   'character:updated': (payload: { characterId: string }) => void;
   'campaign:permissionsUpdated': (permissions: SheetPermissions) => void;
+  'combat:initiativeRequested': (payload: { campaignId: string }) => void;
+  'combat:initiativeSubmitted': (payload: {
+    characterId: string;
+    characterName: string;
+    initiative: number;
+  }) => void;
+  'postit:received': (payload: { postIt: StickyPostIt; action: 'show' | 'hide' }) => void;
 }
 
 // Eventos que o cliente envia para o servidor
@@ -68,6 +76,9 @@ export interface ClientToServerEvents {
   'vital:change': (payload: { campaignId: string; bar: VitalBar }) => void;
   'dice:roll': (payload: {
     campaignId: string;
+    rollerUserId?: string;
+    characterId?: string;
+    isInitiativeRoll?: boolean;
     characterName: string;
     label: string;
     count: number;
@@ -78,6 +89,12 @@ export interface ClientToServerEvents {
   }) => void;
   'character:sync': (payload: { campaignId: string; characterId: string }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;
+  'combat:requestInitiative': (payload: { campaignId: string }) => void;
+  'postit:share': (payload: {
+    campaignId: string;
+    postIt: StickyPostIt;
+    action: 'show' | 'hide';
+  }) => void;
 }
 
 // Travas do mestre
@@ -227,4 +244,55 @@ export interface ActiveCondition {
   name: string;
   description: string;
   modifiers: RuleModifier[];
+}
+
+// 16. Estruturas de Ameaças da Mesa, Mercadores e Post-its Flutuantes
+export interface ThreatSkill {
+  id: string;
+  name: string;
+  diceCount: number;
+  bonus: number;
+}
+
+export interface CampaignThreat {
+  id: string;
+  name: string;
+  system: SystemId;
+  hpMax: number;
+  defense: number;
+  initiativeDice: number;
+  initiativeBonus: number;
+  attributes: Record<string, number>;
+  skills: ThreatSkill[];
+  attacks: PreparedAttack[];
+  description: string;
+}
+
+export interface MerchantStockItem {
+  id: string;
+  item: RPGItem;
+  attack?: PreparedAttack;
+  price: number; // Preço em T$ (Tormenta 20) ou Categoria/Prestígio (Ordem)
+  stockQty: number;
+}
+
+export interface CampaignMerchant {
+  id: string;
+  name: string;
+  description: string;
+  stock: MerchantStockItem[];
+}
+
+export interface StickyPostIt {
+  id: string;
+  title: string;
+  textContent: string;
+  drawingDataUrl?: string; // Imagem Base64 gerada pelo Canvas de desenho
+  color: 'amber' | 'red' | 'blue' | 'emerald' | 'purple';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isPinned: boolean; // Se true, flutua sempre na frente da tela do Mestre
+  sharedWithCharacterId?: string | 'all' | null; // ID do personagem do jogador que verá o Post-it na tela dele
 }

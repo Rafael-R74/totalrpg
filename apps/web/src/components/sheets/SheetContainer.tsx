@@ -30,11 +30,15 @@ interface SheetContainerProps {
     label: string,
     count: number,
     sides: number,
-    modifier: number
+    modifier: number,
+    isSecret?: boolean,
+    isInitiativeRoll?: boolean,
+    characterId?: string
   ) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
   externalPermissions?: SheetPermissions | null;
   externalReloadSignal?: { characterId: string; timestamp: number } | null;
+  initiativeRequestSignal?: number;
 }
 
 export function SheetContainer({
@@ -45,6 +49,7 @@ export function SheetContainer({
   onCharacterSaved,
   externalPermissions,
   externalReloadSignal,
+  initiativeRequestSignal,
 }: SheetContainerProps) {
   const [character, setCharacter] = useState<FullCharacterResponse | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
@@ -59,6 +64,14 @@ export function SheetContainer({
   // Estados dos Modais de Condição (Explicação ao clicar e Seletor do Mestre)
   const [selectedConditionModal, setSelectedConditionModal] = useState<ActiveCondition | null>(null);
   const [showMasterConditionPicker, setShowMasterConditionPicker] = useState(false);
+  const [showInitiativePrompt, setShowInitiativePrompt] = useState(false);
+
+  // Abre o modal de convocação sempre que o Mestre solicitar Teste de Iniciativa (exceto na tela do próprio Mestre)
+  useEffect(() => {
+    if (initiativeRequestSignal && character && character.ownerId === currentUserId) {
+      setShowInitiativePrompt(true);
+    }
+  }, [initiativeRequestSignal]);
 
   useEffect(() => {
     async function loadSheetAndCompendium() {
@@ -281,8 +294,80 @@ export function SheetContainer({
 
   const availableConditions = compendiumEntries.filter((e) => e.category === 'condition');
 
+  // Cálculo automático da fórmula de Iniciativa do personagem para o Modal de Combate
+  const initSkill = Array.isArray(rawSheet.skills)
+    ? rawSheet.skills.find((s: any) => s.id === 'iniciativa')
+    : null;
+
+  let initDiceCount = 1;
+  let initTotalBonus = 0;
+
+  if (character.system === 'ordem-paranormal') {
+    const baseAgi = Number(rawSheet.attributes?.agi ?? 1) + (bonuses.attributes['agi'] || 0);
+    const extraDice = bonuses.skillDiceAll + (bonuses.skillDice['iniciativa'] || 0);
+    initDiceCount = Math.max(1, baseAgi + extraDice);
+    initTotalBonus =
+      Number(initSkill?.trainingDegree ?? 0) +
+      Number(initSkill?.otherModifier ?? 0) +
+      bonuses.skillBonusAll +
+      (bonuses.skillBonus['iniciativa'] || 0);
+  } else {
+    const halfLv = Math.floor(levelOrNex / 2);
+    const baseDes = Number(rawSheet.attributes?.destreza ?? 1) + (bonuses.attributes['destreza'] || 0);
+    const trainVal = initSkill?.isTrained ? (levelOrNex >= 15 ? 6 : levelOrNex >= 7 ? 4 : 2) : 0;
+    initDiceCount = 1;
+    initTotalBonus =
+      halfLv +
+      baseDes +
+      trainVal +
+      Number(initSkill?.otherModifier ?? 0) +
+      bonuses.skillBonusAll +
+      (bonuses.skillBonus['iniciativa'] || 0);
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      {/* MODAL DE CONVOCAÇÃO DE INICIATIVA ENVIADO PELO MESTRE */}
+      {showInitiativePrompt && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-zinc-900 border-2 border-amber-500 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col items-center text-center gap-4">
+            <div className="text-5xl animate-bounce">⚔️</div>
+            <div>
+              <span className="text-[11px] font-mono uppercase tracking-widest text-amber-400 font-bold">
+                Chamado do Mestre
+              </span>
+              <h3 className="text-xl font-extrabold text-white mt-1">
+                Hora de Rolar Iniciativa!
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Um encontro começou! Clique abaixo para rolar sua perícia de Iniciativa e entrar automaticamente na ordem de turnos da mesa.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowInitiativePrompt(false);
+                onRollDice(
+                  character.name,
+                  character.system,
+                  'Teste de Iniciativa',
+                  initDiceCount,
+                  20,
+                  initTotalBonus,
+                  false,
+                  true,
+                  character.id
+                );
+              }}
+              className="w-full py-3.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-sm font-extrabold transition cursor-pointer shadow-lg shadow-amber-900/40"
+            >
+              🎲 Rolar Iniciativa ({initDiceCount}d20
+              {initTotalBonus >= 0 ? `+${initTotalBonus}` : initTotalBonus})
+            </button>
+          </div>
+        </div>
+      )}
       {/* MODAL EXPLICATIVO DE CONDIÇÃO (Abre ao clicar na tag da condição ao lado do nome) */}
       {selectedConditionModal && (
         <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">

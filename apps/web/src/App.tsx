@@ -4,12 +4,14 @@ import { Dashboard } from './components/Dashboard';
 import { SheetContainer } from './components/sheets/SheetContainer';
 import { DMScreen } from './components/DMScreen';
 import { DiceRollModal } from './components/DiceRollModal';
+import { FloatingPostItsLayer } from './components/dm/NotesAndPostItsManager';
 import { AuthResponse } from './services/api';
 import { io, Socket } from 'socket.io-client';
 import {
   SystemId,
   DiceRollResult,
   SheetPermissions,
+  StickyPostIt,
   ServerToClientEvents,
   ClientToServerEvents,
 } from '@totalrpg/shared';
@@ -22,13 +24,11 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Guarda sessão ativa do Escudo do Mestre
   const [currentCampaignSession, setCurrentCampaignSession] = useState<{
     campaignId: string;
     role: 'dm' | 'player';
   } | null>(null);
 
-  // Guarda qual personagem está aberto na tela (pelo Jogador ou Inspecionado pelo Mestre)
   const [openedCharacter, setOpenedCharacter] = useState<{
     characterId: string;
     campaignId?: string;
@@ -37,10 +37,19 @@ export default function App() {
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
   const [activeRollModal, setActiveRollModal] = useState<DiceRollResult | null>(null);
 
-  // Estados de sincronização em tempo real (Socket.io -> Componentes)
+  // Post-its compartilhados pelo Mestre na tela deste Jogador
+  const [receivedPlayerPostIts, setReceivedPlayerPostIts] = useState<StickyPostIt[]>([]);
+
   const [livePermissions, setLivePermissions] = useState<SheetPermissions | null>(null);
   const [lastUpdatedCharSignal, setLastUpdatedCharSignal] = useState<{
     characterId: string;
+    timestamp: number;
+  } | null>(null);
+  const [initiativeRequestSignal, setInitiativeRequestSignal] = useState<number>(0);
+  const [lastInitiativeSubmission, setLastInitiativeSubmission] = useState<{
+    characterId: string;
+    characterName: string;
+    initiative: number;
     timestamp: number;
   } | null>(null);
 
@@ -60,8 +69,7 @@ export default function App() {
     socket.on('dice:rolled', (newRoll) => {
       setRollHistory((prev) => [newRoll, ...prev]);
 
-      // Abre o modal de dados animados para quem fez a rolagem (ou para o Mestre quando ele rola)
-      if (openedCharacter || newRoll.characterName === '👑 Mestre') {
+      if (newRoll.rollerUserId === currentUser.id) {
         setActiveRollModal(newRoll);
       }
     });
@@ -74,10 +82,44 @@ export default function App() {
       setLastUpdatedCharSignal({ characterId, timestamp: Date.now() });
     });
 
+    socket.on('combat:initiativeRequested', () => {
+      setInitiativeRequestSignal(Date.now());
+    });
+
+    socket.on('combat:initiativeSubmitted', (payload) => {
+      setLastInitiativeSubmission({ ...payload, timestamp: Date.now() });
+    });
+
+    // Recebe Post-its enviados pelo Mestre para este personagem específico ou para toda a mesa
+    socket.on('postit:received', ({ postIt, action }) => {
+      if (action === 'hide') {
+        setReceivedPlayerPostIts((prev) => prev.filter((p) => p.id !== postIt.id));
+        return;
+      }
+
+      const isTargetedToMe =
+        postIt.sharedWithCharacterId === 'all' ||
+        (openedCharacter && postIt.sharedWithCharacterId === openedCharacter.characterId);
+
+      if (isTargetedToMe) {
+        setReceivedPlayerPostIts((prev) => {
+          const exists = prev.some((p) => p.id === postIt.id);
+          return exists
+            ? prev.map((p) => (p.id === postIt.id ? { ...postIt, isPinned: true } : p))
+            : [...prev, { ...postIt, isPinned: true }];
+        });
+      } else {
+        setReceivedPlayerPostIts((prev) => prev.filter((p) => p.id !== postIt.id));
+      }
+    });
+
     return () => {
       socket.off('dice:rolled');
       socket.off('campaign:permissionsUpdated');
       socket.off('character:updated');
+      socket.off('combat:initiativeRequested');
+      socket.off('combat:initiativeSubmitted');
+      socket.off('postit:received');
     };
   }, [currentUser, activeRoomId, currentCampaignSession, openedCharacter]);
 
@@ -96,11 +138,16 @@ export default function App() {
     count: number,
     sides: number,
     modifier: number,
-    isSecret?: boolean
+    isSecret?: boolean,
+    isInitiativeRoll?: boolean,
+    characterId?: string
   ) {
-    if (!activeRoomId) return;
+    if (!activeRoomId || !currentUser) return;
     socket.emit('dice:roll', {
       campaignId: activeRoomId,
+      rollerUserId: currentUser.id,
+      characterId,
+      isInitiativeRoll,
       characterName,
       label,
       count,
@@ -122,6 +169,17 @@ export default function App() {
         onClose={() => setActiveRollModal(null)}
       />
 
+      {/* Se for um Jogador com a Ficha aberta, exibe os Post-its que o Mestre compartilhou com ele! */}
+      {openedCharacter && !currentCampaignSession && (
+        <FloatingPostItsLayer
+          postIts={receivedPlayerPostIts}
+          isDMView={false}
+          onClosePlayerPostIt={(id) =>
+            setReceivedPlayerPostIts((prev) => prev.filter((p) => p.id !== id))
+          }
+        />
+      )}
+
       {/* Barra de Topo Global */}
       <header className="border-b border-zinc-800 pb-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
@@ -129,7 +187,6 @@ export default function App() {
           {(currentCampaignSession || openedCharacter) && (
             <button
               onClick={() => {
-                // Se o Mestre estava inspecionando a ficha de um jogador, o botão do topo volta ao Dashboard ou ao Escudo
                 setOpenedCharacter(null);
                 setCurrentCampaignSession(null);
               }}
@@ -154,7 +211,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* VISÃO 1: Ficha Completa Aberta (Pelo Jogador ou Inspecionada pelo Mestre) */}
+      {/* VISÃO 1: Ficha Completa Aberta */}
       {openedCharacter ? (
         <SheetContainer
           characterId={openedCharacter.characterId}
@@ -163,6 +220,7 @@ export default function App() {
           onRollDice={triggerRoll}
           externalPermissions={livePermissions}
           externalReloadSignal={lastUpdatedCharSignal}
+          initiativeRequestSignal={initiativeRequestSignal}
           onCharacterSaved={(charId, campId) => {
             const room = campId || openedCharacter.campaignId;
             if (room) {
@@ -171,7 +229,7 @@ export default function App() {
           }}
         />
       ) : currentCampaignSession ? (
-        /* VISÃO 2: Escudo do Mestre em Tempo Real */
+        /* VISÃO 2: Escudo do Mestre Completo */
         <DMScreen
           campaignId={currentCampaignSession.campaignId}
           rollHistory={rollHistory}
@@ -195,7 +253,20 @@ export default function App() {
               characterId,
             })
           }
+          onRequestPlayersInitiative={() =>
+            socket.emit('combat:requestInitiative', {
+              campaignId: currentCampaignSession.campaignId,
+            })
+          }
+          onSharePostIt={(postIt, action) =>
+            socket.emit('postit:share', {
+              campaignId: currentCampaignSession.campaignId,
+              postIt,
+              action,
+            })
+          }
           lastUpdatedCharSignal={lastUpdatedCharSignal}
+          lastInitiativeSubmission={lastInitiativeSubmission}
         />
       ) : (
         /* VISÃO 3: Dashboard Principal */
