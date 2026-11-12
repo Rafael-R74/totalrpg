@@ -40,40 +40,47 @@ export interface RPGItem {
 // Perfis de usuários
 export type UserRole = 'dm' | 'player' | 'spectator';
 
-// Molde de resultados de rolagens
+// Rolagem de dados
 export interface DiceRollResult {
-    id: string;
-    characterName: string;
-    label: string;
-    formula: string;
-    rolls: number[];
-    total: number;
-    timestamp: string;
-    system: SystemId;
+  id: string;
+  characterName: string;
+  label: string;
+  formula: string;
+  rolls: number[];
+  modifier: number;
+  total: number;
+  system: SystemId;
+  timestamp: string;
+  isSecret?: boolean;
 }
 
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
-    'vital:updated': (bar: VitalBar) => void;
-    'dice:rolled': (roll: DiceRollResult) => void;
+  'vital:updated': (data: VitalBar) => void;
+  'dice:rolled': (result: DiceRollResult) => void;
+  'character:updated': (payload: { characterId: string }) => void;
+  'campaign:permissionsUpdated': (permissions: SheetPermissions) => void;
 }
 
 // Eventos que o cliente envia para o servidor
 export interface ClientToServerEvents {
-    'session:join': (data: { campaignId: string; role: UserRole }) => void;
-    'vital:change': (data: { campaignId: string; bar: VitalBar }) => void;
-    'dice:roll': (data: {
-        campaignId: string;
-        characterName: string;
-        label: string;
-        sides: number;
-        count: number;
-        modifier: number;
-        system: SystemId;
+  'session:join': (payload: { campaignId: string; role: 'dm' | 'player' | 'monitor' }) => void;
+  'vital:change': (payload: { campaignId: string; bar: VitalBar }) => void;
+  'dice:roll': (payload: {
+    campaignId: string;
+    characterName: string;
+    label: string;
+    count: number;
+    sides: number;
+    modifier: number;
+    system: SystemId;
+    isSecret?: boolean;
   }) => void;
+  'character:sync': (payload: { campaignId: string; characterId: string }) => void;
+  'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;
 }
 
-// 10. Permissões de edição da campanha (travas do mestre)
+// Travas do mestre
 export interface SheetPermissions {
   lockAllSheets: boolean;
   allowEditVitals: boolean;
@@ -83,7 +90,7 @@ export interface SheetPermissions {
   allowTrade: boolean;
 }
 
-// 11. Estrutura específica de ficha: Ordem Paranormal
+// Estrutura específica de ficha: Ordem Paranormal
 export interface OrdemAttributes {
   agi: number;
   for: number;
@@ -110,7 +117,7 @@ export interface OrdemSheetData {
   skills: OrdemSkill[];
 }
 
-// 12. Estrutura Específica de Ficha: Tormenta 20
+// Estrutura Específica de Ficha: Tormenta 20
 export interface T20Attributes {
   forca: number;
   destreza: number;
@@ -138,7 +145,7 @@ export interface T20SheetData {
   skills: T20Skill[];
 }
 
-// 13. Modelo unificado de personagem com dados completos
+// Modelo unificado de personagem com dados completos
 export interface FullCharacterPayload {
   id: string;
   name: string;
@@ -163,7 +170,7 @@ export interface CharacterAbility {
   modifiers?: RuleModifier[]; // Modificadores herdados do Compêndio
 }
 
-// 15. Motor de Regras Dinâmico & Compêndio do Admin
+// Motor de Regras Dinâmico & Compêndio do Admin
 export type CompendiumCategory = 'power' | 'spell' | 'item' | 'origin' | 'condition';
 
 export type ModifierTargetType =
