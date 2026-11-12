@@ -1,3 +1,4 @@
+export * from './ruleEngine';
 export * from './defaults';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
@@ -29,10 +30,11 @@ export interface PreparedAttack {
 export interface RPGItem {
   id: string;
   name: string;
-  slots: number;         // Espaços ou peso que ocupa na mochila
+  slots: number;
   quantity: number;
-  isEquipped: boolean;
+  isEquipped: boolean;       // Se true, aplica os modificadores do item (ex: Defesa de armadura)
   description?: string;
+  modifiers?: RuleModifier[];
 }
 
 // Perfis de usuários
@@ -154,9 +156,11 @@ export interface CharacterAbility {
   id: string;
   name: string;
   category: 'poder' | 'magia' | 'ritual' | 'origem' | 'classe';
-  cost: number;          // Custo em PM (T20) ou PE (Ordem)
+  cost: number;
   description: string;
-  damageFormula?: string; // Opcional: caso a magia/ritual cause dano ou cura direta (ex: "4d6")
+  damageFormula?: string;
+  isActive?: boolean;        // Se true, aplica os modificadores passivos/sustentados na ficha
+  modifiers?: RuleModifier[]; // Modificadores herdados do Compêndio
 }
 
 // 15. Motor de Regras Dinâmico & Compêndio do Admin
@@ -209,4 +213,11 @@ export interface SystemSkillDefinition {
   defaultAttribute: string; // Ex: 'for', 'int', 'forca'
   trainedOnly: boolean;     // Se true, só pode rolar se for treinado
   armorPenalty: boolean;    // Se true, sofre penalidade de carga/armadura
+}
+
+export interface ActiveCondition {
+  id: string;
+  name: string;
+  description: string;
+  modifiers: RuleModifier[];
 }
