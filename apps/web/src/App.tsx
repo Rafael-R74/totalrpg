@@ -4,6 +4,7 @@ import { Dashboard } from './components/Dashboard';
 import { SheetContainer } from './components/sheets/SheetContainer';
 import { AuthResponse } from './services/api';
 import { io, Socket } from 'socket.io-client';
+import { DiceRollModal } from './components/DiceRollModal';
 import {
   SystemId,
   VitalBar,
@@ -29,6 +30,7 @@ export default function App() {
 
   const [selectedSystem, setSelectedSystem] = useState<SystemId>('ordem-paranormal');
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
+  const [activeRollModal, setActiveRollModal] = useState<DiceRollResult | null>(null);
   const [hp, setHp] = useState<VitalBar>({
     id: 'pv',
     label: 'Pontos de Vida',
@@ -48,7 +50,10 @@ export default function App() {
     });
 
     socket.on('vital:updated', (updatedBar) => setHp(updatedBar));
-    socket.on('dice:rolled', (newRoll) => setRollHistory((prev) => [newRoll, ...prev]));
+    socket.on('dice:rolled', (newRoll) => {
+      setRollHistory((prev) => [newRoll, ...prev]);
+      setActiveRollModal(newRoll);
+    });
 
     return () => {
       socket.off('vital:updated');
@@ -129,6 +134,10 @@ export default function App() {
           </button>
         </div>
       </header>
+      <DiceRollModal
+        roll={activeRollModal}
+        onClose={() => setActiveRollModal(null)}
+      />
 
       {openedCharacterId ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">

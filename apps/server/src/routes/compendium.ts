@@ -12,7 +12,17 @@ compendiumRouter.get('/', async (req: AuthenticatedRequest, res) => {
   try {
     const system = typeof req.query.system === 'string' ? req.query.system : undefined;
 
-    const [entries, skills] = await Promise.all([
+    // Corrige automaticamente o Sangue de Ferro caso tenha sido criado com o valor antigo (+10 fixo)
+    await prisma.compendiumEntry.updateMany({
+      where: { name: 'Sangue de Ferro (Sangue)' },
+      data: {
+        modifiers: [
+          { id: 'm2', targetType: 'vital_max', targetKey: 'pv', value: 2, scaleWithLevel: true },
+        ] as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    const [entries, skills, currentUser] = await Promise.all([
       prisma.compendiumEntry.findMany({
         where: system ? { system } : undefined,
         orderBy: [{ category: 'asc' }, { name: 'asc' }],
@@ -21,9 +31,13 @@ compendiumRouter.get('/', async (req: AuthenticatedRequest, res) => {
         where: system ? { system } : undefined,
         orderBy: { name: 'asc' },
       }),
+      prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { isAdmin: true },
+      }),
     ]);
 
-    return res.json({ entries, skills });
+    return res.json({ entries, skills, isAdmin: Boolean(currentUser?.isAdmin) });
   } catch (error) {
     console.error('Erro ao buscar compêndio:', error);
     return res.status(500).json({ error: 'Erro ao carregar compêndio do sistema.' });
@@ -130,6 +144,7 @@ compendiumRouter.post('/skill', async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Rota de Inicialização Rápida: Torna o usuário atual Admin e popula exemplos iniciais
 compendiumRouter.post('/seed', async (req: AuthenticatedRequest, res) => {
   try {
     await prisma.user.update({
@@ -143,7 +158,6 @@ compendiumRouter.post('/seed', async (req: AuthenticatedRequest, res) => {
     }
 
     const initialEntries = [
-      // ORDEM PARANORMAL
       {
         system: 'ordem-paranormal',
         category: 'power',
@@ -157,9 +171,11 @@ compendiumRouter.post('/seed', async (req: AuthenticatedRequest, res) => {
         system: 'ordem-paranormal',
         category: 'power',
         name: 'Sangue de Ferro (Sangue)',
-        description: 'O sangue paranormal corre em suas veias. Você recebe +2 Pontos de Vida máximos por nível de exposição.',
+        description: 'O sangue paranormal corre em suas veias. Você recebe +2 Pontos de Vida máximos por grau de exposição (NEX).',
         cost: 0,
-        modifiers: [{ id: 'm2', targetType: 'vital_max', targetKey: 'pv', value: 10 }],
+        modifiers: [
+          { id: 'm2', targetType: 'vital_max', targetKey: 'pv', value: 2, scaleWithLevel: true },
+        ],
         metadata: { element: 'Sangue', requirements: 'Poder Paranormal' },
       },
       {
@@ -198,8 +214,6 @@ compendiumRouter.post('/seed', async (req: AuthenticatedRequest, res) => {
         modifiers: [{ id: 'm4', targetType: 'skill_dice', targetKey: 'all', value: -1 }],
         metadata: {},
       },
-
-      // TORMENTA 20
       {
         system: 'tormenta20',
         category: 'power',
