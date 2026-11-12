@@ -142,6 +142,35 @@ export async function fetchPlayerInvites(): Promise<InviteData[]> {
   return data;
 }
 
+export async function acceptCampaignInvite(inviteId: string, characterId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/campaigns/invites/${inviteId}/accept`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ characterId }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao aceitar convite.');
+}
+
+export async function declineCampaignInvite(inviteId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/campaigns/invites/${inviteId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao recusar convite.');
+}
+
+export async function joinCampaignByCode(inviteCode: string, characterId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/campaigns/join-code`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ inviteCode, characterId }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao entrar na campanha pelo código.');
+}
+
 // Personagens
 export async function fetchCharacters(): Promise<CharacterData[]> {
   const response = await fetch(`${API_URL}/characters`, {

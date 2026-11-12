@@ -152,3 +152,140 @@ campaignsRouter.post('/:campaignId/invite', async (req: AuthenticatedRequest, re
     return res.status(500).json({ error: 'Erro ao enviar convite.' });
   }
 });
+
+// Aceitar convite pendente vinculando um personagem do cofre
+campaignsRouter.post('/invites/:inviteId/accept', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { inviteId } = req.params;
+    const { characterId } = req.body;
+
+    if (!inviteId || typeof inviteId !== 'string') {
+      return res.status(400).json({ error: 'ID do convite inválido.' });
+    }
+
+    if (!characterId || typeof characterId !== 'string') {
+      return res.status(400).json({ error: 'Selecione um personagem para entrar na aventura.' });
+    }
+
+    const invite = await prisma.campaignInvite.findUnique({
+      where: { id: inviteId },
+      include: { campaign: true },
+    });
+
+    if (!invite || invite.userId !== req.userId) {
+      return res.status(404).json({ error: 'Convite não encontrado.' });
+    }
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+    });
+
+    if (!character || character.ownerId !== req.userId) {
+      return res.status(403).json({ error: 'Este personagem não pertence a você.' });
+    }
+
+    if (character.system !== invite.campaign.system) {
+      return res.status(400).json({
+        error: `Esta campanha exige um personagem do sistema ${invite.campaign.system}.`,
+      });
+    }
+
+    // Executa o vínculo do personagem e a confirmação do convite em uma única transação
+    await prisma.$transaction([
+      prisma.character.update({
+        where: { id: characterId },
+        data: { campaignId: invite.campaignId },
+      }),
+      prisma.campaignInvite.update({
+        where: { id: inviteId },
+        data: { status: 'ACCEPTED' },
+      }),
+    ]);
+
+    return res.json({ message: 'Você entrou na aventura com sucesso!' });
+  } catch (error) {
+    console.error('Erro ao aceitar convite:', error);
+    return res.status(500).json({ error: 'Erro interno ao aceitar convite.' });
+  }
+});
+
+// Entrar em uma campanha usando o código de convite
+campaignsRouter.post('/join-code', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { inviteCode, characterId } = req.body;
+
+    if (!inviteCode || typeof inviteCode !== 'string' || !characterId || typeof characterId !== 'string') {
+      return res.status(400).json({ error: 'Informe o código da campanha e selecione um personagem.' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { inviteCode: inviteCode.trim().toUpperCase() },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Nenhuma campanha encontrada com este código.' });
+    }
+
+    if (campaign.dmId === req.userId) {
+      return res.status(400).json({ error: 'Você já é o Mestre desta aventura.' });
+    }
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+    });
+
+    if (!character || character.ownerId !== req.userId) {
+      return res.status(403).json({ error: 'Personagem inválido.' });
+    }
+
+    if (character.system !== campaign.system) {
+      return res.status(400).json({
+        error: `A campanha "${campaign.name}" usa o sistema ${campaign.system.toUpperCase()}, mas o personagem escolhido é de ${character.system.toUpperCase()}.`,
+      });
+    }
+
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { campaignId: campaign.id },
+    });
+
+    // Caso houvesse um convite pendente para esta mesma campanha, marca como aceito
+    await prisma.campaignInvite.updateMany({
+      where: { campaignId: campaign.id, userId: req.userId },
+      data: { status: 'ACCEPTED' },
+    });
+
+    return res.json({ message: `Personagem vinculado à campanha ${campaign.name}!` });
+  } catch (error) {
+    console.error('Erro ao entrar por código:', error);
+    return res.status(500).json({ error: 'Erro interno ao vincular personagem.' });
+  }
+});
+
+// Recusar e remover um convite pendente
+campaignsRouter.delete('/invites/:inviteId', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { inviteId } = req.params;
+
+    if (!inviteId || typeof inviteId !== 'string') {
+      return res.status(400).json({ error: 'ID do convite inválido.' });
+    }
+
+    const invite = await prisma.campaignInvite.findUnique({
+      where: { id: inviteId },
+    });
+
+    if (!invite || invite.userId !== req.userId) {
+      return res.status(404).json({ error: 'Convite não encontrado.' });
+    }
+
+    await prisma.campaignInvite.delete({
+      where: { id: inviteId },
+    });
+
+    return res.json({ message: 'Convite recusado.' });
+  } catch (error) {
+    console.error('Erro ao recusar convite:', error);
+    return res.status(500).json({ error: 'Erro interno ao recusar convite.' });
+  }
+});
