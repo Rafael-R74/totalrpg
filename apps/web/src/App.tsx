@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { Dashboard } from './components/Dashboard';
 import { SheetContainer } from './components/sheets/SheetContainer';
+import { DiceRollModal } from './components/DiceRollModal';
 import { AuthResponse } from './services/api';
 import { io, Socket } from 'socket.io-client';
-import { DiceRollModal } from './components/DiceRollModal';
 import {
   SystemId,
   VitalBar,
@@ -21,12 +21,17 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Guarda sessão ativa do Escudo do Mestre
   const [currentCampaignSession, setCurrentCampaignSession] = useState<{
     campaignId: string;
     role: 'dm' | 'player';
   } | null>(null);
 
-  const [openedCharacterId, setOpenedCharacterId] = useState<string | null>(null);
+  // Guarda qual personagem está aberto na tela e a qual campanha pertence (se houver)
+  const [openedCharacter, setOpenedCharacter] = useState<{
+    characterId: string;
+    campaignId?: string;
+  } | null>(null);
 
   const [selectedSystem, setSelectedSystem] = useState<SystemId>('ordem-paranormal');
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
@@ -39,7 +44,11 @@ export default function App() {
     color: '#dc2626',
   });
 
-  const activeRoomId = currentCampaignSession?.campaignId || (currentUser ? `vault-${currentUser.id}` : '');
+  // Define a sala do Socket.io: campanha da sessão do DM, campanha da ficha aberta ou cofre pessoal
+  const activeRoomId =
+    currentCampaignSession?.campaignId ||
+    openedCharacter?.campaignId ||
+    (currentUser ? `vault-${currentUser.id}` : '');
 
   useEffect(() => {
     if (!currentUser || !activeRoomId) return;
@@ -52,21 +61,25 @@ export default function App() {
     socket.on('vital:updated', (updatedBar) => setHp(updatedBar));
     socket.on('dice:rolled', (newRoll) => {
       setRollHistory((prev) => [newRoll, ...prev]);
-      setActiveRollModal(newRoll);
+
+      // Se o jogador estiver com a ficha aberta, só abre o modal de animação para as próprias rolagens dele
+      if (openedCharacter) {
+        setActiveRollModal(newRoll);
+      }
     });
 
     return () => {
       socket.off('vital:updated');
       socket.off('dice:rolled');
     };
-  }, [currentUser, activeRoomId, currentCampaignSession]);
+  }, [currentUser, activeRoomId, currentCampaignSession, openedCharacter]);
 
   function handleLogout() {
     localStorage.removeItem('totalrpg_token');
     localStorage.removeItem('totalrpg_user');
     setCurrentUser(null);
     setCurrentCampaignSession(null);
-    setOpenedCharacterId(null);
+    setOpenedCharacter(null);
   }
 
   function triggerRoll(
@@ -104,15 +117,21 @@ export default function App() {
   const hpPercent = Math.max(0, Math.min(100, (hp.current / hp.max) * 100));
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-7xl mx-auto flex flex-col gap-6">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-6xl mx-auto flex flex-col gap-6">
+      <DiceRollModal
+        roll={activeRollModal}
+        onClose={() => setActiveRollModal(null)}
+      />
+
+      {/* Barra de Topo Global */}
       <header className="border-b border-zinc-800 pb-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-extrabold text-amber-500 tracking-wider">🎲 TotalRPG</h1>
-          {(currentCampaignSession || openedCharacterId) && (
+          {(currentCampaignSession || openedCharacter) && (
             <button
               onClick={() => {
                 setCurrentCampaignSession(null);
-                setOpenedCharacterId(null);
+                setOpenedCharacter(null);
               }}
               className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition cursor-pointer"
             >
@@ -134,78 +153,33 @@ export default function App() {
           </button>
         </div>
       </header>
-      <DiceRollModal
-        roll={activeRollModal}
-        onClose={() => setActiveRollModal(null)}
-      />
 
-      {openedCharacterId ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          <div className="lg:col-span-2">
-            <SheetContainer
-              characterId={openedCharacterId}
-              currentUserId={currentUser.id}
-              onBack={() => setOpenedCharacterId(null)}
-              onRollDice={triggerRoll}
-            />
-          </div>
-
-          <div className="bg-zinc-900 p-5 rounded-xl border border-zinc-800 flex flex-col h-[600px] sticky top-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-zinc-200">🎲 Rolagens da Ficha</h2>
-              {rollHistory.length > 0 && (
-                <button
-                  onClick={() => setRollHistory([])}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
-                >
-                  Limpar
-                </button>
-              )}
-            </div>
-            <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1">
-              {rollHistory.length === 0 ? (
-                <p className="text-zinc-500 text-xs text-center my-auto px-4">
-                  Clique em qualquer Atributo ou botão de Perícia na ficha ao lado para rolar os dados!
-                </p>
-              ) : (
-                rollHistory.map((roll) => (
-                  <div
-                    key={roll.id}
-                    className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 flex justify-between items-center"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-amber-500 text-xs">{roll.characterName}</span>
-                        <span className="text-[10px] text-zinc-500">{roll.timestamp}</span>
-                      </div>
-                      <p className="text-sm font-semibold text-zinc-200 mt-0.5">{roll.label}</p>
-                      <p className="text-xs font-mono text-zinc-500 mt-1">
-                        {roll.formula} → [{roll.rolls.join(', ')}]
-                      </p>
-                    </div>
-                    <div className="text-2xl font-extrabold font-mono text-white bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-700">
-                      {roll.total}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+      {/* VISÃO 1: Tela de Jogo do Jogador (100% dedicada à própria Ficha!) */}
+      {openedCharacter ? (
+        <SheetContainer
+          characterId={openedCharacter.characterId}
+          currentUserId={currentUser.id}
+          onBack={() => setOpenedCharacter(null)}
+          onRollDice={triggerRoll}
+        />
       ) : !currentCampaignSession ? (
+        /* VISÃO 2: Dashboard Principal */
         <Dashboard
           currentUser={currentUser}
           onEnterSession={(campaignId, role) => setCurrentCampaignSession({ campaignId, role })}
-          onOpenCharacter={(charId) => setOpenedCharacterId(charId)}
+          onOpenCharacter={(characterId, campaignId) =>
+            setOpenedCharacter({ characterId, campaignId })
+          }
         />
       ) : (
+        /* VISÃO 3: Escudo do Mestre (Que construiremos na Etapa 4B agora!) */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="flex flex-col gap-6">
             <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs font-semibold text-zinc-400">Papel na Mesa:</span>
                 <span className="text-xs font-mono font-bold uppercase text-amber-500">
-                  {currentCampaignSession.role === 'dm' ? '👑 Mestre' : '🛡️ Jogador'}
+                  👑 Escudo do Mestre (Protótipo)
                 </span>
               </div>
               <div className="flex gap-2">

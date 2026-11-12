@@ -10,14 +10,17 @@ import {
   fetchCharacters,
   createCampaign,
   createCharacter,
-  sendCampaignInvite
+  sendCampaignInvite,
+  acceptCampaignInvite,
+  declineCampaignInvite,
+  joinCampaignByCode,
 } from '../services/api';
 import { AdminPanel } from './AdminPanel';
 
 interface DashboardProps {
   currentUser: { id: string; username: string; email: string };
   onEnterSession: (campaignId: string, role: 'dm' | 'player') => void;
-  onOpenCharacter: (characterId: string) => void;
+  onOpenCharacter: (characterId: string, campaignId?: string) => void;
 }
 
 export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: DashboardProps) {
@@ -29,6 +32,7 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   const [characters, setCharacters] = useState<CharacterData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Estados de criação de campanha e personagem
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newCampaignDesc, setNewCampaignDesc] = useState('');
   const [newCampaignSystem, setNewCampaignSystem] = useState<SystemId>('ordem-paranormal');
@@ -38,16 +42,29 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   const [newCharSystem, setNewCharSystem] = useState<SystemId>('ordem-paranormal');
   const [isCreatingChar, setIsCreatingChar] = useState(false);
 
+  // Estados para enviar convite (Mestre)
   const [invitingCampaignId, setInvitingCampaignId] = useState<string | null>(null);
   const [targetUsername, setTargetUsername] = useState('');
+
+  // Estados do Modal de Aceitar Convite / Entrar por Código (Jogador)
+  const [selectedInviteToAccept, setSelectedInviteToAccept] = useState<InviteData | null>(null);
+  const [isJoinByCodeModalOpen, setIsJoinByCodeModalOpen] = useState(false);
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [selectedCharIdForJoin, setSelectedCharIdForJoin] = useState('');
+  const [quickCharName, setQuickCharName] = useState('');
 
   async function loadDashboardData() {
     setIsLoading(true);
     try {
       if (activeTab === 'player') {
-        const [camp, inv] = await Promise.all([fetchPlayerCampaigns(), fetchPlayerInvites()]);
+        const [camp, inv, chars] = await Promise.all([
+          fetchPlayerCampaigns(),
+          fetchPlayerInvites(),
+          fetchCharacters(),
+        ]);
         setPlayerCampaigns(camp);
         setInvites(inv);
+        setCharacters(chars);
       } else if (activeTab === 'characters') {
         const chars = await fetchCharacters();
         setCharacters(chars);
@@ -63,7 +80,9 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   }
 
   useEffect(() => {
-    loadDashboardData();
+    if (activeTab !== 'admin') {
+      loadDashboardData();
+    }
   }, [activeTab]);
 
   async function handleCreateCampaign(e: React.FormEvent) {
@@ -103,10 +122,240 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     }
   }
 
+  // Confirma a entrada via Convite Direto (usando ficha existente ou criando uma nova na hora)
+  async function handleConfirmAcceptInvite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedInviteToAccept) return;
+
+    try {
+      let charIdToUse = selectedCharIdForJoin;
+
+      // Se o jogador optou por criar um personagem rápido direto no modal
+      if (!charIdToUse && quickCharName.trim()) {
+        const created = await createCharacter(
+          quickCharName.trim(),
+          selectedInviteToAccept.campaign.system
+        );
+        charIdToUse = created.id;
+      }
+
+      if (!charIdToUse) {
+        alert('Selecione um personagem do seu cofre ou digite um nome para criar um novo.');
+        return;
+      }
+
+      await acceptCampaignInvite(selectedInviteToAccept.id, charIdToUse);
+      setSelectedInviteToAccept(null);
+      setSelectedCharIdForJoin('');
+      setQuickCharName('');
+      loadDashboardData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  async function handleDeclineInvite(inviteId: string) {
+    try {
+      await declineCampaignInvite(inviteId);
+      loadDashboardData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  // Confirma a entrada via Código
+  async function handleConfirmJoinByCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteCodeInput.trim() || !selectedCharIdForJoin) {
+      alert('Digite o código da mesa e escolha um personagem do seu cofre.');
+      return;
+    }
+
+    try {
+      await joinCampaignByCode(inviteCodeInput.trim(), selectedCharIdForJoin);
+      setIsJoinByCodeModalOpen(false);
+      setInviteCodeInput('');
+      setSelectedCharIdForJoin('');
+      loadDashboardData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  // Filtra personagens livres do cofre compatíveis com o convite selecionado
+  const compatibleCharactersForInvite = selectedInviteToAccept
+    ? characters.filter(
+        (c) => !c.campaign && c.system === selectedInviteToAccept.campaign.system
+      )
+    : [];
+
+  const availableVaultCharacters = characters.filter((c) => !c.campaign);
+
   return (
     <div className="flex flex-col gap-6">
-      {/* Navegador de Abas */}
-      <div className="flex border-b border-zinc-800 gap-4">
+      {/* MODAL 1: ACEITAR CONVITE E VINCULAR FICHA */}
+      {selectedInviteToAccept && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleConfirmAcceptInvite}
+            className="bg-zinc-900 border border-amber-500/60 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
+                  Convite de {selectedInviteToAccept.campaign.dm.username}
+                </span>
+                <h3 className="text-lg font-extrabold text-white">
+                  Entrar em: {selectedInviteToAccept.campaign.name}
+                </h3>
+                <span className="text-xs text-zinc-400">
+                  Sistema exigido: <strong>{selectedInviteToAccept.campaign.system.toUpperCase()}</strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedInviteToAccept(null)}
+                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {compatibleCharactersForInvite.length > 0 && (
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Opção A: Escolher um personagem livre do seu Cofre
+                </label>
+                <select
+                  value={selectedCharIdForJoin}
+                  onChange={(e) => {
+                    setSelectedCharIdForJoin(e.target.value);
+                    if (e.target.value) setQuickCharName('');
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">-- Selecionar ficha existente --</option>
+                  {compatibleCharactersForInvite.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.system})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                {compatibleCharactersForInvite.length > 0
+                  ? 'Opção B: Ou criar um novo personagem agora'
+                  : 'Crie seu personagem para esta aventura:'}
+              </label>
+              <input
+                type="text"
+                value={quickCharName}
+                onChange={(e) => {
+                  setQuickCharName(e.target.value);
+                  if (e.target.value) setSelectedCharIdForJoin('');
+                }}
+                placeholder="Nome do novo personagem..."
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedInviteToAccept(null)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Vincular Ficha e Entrar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL 2: ENTRAR POR CÓDIGO DE CONVITE */}
+      {isJoinByCodeModalOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleConfirmJoinByCode}
+            className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
+          >
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-extrabold text-amber-500">🔑 Entrar com Código de Mesa</h3>
+              <button
+                type="button"
+                onClick={() => setIsJoinByCodeModalOpen(false)}
+                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1">Código da Aventura (Fornecido pelo Mestre)</label>
+              <input
+                type="text"
+                required
+                value={inviteCodeInput}
+                onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+                placeholder="Ex: TR-8F2A"
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono uppercase text-amber-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1">Personagem do seu Cofre</label>
+              {availableVaultCharacters.length === 0 ? (
+                <p className="text-xs text-red-400 bg-red-950/30 border border-red-800/50 p-2.5 rounded-lg">
+                  Você não tem personagens livres no Cofre. Crie um personagem na aba &quot;Meus Personagens&quot; primeiro!
+                </p>
+              ) : (
+                <select
+                  required
+                  value={selectedCharIdForJoin}
+                  onChange={(e) => setSelectedCharIdForJoin(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">-- Escolha qual ficha levar para a mesa --</option>
+                  {availableVaultCharacters.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.system.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsJoinByCodeModalOpen(false)}
+                className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={availableVaultCharacters.length === 0}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Entrar na Aventura
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Navegador de Abas Principal */}
+      <div className="flex flex-wrap border-b border-zinc-800 gap-4">
         <button
           onClick={() => setActiveTab('player')}
           className={`pb-3 text-sm font-semibold transition cursor-pointer border-b-2 ${
@@ -162,19 +411,37 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
               <h3 className="text-amber-400 font-bold text-sm mb-2">✉️ Convites para Novas Aventuras:</h3>
               <div className="flex flex-col gap-2">
                 {invites.map((inv) => (
-                  <div key={inv.id} className="bg-zinc-900 border border-zinc-800 p-3 rounded-lg flex justify-between items-center">
+                  <div
+                    key={inv.id}
+                    className="bg-zinc-900 border border-zinc-800 p-3 rounded-lg flex justify-between items-center gap-2"
+                  >
                     <div>
                       <p className="font-semibold text-white">{inv.campaign.name}</p>
                       <p className="text-xs text-zinc-400">
-                        Mestre: <span className="text-amber-400 font-medium">{inv.campaign.dm.username}</span> | Sistema: {inv.campaign.system.toUpperCase()}
+                        Mestre: <span className="text-amber-400 font-medium">{inv.campaign.dm.username}</span> | Sistema:{' '}
+                        {inv.campaign.system.toUpperCase()}
                       </p>
                     </div>
-                    <button
-                      onClick={() => alert('Na Fase 4 faremos o modal de aceitar convite vinculando uma ficha!')}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold cursor-pointer transition"
-                    >
-                      Aceitar Aventura
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCharIdForJoin('');
+                          setQuickCharName('');
+                          setSelectedInviteToAccept(inv);
+                        }}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold cursor-pointer transition"
+                      >
+                        Aceitar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeclineInvite(inv.id)}
+                        className="px-3 py-1.5 bg-zinc-800 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-700 rounded-lg text-xs font-semibold cursor-pointer transition"
+                      >
+                        Recusar
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -182,33 +449,67 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           )}
 
           <div>
-            <h2 className="text-lg font-bold text-zinc-200 mb-3">Minhas Aventuras Ativas</h2>
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-lg font-bold text-zinc-200">Minhas Aventuras Ativas</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setInviteCodeInput('');
+                  setSelectedCharIdForJoin('');
+                  setIsJoinByCodeModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-zinc-700 rounded-lg text-xs font-bold transition cursor-pointer"
+              >
+                🔑 Entrar com Código
+              </button>
+            </div>
+
             {playerCampaigns.length === 0 ? (
               <div className="bg-zinc-900/50 border border-dashed border-zinc-800 p-8 rounded-xl text-center">
                 <p className="text-zinc-400 text-sm">Você ainda não está jogando em nenhuma aventura.</p>
-                <p className="text-zinc-500 text-xs mt-1">Peça o convite para o seu Mestre ou crie sua própria aventura na aba DM!</p>
+                <p className="text-zinc-500 text-xs mt-1">
+                  Use o botão &quot;🔑 Entrar com Código&quot; acima ou aceite um convite enviado pelo seu Mestre!
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {playerCampaigns.map((camp) => (
-                  <div key={camp.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between gap-4">
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <h3 className="font-bold text-lg text-white">{camp.name}</h3>
-                        <span className="text-xs bg-zinc-800 text-amber-400 px-2.5 py-1 rounded-full uppercase font-mono">
-                          {camp.system}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400 mt-1">Mestre: {camp.dm?.username}</p>
-                    </div>
-                    <button
-                      onClick={() => onEnterSession(camp.id, 'player')}
-                      className="w-full py-2 bg-zinc-800 hover:bg-amber-600 hover:text-white text-zinc-300 font-bold text-sm rounded-lg transition cursor-pointer"
+                {playerCampaigns.map((camp) => {
+                  const myCharInCampaign = camp.characters?.[0];
+
+                  return (
+                    <div
+                      key={camp.id}
+                      className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between gap-4"
                     >
-                      Entrar na Mesa como Jogador
-                    </button>
-                  </div>
-                ))}
+                      <div>
+                        <div className="flex justify-between items-start">
+                          <h3 className="font-bold text-lg text-white">{camp.name}</h3>
+                          <span className="text-xs bg-zinc-800 text-amber-400 px-2.5 py-1 rounded-full uppercase font-mono">
+                            {camp.system}
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-1">Mestre: {camp.dm?.username}</p>
+                        {myCharInCampaign && (
+                          <p className="text-xs text-emerald-400 font-semibold mt-2">
+                            🛡️ Seu Personagem: {myCharInCampaign.name}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        {myCharInCampaign && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenCharacter(myCharInCampaign.id, camp.id)}
+                            className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg transition cursor-pointer shadow"
+                          >
+                            🎲 Entrar na Mesa (Abrir Ficha)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -221,7 +522,9 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-lg font-bold text-zinc-200">Cofre de Personagens</h2>
-              <p className="text-zinc-400 text-xs">Fichas criadas por você que podem ser usadas em qualquer campanha do mesmo sistema.</p>
+              <p className="text-zinc-400 text-xs">
+                Fichas criadas por você que podem ser usadas em qualquer campanha do mesmo sistema.
+              </p>
             </div>
             <button
               onClick={() => setIsCreatingChar(!isCreatingChar)}
@@ -232,7 +535,10 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           </div>
 
           {isCreatingChar && (
-            <form onSubmit={handleCreateCharacter} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4">
+            <form
+              onSubmit={handleCreateCharacter}
+              className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4"
+            >
               <h3 className="font-bold text-amber-500 text-sm">Criar Ficha no Cofre</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -270,12 +576,17 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           {characters.length === 0 ? (
             <div className="bg-zinc-900/50 border border-dashed border-zinc-800 p-8 rounded-xl text-center">
               <p className="text-zinc-400 text-sm">Seu cofre está vazio.</p>
-              <p className="text-zinc-500 text-xs mt-1">Crie personagens com antecedência para vinculá-los às mesas rapidamente.</p>
+              <p className="text-zinc-500 text-xs mt-1">
+                Crie personagens com antecedência para vinculá-los às mesas rapidamente.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {characters.map((char) => (
-                <div key={char.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-3">
+                <div
+                  key={char.id}
+                  className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-3"
+                >
                   <div>
                     <div className="flex justify-between items-start">
                       <h3 className="font-bold text-white">{char.name}</h3>
@@ -284,7 +595,13 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                       </span>
                     </div>
                     <p className="text-xs text-zinc-500 mt-2">
-                      {char.campaign ? `Vinculado a: ${char.campaign.name}` : 'Disponível no Cofre'}
+                      {char.campaign ? (
+                        <span className="text-emerald-400 font-medium">
+                          Vinculado a: {char.campaign.name}
+                        </span>
+                      ) : (
+                        'Disponível no Cofre'
+                      )}
                     </p>
                   </div>
                   <button
@@ -307,7 +624,9 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-lg font-bold text-zinc-200">Campanhas que você Mestra</h2>
-              <p className="text-zinc-400 text-xs">Crie e gerencie mesas, envie convites e controle as travas de ficha dos jogadores.</p>
+              <p className="text-zinc-400 text-xs">
+                Crie e gerencie mesas, envie convites e controle as travas de ficha dos jogadores.
+              </p>
             </div>
             <button
               onClick={() => setIsCreatingCampaign(!isCreatingCampaign)}
@@ -318,7 +637,10 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           </div>
 
           {isCreatingCampaign && (
-            <form onSubmit={handleCreateCampaign} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4">
+            <form
+              onSubmit={handleCreateCampaign}
+              className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4"
+            >
               <h3 className="font-bold text-amber-500 text-sm">Configurar Nova Aventura</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -371,7 +693,10 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {dmCampaigns.map((camp) => (
-                <div key={camp.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between gap-4">
+                <div
+                  key={camp.id}
+                  className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between gap-4"
+                >
                   <div>
                     <div className="flex justify-between items-start">
                       <h3 className="font-bold text-lg text-white">{camp.name}</h3>
@@ -380,9 +705,14 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                       </span>
                     </div>
                     {camp.description && <p className="text-xs text-zinc-400 mt-2">{camp.description}</p>}
-                    <p className="text-xs font-mono text-zinc-500 mt-2">
-                      Código de Convite: <span className="text-amber-500 font-bold">{camp.inviteCode}</span>
-                    </p>
+                    <div className="flex items-center justify-between mt-3 bg-zinc-950 px-3 py-2 rounded-lg border border-zinc-800">
+                      <span className="text-xs font-mono text-zinc-400">
+                        Código: <strong className="text-amber-500">{camp.inviteCode}</strong>
+                      </span>
+                      <span className="text-xs text-zinc-400">
+                        Jogadores na mesa: <strong className="text-white">{camp.characters?.length || 0}</strong>
+                      </span>
+                    </div>
                   </div>
 
                   {invitingCampaignId === camp.id ? (
@@ -433,7 +763,8 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
           )}
         </div>
       )}
-      {/* ABA: ADMIN (COMPÊNDIO & REGRAS) */}
+
+      {/* ABA: ADMIN */}
       {activeTab === 'admin' && <AdminPanel />}
     </div>
   );
