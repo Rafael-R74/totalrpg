@@ -286,3 +286,49 @@ export async function upsertSystemSkill(
   if (!response.ok) throw new Error(data.error || 'Erro ao salvar perícia do sistema.');
   return data;
 }
+
+// Escudo do Mestre
+export interface DMScreenCharacter extends FullCharacterPayload {
+  owner: {
+    id: string;
+    username: string;
+  };
+}
+
+export interface DMScreenCampaignData extends SheetPermissions {
+  id: string;
+  name: string;
+  description?: string;
+  system: SystemId;
+  inviteCode: string;
+  dmId: string;
+  characters: DMScreenCharacter[];
+  invites: Array<{
+    id: string;
+    status: string;
+    user: { id: string; username: string };
+  }>;
+}
+
+export async function fetchDMScreenData(campaignId: string): Promise<DMScreenCampaignData> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/dm-screen`, {
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao carregar Escudo do Mestre.');
+  return data;
+}
+
+export async function updateCampaignPermissions(
+  campaignId: string,
+  permissions: Partial<SheetPermissions>
+): Promise<SheetPermissions> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/permissions`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify(permissions),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao atualizar travas da campanha.');
+  return data;
+}

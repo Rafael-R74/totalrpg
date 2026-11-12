@@ -7,6 +7,7 @@ import {
   ActiveCondition,
   CompendiumEntryData,
   SystemSkillDefinition,
+  SheetPermissions,
   calculateActiveBonuses,
 } from '@totalrpg/shared';
 import {
@@ -31,6 +32,9 @@ interface SheetContainerProps {
     sides: number,
     modifier: number
   ) => void;
+  onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
+  externalPermissions?: SheetPermissions | null;
+  externalReloadSignal?: { characterId: string; timestamp: number } | null;
 }
 
 export function SheetContainer({
@@ -38,6 +42,9 @@ export function SheetContainer({
   currentUserId,
   onBack,
   onRollDice,
+  onCharacterSaved,
+  externalPermissions,
+  externalReloadSignal,
 }: SheetContainerProps) {
   const [character, setCharacter] = useState<FullCharacterResponse | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
@@ -90,6 +97,33 @@ export function SheetContainer({
     }
     loadSheetAndCompendium();
   }, [characterId]);
+
+  // Escuta mudanças de Travas do Mestre em tempo real via Socket.io
+  useEffect(() => {
+    if (!externalPermissions) return;
+    setCharacter((prev) => {
+      if (!prev || !prev.campaign) return prev;
+      return {
+        ...prev,
+        campaign: {
+          ...prev.campaign,
+          ...externalPermissions,
+        },
+      };
+    });
+    if (externalPermissions.lockAllSheets) {
+      setIsEditMode(false);
+    }
+  }, [externalPermissions]);
+
+  // Escuta quando o Mestre altera Vida ou Condições desta ficha pelo Escudo do Mestre
+  useEffect(() => {
+    if (externalReloadSignal && externalReloadSignal.characterId === characterId) {
+      fetchCharacterById(characterId)
+        .then((freshData) => setCharacter(freshData))
+        .catch((err) => console.error(err));
+    }
+  }, [externalReloadSignal, characterId]);
 
   if (isLoading) {
     return (
@@ -154,6 +188,9 @@ export function SheetContainer({
         attacks: target.attacks,
       });
       setCharacter((prev) => (prev ? { ...prev, ...updated } : updated));
+      if (onCharacterSaved) {
+        onCharacterSaved(target.id, target.campaignId);
+      }
       setFeedbackMsg('Salvo!');
       setTimeout(() => setFeedbackMsg(''), 2000);
     } catch (err: any) {

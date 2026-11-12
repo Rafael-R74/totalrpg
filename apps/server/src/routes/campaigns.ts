@@ -289,3 +289,92 @@ campaignsRouter.delete('/invites/:inviteId', async (req: AuthenticatedRequest, r
     return res.status(500).json({ error: 'Erro interno ao recusar convite.' });
   }
 });
+
+// Carregar todos os dados da campanha e fichas completas para o Escudo do Mestre
+campaignsRouter.get('/:campaignId/dm-screen', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { campaignId } = req.params;
+
+    if (!campaignId || typeof campaignId !== 'string') {
+      return res.status(400).json({ error: 'ID da campanha inválido.' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        characters: {
+          include: {
+            owner: {
+              select: { id: true, username: true },
+            },
+          },
+          orderBy: { name: 'asc' },
+        },
+        invites: {
+          where: { status: 'PENDING' },
+          include: {
+            user: { select: { id: true, username: true } },
+          },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campanha não encontrada.' });
+    }
+
+    if (campaign.dmId !== req.userId) {
+      return res.status(403).json({ error: 'Acesso restrito ao Mestre desta aventura.' });
+    }
+
+    return res.json(campaign);
+  } catch (error) {
+    console.error('Erro ao carregar Escudo do Mestre:', error);
+    return res.status(500).json({ error: 'Erro ao carregar dados do Escudo do Mestre.' });
+  }
+});
+
+// Atualizar as Travas de Edição de Ficha da campanha
+campaignsRouter.put('/:campaignId/permissions', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { campaignId } = req.params;
+
+    if (!campaignId || typeof campaignId !== 'string') {
+      return res.status(400).json({ error: 'ID da campanha inválido.' });
+    }
+
+    const existing = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!existing || existing.dmId !== req.userId) {
+      return res.status(403).json({ error: 'Apenas o Mestre pode alterar as travas da mesa.' });
+    }
+
+    const {
+      lockAllSheets,
+      allowEditVitals,
+      allowEditInventory,
+      allowEditAbilities,
+      allowEditAttributes,
+      allowTrade,
+    } = req.body;
+
+    const updated = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        lockAllSheets: lockAllSheets ?? existing.lockAllSheets,
+        allowEditVitals: allowEditVitals ?? existing.allowEditVitals,
+        allowEditInventory: allowEditInventory ?? existing.allowEditInventory,
+        allowEditAbilities: allowEditAbilities ?? existing.allowEditAbilities,
+        allowEditAttributes: allowEditAttributes ?? existing.allowEditAttributes,
+        allowTrade: allowTrade ?? existing.allowTrade,
+      },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Erro ao atualizar travas da campanha:', error);
+    return res.status(500).json({ error: 'Erro ao atualizar permissões da mesa.' });
+  }
+});
