@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   SystemId,
   SheetPermissions,
@@ -18,6 +18,7 @@ import {
   DMScreenCharacter,
   fetchDMScreenData,
   updateCampaignPermissions,
+  updateCampaignDMData,
   updateCharacter,
   fetchCompendium,
 } from '../services/api';
@@ -59,6 +60,7 @@ interface DMScreenProps {
   onBroadcastCharacterSync: (characterId: string) => void;
   onRequestPlayersInitiative: () => void;
   onSharePostIt: (postIt: StickyPostIt, action: 'show' | 'hide') => void;
+  onNotifyItemGiven: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
   lastUpdatedCharSignal: { characterId: string; timestamp: number } | null;
   lastInitiativeSubmission: {
     characterId: string;
@@ -66,6 +68,7 @@ interface DMScreenProps {
     initiative: number;
     timestamp: number;
   } | null;
+  dismissedPostItSignal: { postItId: string; characterId: string; timestamp: number } | null;
 }
 
 function parseFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -89,55 +92,32 @@ export function DMScreen({
   onBroadcastCharacterSync,
   onRequestPlayersInitiative,
   onSharePostIt,
+  onNotifyItemGiven,
   lastUpdatedCharSignal,
   lastInitiativeSubmission,
+  dismissedPostItSignal,
 }: DMScreenProps) {
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Navegação dos Blocos do Escudo do Mestre
-  const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes'>('table');
+  // Trava que impede sobrescrever o banco SQLite antes do carregamento inicial terminar
+  const isHydratedRef = useRef(false);
 
+  const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes'>('table');
   const [conditionPickerCharId, setConditionPickerCharId] = useState<string | null>(null);
   const [initFeedback, setInitFeedback] = useState('');
 
-  // Estados Persistentes do Combate
-  const [combatants, setCombatants] = useState<CombatantEntry[]>(() => {
-    const saved = localStorage.getItem(`totalrpg_combat_${campaignId}`);
-    return saved ? JSON.parse(saved).combatants || [] : [];
-  });
-  const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(() => {
-    const saved = localStorage.getItem(`totalrpg_combat_${campaignId}`);
-    return saved ? JSON.parse(saved).currentTurnIndex || 0 : 0;
-  });
-  const [roundNumber, setRoundNumber] = useState<number>(() => {
-    const saved = localStorage.getItem(`totalrpg_combat_${campaignId}`);
-    return saved ? JSON.parse(saved).roundNumber || 1 : 1;
-  });
+  // Estados sincronizados com o Banco de Dados SQLite (Etapa 4D)
+  const [combatants, setCombatants] = useState<CombatantEntry[]>([]);
+  const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(0);
+  const [roundNumber, setRoundNumber] = useState<number>(1);
+  const [threats, setThreats] = useState<CampaignThreat[]>([]);
+  const [campaignItems, setCampaignItems] = useState<CampaignStoredItem[]>([]);
+  const [merchants, setMerchants] = useState<CampaignMerchant[]>([]);
+  const [dmNotes, setDmNotes] = useState<string>('');
+  const [postIts, setPostIts] = useState<StickyPostIt[]>([]);
 
-  // Estados Persistentes dos Blocos Exclusivos da Campanha (Ameaças, Itens, Mercadores, Notas e Post-its)
-  const [threats, setThreats] = useState<CampaignThreat[]>(() => {
-    const saved = localStorage.getItem(`totalrpg_threats_${campaignId}`);
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [campaignItems, setCampaignItems] = useState<CampaignStoredItem[]>(() => {
-    const saved = localStorage.getItem(`totalrpg_campitems_${campaignId}`);
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [merchants, setMerchants] = useState<CampaignMerchant[]>(() => {
-    const saved = localStorage.getItem(`totalrpg_merchants_${campaignId}`);
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [dmNotes, setDmNotes] = useState<string>(() => {
-    return localStorage.getItem(`totalrpg_notes_${campaignId}`) || '';
-  });
-  const [postIts, setPostIts] = useState<StickyPostIt[]>(() => {
-    const saved = localStorage.getItem(`totalrpg_postits_${campaignId}`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Estados do Rolador do Mestre
   const [isSecretRoll, setIsSecretRoll] = useState(false);
   const [dmRollLabel, setDmRollLabel] = useState('Teste de Ameaça / NPC');
   const [dmDiceCount, setDmDiceCount] = useState(1);
@@ -150,6 +130,49 @@ export function DMScreen({
       const data = await fetchDMScreenData(campaignId);
       setCampaign(data);
 
+      // Na primeira abertura da tela, hidrata os estados com os dados vindos do SQLite
+      // (com fallback inteligente para migrar dados que estavam no localStorage anteriormente)
+      if (!silent || !isHydratedRef.current) {
+        const dbCombat =
+          data.combatState && Array.isArray(data.combatState.combatants)
+            ? data.combatState
+            : JSON.parse(localStorage.getItem(`totalrpg_combat_${campaignId}`) || '{}');
+
+        const dbThreats =
+          Array.isArray(data.threats) && data.threats.length > 0
+            ? data.threats
+            : JSON.parse(localStorage.getItem(`totalrpg_threats_${campaignId}`) || '[]');
+
+        const dbItems =
+          Array.isArray(data.campaignItems) && data.campaignItems.length > 0
+            ? data.campaignItems
+            : JSON.parse(localStorage.getItem(`totalrpg_campitems_${campaignId}`) || '[]');
+
+        const dbMerchants =
+          Array.isArray(data.merchants) && data.merchants.length > 0
+            ? data.merchants
+            : JSON.parse(localStorage.getItem(`totalrpg_merchants_${campaignId}`) || '[]');
+
+        const dbNotes =
+          data.dmNotes || localStorage.getItem(`totalrpg_notes_${campaignId}`) || '';
+
+        const dbPostIts =
+          Array.isArray(data.postIts) && data.postIts.length > 0
+            ? data.postIts
+            : JSON.parse(localStorage.getItem(`totalrpg_postits_${campaignId}`) || '[]');
+
+        setCombatants(dbCombat.combatants || []);
+        setCurrentTurnIndex(dbCombat.currentTurnIndex || 0);
+        setRoundNumber(dbCombat.roundNumber || 1);
+        setThreats(dbThreats);
+        setCampaignItems(dbItems);
+        setMerchants(dbMerchants);
+        setDmNotes(dbNotes);
+        setPostIts(dbPostIts);
+
+        isHydratedRef.current = true;
+      }
+
       const comp = await fetchCompendium(data.system);
       setCompendiumEntries(comp.entries);
     } catch (err: any) {
@@ -160,6 +183,7 @@ export function DMScreen({
   }
 
   useEffect(() => {
+    isHydratedRef.current = false;
     loadScreenData();
   }, [campaignId]);
 
@@ -167,42 +191,48 @@ export function DMScreen({
     if (lastUpdatedCharSignal) loadScreenData(true);
   }, [lastUpdatedCharSignal]);
 
-  // Persistência automática de todos os blocos da campanha
+  // Salva automaticamente no SQLite sempre que qualquer bloco do Mestre for modificado após a hidratação
   useEffect(() => {
-    localStorage.setItem(
-      `totalrpg_combat_${campaignId}`,
-      JSON.stringify({ combatants, currentTurnIndex, roundNumber })
+    if (!isHydratedRef.current) return;
+    const timer = setTimeout(() => {
+      updateCampaignDMData(campaignId, {
+        dmNotes,
+        combatState: { combatants, currentTurnIndex, roundNumber },
+        threats,
+        campaignItems,
+        merchants,
+        postIts,
+      }).catch((err) => console.error('Erro no auto-save do Escudo:', err));
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [dmNotes, combatants, currentTurnIndex, roundNumber, threats, campaignItems, merchants, postIts, campaignId]);
+
+  useEffect(() => {
+    if (!dismissedPostItSignal) return;
+    setPostIts((prev) =>
+      prev.map((p) => {
+        if (p.id !== dismissedPostItSignal.postItId) return p;
+        const currentIds = Array.isArray(p.sharedWithCharacterIds)
+          ? p.sharedWithCharacterIds
+          : [];
+        return {
+          ...p,
+          sharedWithCharacterIds: currentIds.filter(
+            (id) => id !== dismissedPostItSignal.characterId
+          ),
+        };
+      })
     );
-  }, [combatants, currentTurnIndex, roundNumber, campaignId]);
+  }, [dismissedPostItSignal]);
 
-  useEffect(() => {
-    localStorage.setItem(`totalrpg_threats_${campaignId}`, JSON.stringify(threats));
-  }, [threats, campaignId]);
-
-  useEffect(() => {
-    localStorage.setItem(`totalrpg_campitems_${campaignId}`, JSON.stringify(campaignItems));
-  }, [campaignItems, campaignId]);
-
-  useEffect(() => {
-    localStorage.setItem(`totalrpg_merchants_${campaignId}`, JSON.stringify(merchants));
-  }, [merchants, campaignId]);
-
-  useEffect(() => {
-    localStorage.setItem(`totalrpg_notes_${campaignId}`, dmNotes);
-  }, [dmNotes, campaignId]);
-
-  useEffect(() => {
-    localStorage.setItem(`totalrpg_postits_${campaignId}`, JSON.stringify(postIts));
-  }, [postIts, campaignId]);
-
-  // Recebe automaticamente tanto a Iniciativa dos Jogadores quanto a Iniciativa Oculta das Ameaças!
+  // Recebe automaticamente a Iniciativa dos Jogadores ou das Ameaças
   useEffect(() => {
     if (!lastInitiativeSubmission) return;
 
     const matchedThreat = threats.find((t) => t.id === lastInitiativeSubmission.characterId);
 
     if (matchedThreat) {
-      // É uma criatura do Bestiário que teve a Iniciativa Oculta rolada pelo Mestre!
       const primaryAtk = matchedThreat.attacks[0];
       const newThreatCombatant: CombatantEntry = {
         id: Math.random().toString(36).substring(2, 9),
@@ -224,7 +254,6 @@ export function DMScreen({
       return;
     }
 
-    // Caso contrário, é um Jogador da mesa que respondeu ao chamado de Iniciativa
     setCombatants((prev) => {
       const exists = prev.some((c) => c.characterId === lastInitiativeSubmission.characterId);
       let updated: CombatantEntry[];
@@ -255,14 +284,13 @@ export function DMScreen({
   if (isLoading || !campaign) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-400">
-        Abrindo Escudo do Mestre e sincronizando fichas da mesa...
+        Abrindo Escudo do Mestre e sincronizando banco de dados da campanha...
       </div>
     );
   }
 
   const compendiumConditions = compendiumEntries.filter((e) => e.category === 'condition');
 
-  // Envia uma criatura do Bestiário para o Combate usando valor manual de Iniciativa
   function handleSendThreatToCombatManual(threat: CampaignThreat, manualInitiative: number) {
     const primaryAtk = threat.attacks[0];
     const newEntry: CombatantEntry = {
@@ -282,11 +310,12 @@ export function DMScreen({
     setActiveDMTab('table');
   }
 
-  // Entrega um item do Bloco de Itens / Mercador para um jogador específico
-  async function handleDeliverItemToCharacter(
+  // Entrega um item ao jogador no SQLite, sincroniza a ficha e dispara o Modal de Recompensa na tela dele!
+async function handleDeliverItemToCharacter(
     targetChar: DMScreenCharacter,
     item: RPGItem,
-    attack?: PreparedAttack
+    attack?: PreparedAttack,
+    fromMerchant?: boolean
   ) {
     const nextInventory = [...(targetChar.inventory || []), item];
     const nextAttacks = attack ? [...(targetChar.attacks || []), attack] : targetChar.attacks;
@@ -296,6 +325,11 @@ export function DMScreen({
       attacks: nextAttacks,
     });
     onBroadcastCharacterSync(targetChar.id);
+
+    // Só abre o Modal de Loot na tela do jogador se for recompensa direta (não comprada em Mercador)
+    if (!fromMerchant) {
+      onNotifyItemGiven(targetChar.id, item, attack);
+    }
     loadScreenData(true);
   }
 
@@ -494,21 +528,30 @@ export function DMScreen({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* CAMADA DE POST-ITS FLUTUANTES SEMPRE NA FRENTE DA TELA */}
+      {/* CAMADA DE POST-ITS FLUTUANTES (Sem re-disparar quando o Mestre fecha ou arrasta o seu!) */}
       <FloatingPostItsLayer
         postIts={postIts}
         characters={campaign.characters}
         isDMView={true}
         onUpdatePostIt={(updated) => {
+          const previous = postIts.find((p) => p.id === updated.id);
           setPostIts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-          if (updated.sharedWithCharacterId) {
+
+          const sharedIds = Array.isArray(updated.sharedWithCharacterIds)
+            ? updated.sharedWithCharacterIds
+            : [];
+          const textChanged = previous && previous.textContent !== updated.textContent;
+          if (updated.isPinned && sharedIds.length > 0 && textChanged) {
             onSharePostIt(updated, 'show');
           }
         }}
-        onSharePostItWithPlayer={(post, targetCharId) => {
-          const updated: StickyPostIt = { ...post, sharedWithCharacterId: targetCharId };
+        onUpdatePostItSharing={(post, nextCharacterIds) => {
+          const updated: StickyPostIt = {
+            ...post,
+            sharedWithCharacterIds: nextCharacterIds,
+          };
           setPostIts((prev) => prev.map((p) => (p.id === post.id ? updated : p)));
-          onSharePostIt(updated, targetCharId ? 'show' : 'hide');
+          onSharePostIt(updated, nextCharacterIds.length > 0 ? 'show' : 'hide');
         }}
       />
 
@@ -522,6 +565,9 @@ export function DMScreen({
               </span>
               <span className="text-xs font-mono uppercase bg-zinc-800 text-zinc-300 px-2.5 py-0.5 rounded-full">
                 {campaign.system}
+              </span>
+              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 px-2 py-0.5 rounded-full">
+                💾 Sincronizado no SQLite
               </span>
             </div>
             <h2 className="text-2xl font-extrabold text-white mt-1">{campaign.name}</h2>
@@ -695,10 +741,9 @@ export function DMScreen({
         </div>
       </div>
 
-      {/* 2. CORPO PRINCIPAL: BLOCO SELECIONADO (ESQUERDA) + DADOS DO MESTRE E LOG (DIREITA) */}
+      {/* 2. CORPO PRINCIPAL */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-8 flex flex-col gap-6">
-          {/* ABA 1: MESA, INICIATIVA E JOGADORES */}
           {activeDMTab === 'table' && (
             <>
               {/* RASTREADOR DE INICIATIVA */}
@@ -1111,7 +1156,6 @@ export function DMScreen({
             </>
           )}
 
-          {/* ABA 2: BLOCO EXCLUSIVO DE AMEAÇAS E CRIATURAS DA MESA */}
           {activeDMTab === 'bestiary' && (
             <BestiaryManager
               system={campaign.system}
@@ -1124,7 +1168,6 @@ export function DMScreen({
             />
           )}
 
-          {/* ABA 3: BLOCO EXCLUSIVO DE ITENS DA AVENTURA E MERCADORES */}
           {activeDMTab === 'loot' && (
             <LootAndMerchantsManager
               system={campaign.system}
@@ -1138,7 +1181,6 @@ export function DMScreen({
             />
           )}
 
-          {/* ABA 4: CADERNO DE TEXTO, DESENHO LIVRE (CANVAS) E POST-ITS */}
           {activeDMTab === 'notes' && (
             <NotesAndPostItsManager
               typedNotes={dmNotes}
@@ -1151,7 +1193,7 @@ export function DMScreen({
           )}
         </div>
 
-        {/* COLUNA DIREITA FIXA (4 colunas): DADOS DO MESTRE + LOG DE ROLAGENS DA SESSÃO */}
+        {/* COLUNA DIREITA FIXA: DADOS DO MESTRE + LOG */}
         <div className="lg:col-span-4 flex flex-col gap-5 sticky top-6">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4">
             <div className="flex justify-between items-center">

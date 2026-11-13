@@ -68,6 +68,12 @@ export interface ServerToClientEvents {
     initiative: number;
   }) => void;
   'postit:received': (payload: { postIt: StickyPostIt; action: 'show' | 'hide' }) => void;
+  'postit:dismissed': (payload: { postItId: string; characterId: string }) => void;
+  'item:received': (payload: {
+    targetCharacterId: string;
+    item: RPGItem;
+    attack?: PreparedAttack;
+  }) => void;
 }
 
 // Eventos que o cliente envia para o servidor
@@ -94,6 +100,17 @@ export interface ClientToServerEvents {
     campaignId: string;
     postIt: StickyPostIt;
     action: 'show' | 'hide';
+  }) => void;
+  'postit:dismiss': (payload: {
+    campaignId: string;
+    postItId: string;
+    characterId: string;
+  }) => void;
+  'item:giveNotify': (payload: {
+    campaignId: string;
+    targetCharacterId: string;
+    item: RPGItem;
+    attack?: PreparedAttack;
   }) => void;
 }
 
@@ -272,7 +289,8 @@ export interface MerchantStockItem {
   id: string;
   item: RPGItem;
   attack?: PreparedAttack;
-  price: number; // Preço em T$ (Tormenta 20) ou Categoria/Prestígio (Ordem)
+  price: number;
+  currency?: string; // Moeda personalizada (Ex: "T$", "PO", "Cat.", "Almas", "Favores")
   stockQty: number;
 }
 
@@ -287,12 +305,12 @@ export interface StickyPostIt {
   id: string;
   title: string;
   textContent: string;
-  drawingDataUrl?: string; // Imagem Base64 gerada pelo Canvas de desenho
+  drawingDataUrl?: string;
   color: 'amber' | 'red' | 'blue' | 'emerald' | 'purple';
   x: number;
   y: number;
   width: number;
   height: number;
-  isPinned: boolean; // Se true, flutua sempre na frente da tela do Mestre
-  sharedWithCharacterId?: string | 'all' | null; // ID do personagem do jogador que verá o Post-it na tela dele
+  isPinned: boolean;
+  sharedWithCharacterIds?: string[]; // Lista de IDs dos personagens que estão vendo este Post-it
 }
