@@ -9,6 +9,7 @@ import {
   MonitorProjection,
 } from '@totalrpg/shared';
 import { DMScreenCharacter } from '../../services/api';
+import { ImageUploadField } from '../ImageUploadField';
 
 export interface CampaignStoredItem {
   id: string;
@@ -498,14 +499,23 @@ export function LootAndMerchantsManager({
                       key={stored.id}
                       className="bg-zinc-950 border border-zinc-800 p-3 rounded-xl flex justify-between items-center gap-3"
                     >
-                      <div>
-                        <span className="text-sm font-bold text-white">{stored.item.name}</span>
-                        <span className="text-[10px] font-mono text-zinc-500 ml-2">
-                          ({stored.item.slots} esp.)
-                        </span>
-                        {stored.item.description && (
-                          <p className="text-xs text-zinc-400 mt-0.5">{stored.item.description}</p>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {stored.item.imageUrl && (
+                          <img
+                            src={stored.item.imageUrl}
+                            alt={stored.item.name}
+                            className="w-14 h-14 rounded-xl object-cover border border-zinc-700 shrink-0"
+                          />
                         )}
+                        <div className="min-w-0">
+                          <span className="text-sm font-bold text-white">{stored.item.name}</span>
+                          <span className="text-[10px] font-mono text-zinc-500 ml-2">
+                            ({stored.item.slots} esp.)
+                          </span>
+                          {stored.item.description && (
+                            <p className="text-xs text-zinc-400 mt-0.5 truncate">{stored.item.description}</p>
+                          )}
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -643,16 +653,25 @@ export function LootAndMerchantsManager({
             onSubmit={handleConfirmGiveItem}
             className="bg-zinc-900 border border-amber-500 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
           >
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
-                  {itemToGiveModal.fromMerchant
-                    ? '🪙 Venda / Entrega de Mercador (Silenciosa)'
-                    : '🎁 Entregar Recompensa da Aventura (Com Modal de Loot)'}
-                </span>
-                <h3 className="text-lg font-extrabold text-white mt-0.5">
-                  {itemToGiveModal.stored.item.name}
-                </h3>
+            <div className="flex justify-between items-start gap-3">
+              <div className="flex items-center gap-3.5">
+                {itemToGiveModal.stored.item.imageUrl && (
+                  <img
+                    src={itemToGiveModal.stored.item.imageUrl}
+                    alt={itemToGiveModal.stored.item.name}
+                    className="w-20 h-20 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0 bg-zinc-950"
+                  />
+                )}
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
+                    {itemToGiveModal.fromMerchant
+                      ? '🪙 Venda / Entrega de Mercador (Silenciosa)'
+                      : '🎁 Entregar Recompensa da Aventura (Com Modal de Loot)'}
+                  </span>
+                  <h3 className="text-lg font-extrabold text-white mt-0.5">
+                    {itemToGiveModal.stored.item.name}
+                  </h3>
+                </div>
               </div>
               <button
                 type="button"
@@ -814,15 +833,10 @@ export function LootAndMerchantsManager({
                 />
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                  URL de Imagem (Opcional)
-                </label>
-                <input
-                  type="text"
+                <ImageUploadField
+                  label="Imagem do Item"
                   value={itemImageUrl}
-                  onChange={(e) => setItemImageUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                  onChange={setItemImageUrl}
                 />
               </div>
               <div>
@@ -885,29 +899,35 @@ export function LootAndMerchantsManager({
                   className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-3"
                 >
                   <div>
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex items-center gap-2">
-                        {stored.item.imageUrl && (
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        {stored.item.imageUrl ? (
                           <img
                             src={stored.item.imageUrl}
                             alt={stored.item.name}
-                            className="w-9 h-9 rounded-lg object-cover border border-zinc-700"
+                            className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-amber-500/60 shadow-lg shrink-0 bg-zinc-900"
                           />
+                        ) : (
+                          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-3xl shrink-0">
+                            {stored.attack ? '⚔️' : '🎒'}
+                          </div>
                         )}
-                        <h4 className="font-bold text-sm text-white">{stored.item.name}</h4>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-base text-white truncate">{stored.item.name}</h4>
+                          {stored.attack && (
+                            <span className="inline-block text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded mt-1">
+                              ⚔️ Dano: {stored.attack.damageFormula}
+                            </span>
+                          )}
+                          {stored.item.description && (
+                            <p className="text-xs text-zinc-400 mt-1.5 line-clamp-3">{stored.item.description}</p>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-[10px] font-mono bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap">
+                      <span className="text-[10px] font-mono bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap shrink-0">
                         {stored.item.slots} esp.
                       </span>
                     </div>
-                    {stored.attack && (
-                      <span className="inline-block text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded mt-1">
-                        ⚔️ Dano: {stored.attack.damageFormula}
-                      </span>
-                    )}
-                    {stored.item.description && (
-                      <p className="text-xs text-zinc-400 mt-1.5">{stored.item.description}</p>
-                    )}
                   </div>
 
                   <div className="flex flex-col gap-1.5 pt-2 border-t border-zinc-900">
@@ -1106,13 +1126,26 @@ export function LootAndMerchantsManager({
                           return (
                             <div
                               key={st.id}
-                              className="bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl flex justify-between items-center gap-2"
+                              className="bg-zinc-900 border border-zinc-800 px-3 py-2.5 rounded-xl flex justify-between items-center gap-3"
                             >
-                              <div className="truncate">
-                                <span className="text-xs font-bold text-white">{st.item.name}</span>
-                                <span className="text-[11px] font-mono text-amber-400 ml-2">
-                                  [{st.price} {displayCurrency}]
-                                </span>
+                              <div className="flex items-center gap-3 min-w-0">
+                                {st.item.imageUrl ? (
+                                  <img
+                                    src={st.item.imageUrl}
+                                    alt={st.item.name}
+                                    className="w-12 h-12 rounded-xl object-cover border border-amber-500/50 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-lg shrink-0">
+                                    {st.attack ? '⚔️' : '🎒'}
+                                  </div>
+                                )}
+                                <div className="truncate">
+                                  <span className="text-xs font-bold text-white block truncate">{st.item.name}</span>
+                                  <span className="text-[11px] font-mono text-amber-400 font-bold">
+                                    [{st.price} {displayCurrency}]
+                                  </span>
+                                </div>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
                                 <button

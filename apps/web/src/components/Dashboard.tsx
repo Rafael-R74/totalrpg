@@ -14,8 +14,12 @@ import {
   acceptCampaignInvite,
   declineCampaignInvite,
   joinCampaignByCode,
+  deleteCharacter,
+  removeCharacterFromCampaign,
+  deleteCampaign
 } from '../services/api';
 import { AdminPanel } from './AdminPanel';
+import { ImageUploadField } from './ImageUploadField';
 
 interface DashboardProps {
   currentUser: { id: string; username: string; email: string };
@@ -40,6 +44,7 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
 
   const [newCharName, setNewCharName] = useState('');
   const [newCharSystem, setNewCharSystem] = useState<SystemId>('ordem-paranormal');
+  const [newCharPortrait, setNewCharPortrait] = useState('');
   const [isCreatingChar, setIsCreatingChar] = useState(false);
 
   // Estados para enviar convite (Mestre)
@@ -101,8 +106,9 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   async function handleCreateCharacter(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await createCharacter(newCharName, newCharSystem);
+      await createCharacter(newCharName, newCharSystem, newCharPortrait || undefined);
       setNewCharName('');
+      setNewCharPortrait('');
       setIsCreatingChar(false);
       loadDashboardData();
     } catch (err: any) {
@@ -490,9 +496,27 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                         </div>
                         <p className="text-xs text-zinc-400 mt-1">Mestre: {camp.dm?.username}</p>
                         {myCharInCampaign && (
-                          <p className="text-xs text-emerald-400 font-semibold mt-2">
-                            🛡️ Seu Personagem: {myCharInCampaign.name}
-                          </p>
+                          <div className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl mt-3">
+                            {myCharInCampaign.portraitUrl ? (
+                              <img
+                                src={myCharInCampaign.portraitUrl}
+                                alt={myCharInCampaign.name}
+                                className="w-16 h-16 rounded-xl object-cover border-2 border-emerald-500/70 shadow-md shrink-0"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 rounded-xl bg-zinc-900 border-2 border-emerald-500/40 flex items-center justify-center text-lg font-extrabold text-emerald-400 shrink-0">
+                                {myCharInCampaign.name.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-[10px] font-mono uppercase text-zinc-500 block font-bold">
+                                Seu Personagem na Mesa
+                              </span>
+                              <p className="text-sm text-emerald-400 font-extrabold">
+                                🛡️ {myCharInCampaign.name}
+                              </p>
+                            </div>
+                          </div>
                         )}
                       </div>
 
@@ -540,7 +564,7 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
               className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4"
             >
               <h3 className="font-bold text-amber-500 text-sm">Criar Ficha no Cofre</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1">Nome do Personagem</label>
                   <input
@@ -562,6 +586,13 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                     <option value="ordem-paranormal">Ordem Paranormal</option>
                     <option value="tormenta20">Tormenta 20</option>
                   </select>
+                </div>
+                <div>
+                  <ImageUploadField
+                    label="Retrato do Personagem (Opcional)"
+                    value={newCharPortrait}
+                    onChange={setNewCharPortrait}
+                  />
                 </div>
               </div>
               <button
@@ -585,32 +616,93 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
               {characters.map((char) => (
                 <div
                   key={char.id}
-                  className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-3"
+                  className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-4"
                 >
-                  <div>
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-bold text-white">{char.name}</h3>
-                      <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono uppercase">
-                        {char.system}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-500 mt-2">
-                      {char.campaign ? (
-                        <span className="text-emerald-400 font-medium">
-                          Vinculado a: {char.campaign.name}
+                  <div className="flex items-center gap-4">
+                    {char.portraitUrl ? (
+                      <img
+                        src={char.portraitUrl}
+                        alt={char.name}
+                        className="w-24 h-24 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0 bg-zinc-950"
+                      />
+                    ) : (
+                      <div className="w-24 h-24 rounded-2xl bg-zinc-950 border-2 border-amber-500/40 flex items-center justify-center text-2xl font-extrabold text-amber-400 shrink-0">
+                        {char.name.substring(0, 2).toUpperCase()}
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <h3 className="font-bold text-base text-white truncate">{char.name}</h3>
+                        <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono uppercase shrink-0">
+                          {char.system}
                         </span>
-                      ) : (
-                        'Disponível no Cofre'
-                      )}
-                    </p>
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-2">
+                        {char.campaign ? (
+                          <span className="text-emerald-400 font-medium">
+                            Vinculado a: {char.campaign.name}
+                          </span>
+                        ) : (
+                          'Disponível no Cofre'
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onOpenCharacter(char.id)}
-                    className="w-full py-1.5 bg-zinc-800 hover:bg-amber-600 hover:text-white text-zinc-300 text-xs font-semibold rounded-lg transition cursor-pointer"
-                  >
-                    Abrir Ficha Completa
-                  </button>
+                  <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => onOpenCharacter(char.id, char.campaign?.id)}
+                        className="flex-1 py-2 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                      >
+                        📜 Abrir Ficha Completa
+                      </button>
+
+                      {char.campaign && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                `Retirar "${char.name}" da campanha atual e devolvê-lo ao Cofre livre?`
+                              )
+                            )
+                              return;
+                            try {
+                              await removeCharacterFromCampaign(char.campaign!.id, char.id);
+                              loadDashboardData();
+                            } catch (err: any) {
+                              alert(err.message);
+                            }
+                          }}
+                          className="px-2.5 py-2 bg-zinc-950 hover:bg-amber-950 text-zinc-400 hover:text-amber-300 border border-zinc-800 rounded-lg text-xs font-bold transition cursor-pointer"
+                          title="Sair da Campanha e voltar para o Cofre"
+                        >
+                          🚪
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (
+                            !window.confirm(
+                              `Tem certeza que deseja excluir permanentemente a ficha de "${char.name}"?`
+                            )
+                          )
+                            return;
+                          try {
+                            await deleteCharacter(char.id);
+                            loadDashboardData();
+                          } catch (err: any) {
+                            alert(err.message);
+                          }
+                        }}
+                        className="px-3 py-2 bg-zinc-950 hover:bg-red-950 text-zinc-500 hover:text-red-400 border border-zinc-800 rounded-lg text-xs font-bold transition cursor-pointer"
+                        title="Excluir Personagem Permanentemente"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                 </div>
               ))}
             </div>
@@ -741,21 +833,35 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                       </div>
                     </div>
                   ) : (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => onEnterSession(camp.id, 'dm')}
-                        className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm rounded-lg transition cursor-pointer"
-                      >
-                        Abrir Escudo do Mestre
-                      </button>
-                      <button
-                        onClick={() => setInvitingCampaignId(camp.id)}
-                        className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-lg transition cursor-pointer"
-                        title="Convidar jogador pelo username"
-                      >
-                        ✉️ Convidar
-                      </button>
-                    </div>
+                    <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => onEnterSession(camp.id, 'dm')}
+                      className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                    >
+                      Abrir Escudo do Mestre
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (
+                          !window.confirm(
+                            `Tem certeza que deseja excluir a campanha "${camp.name}"? Todos os personagens vinculados voltarão intactos para o Cofre dos jogadores.`
+                          )
+                        )
+                          return;
+                        try {
+                          await deleteCampaign(camp.id);
+                          loadDashboardData();
+                        } catch (err: any) {
+                          alert(err.message);
+                        }
+                      }}
+                      className="px-3 py-2 bg-zinc-950 hover:bg-red-950 text-zinc-500 hover:text-red-400 border border-zinc-800 rounded-lg text-xs font-bold transition cursor-pointer"
+                      title="Excluir Campanha"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                   )}
                 </div>
               ))}

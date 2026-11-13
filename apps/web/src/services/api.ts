@@ -402,3 +402,62 @@ export async function transferItemBetweenCharacters(
   if (!response.ok) throw new Error(data.error || 'Erro ao transferir item.');
   return data;
 }
+
+// --- Upload de imagens para o servidor ---
+export async function uploadImageFile(file: File): Promise<string> {
+  const base64Data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo de imagem no navegador.'));
+    reader.readAsDataURL(file);
+  });
+
+  const response = await fetch(`${API_URL}/uploads`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      fileName: file.name,
+      mimeType: file.type,
+      base64Data,
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Erro ao enviar imagem para o servidor.');
+  }
+  return data.url;
+}
+
+export async function deleteCharacter(characterId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/characters/${characterId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao excluir personagem.');
+}
+
+export async function removeCharacterFromCampaign(
+  campaignId: string,
+  characterId: string
+): Promise<void> {
+  const response = await fetch(
+    `${API_URL}/campaigns/${campaignId}/remove-character/${characterId}`,
+    {
+      method: 'PUT',
+      headers: getAuthHeader(),
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao remover personagem da mesa.');
+}
+
+export async function deleteCampaign(campaignId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao excluir campanha.');
+}
