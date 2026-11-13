@@ -432,3 +432,213 @@ campaignsRouter.put('/:campaignId/dm-data', async (req: AuthenticatedRequest, re
     return res.status(500).json({ error: 'Erro ao salvar dados da campanha no banco.' });
   }
 });
+
+// 1. Listar aliados da mesma campanha disponíveis para receber itens (Etapa 4E)
+campaignsRouter.get('/:campaignId/trade-targets', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { campaignId } = req.params;
+
+    if (!campaignId || typeof campaignId !== 'string') {
+      return res.status(400).json({ error: 'ID da campanha inválido.' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        characters: {
+          select: {
+            id: true,
+            name: true,
+            ownerId: true,
+            owner: { select: { username: true } },
+          },
+          orderBy: { name: 'asc' },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campanha não encontrada.' });
+    }
+
+    return res.json({
+      allowTrade: campaign.allowTrade && !campaign.lockAllSheets,
+      characters: campaign.characters,
+    });
+  } catch (error) {
+    console.error('Erro ao buscar aliados para troca:', error);
+    return res.status(500).json({ error: 'Erro ao carregar aliados da mesa.' });
+  }
+});
+
+// 2. Transferência de itens
+campaignsRouter.post('/:campaignId/transfer-item', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { campaignId } = req.params;
+    const { fromCharacterId, toCharacterId, itemId, quantity } = req.body;
+
+    if (
+      !campaignId ||
+      typeof campaignId !== 'string' ||
+      !fromCharacterId ||
+      typeof fromCharacterId !== 'string' ||
+      !toCharacterId ||
+      typeof toCharacterId !== 'string' ||
+      !itemId ||
+      typeof itemId !== 'string'
+    ) {
+      return res.status(400).json({ error: 'Dados incompletos para a transferência do item.' });
+    }
+    if (!campaignId || !fromCharacterId || !toCharacterId || !itemId) {
+      return res.status(400).json({ error: 'Dados incompletos para a transferência do item.' });
+    }
+
+    if (fromCharacterId === toCharacterId) {
+      return res.status(400).json({ error: 'Selecione um aliado diferente para receber o item.' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campanha não encontrada.' });
+    }
+
+    const isDM = campaign.dmId === req.userId;
+
+    // Trava de Segurança no Servidor: Verifica se o Mestre liberou as trocas na mesa
+    if (!isDM && (campaign.lockAllSheets || !campaign.allowTrade)) {
+      return res.status(403).json({
+        error: 'O Mestre bloqueou a passagem de itens entre jogadores neste momento.',
+      });
+    }
+
+    const [senderChar, receiverChar] = await Promise.all([
+      prisma.character.findUnique({ where: { id: fromCharacterId } }),
+      prisma.character.findUnique({ where: { id: toCharacterId } }),
+    ]);
+
+    if (!senderChar || !receiverChar) {
+      return res.status(404).json({ error: 'Personagem remetente ou destinatário não encontrado.' });
+    }
+
+    if (senderChar.campaignId !== campaignId || receiverChar.campaignId !== campaignId) {
+      return res.status(400).json({ error: 'Ambos os personagens devem pertencer à mesma campanha.' });
+    }
+
+    if (!isDM && senderChar.ownerId !== req.userId) {
+      return res.status(403).json({ error: 'Você só pode passar itens da sua própria ficha.' });
+    }
+
+    const senderInventory = Array.isArray(senderChar.inventory) ? (senderChar.inventory as any[]) : [];
+    const senderAttacks = Array.isArray(senderChar.attacks) ? (senderChar.attacks as any[]) : [];
+
+    const itemToTransfer = senderInventory.find((i) => i.id === itemId);
+    if (!itemToTransfer) {
+      return res.status(404).json({ error: 'Item não encontrado na sua mochila.' });
+    }
+
+    const availableQty = Number(itemToTransfer.quantity) || 1;
+    const transferQty = Math.max(1, Math.min(Number(quantity) || 1, availableQty));
+    const remainingQty = availableQty - transferQty;
+
+    // 1. Atualiza o inventário do Remetente (Subtrai da pilha ou remove o item se zerar)
+    let nextSenderInventory: any[];
+    if (remainingQty > 0) {
+      nextSenderInventory = senderInventory.map((i) =>
+        i.id === itemId ? { ...i, quantity: remainingQty } : i
+      );
+    } else {
+      nextSenderInventory = senderInventory.filter((i) => i.id !== itemId);
+    }
+
+    // Verifica se este item tem um ataque de arma vinculado
+    const matchingAttack = senderAttacks.find(
+      (atk) => atk.name.toLowerCase().trim() === String(itemToTransfer.name).toLowerCase().trim()
+    );
+
+    // Só remove o ataque do remetente se ele entregou TODAS as unidades daquela arma
+    const nextSenderAttacks =
+      matchingAttack && remainingQty === 0
+        ? senderAttacks.filter((atk) => atk.id !== matchingAttack.id)
+        : senderAttacks;
+
+    // 2. Monta o pacote que o Destinatário vai receber
+    const transferredItemPayload = {
+      ...itemToTransfer,
+      id: Math.random().toString(36).substring(2, 9),
+      quantity: transferQty,
+      isEquipped: false,
+    };
+
+    const receiverInventory = Array.isArray(receiverChar.inventory)
+      ? (receiverChar.inventory as any[])
+      : [];
+    const receiverAttacks = Array.isArray(receiverChar.attacks)
+      ? (receiverChar.attacks as any[])
+      : [];
+
+    // Verifica se o destinatário já tem esse mesmo item para somar na pilha dele!
+    const existingReceiverIdx = receiverInventory.findIndex(
+      (i) =>
+        String(i.name).toLowerCase().trim() === String(itemToTransfer.name).toLowerCase().trim() &&
+        Number(i.slots) === Number(itemToTransfer.slots)
+    );
+
+    let nextReceiverInventory: any[];
+    if (existingReceiverIdx >= 0) {
+      nextReceiverInventory = receiverInventory.map((i, idx) =>
+        idx === existingReceiverIdx
+          ? { ...i, quantity: (Number(i.quantity) || 1) + transferQty }
+          : i
+      );
+    } else {
+      nextReceiverInventory = [...receiverInventory, transferredItemPayload];
+    }
+
+    // Se for uma arma e o destinatário ainda não tiver o botão de ataque dela, adiciona o ataque!
+    const receiverAlreadyHasAttack =
+      matchingAttack &&
+      receiverAttacks.some(
+        (a) => a.name.toLowerCase().trim() === String(matchingAttack.name).toLowerCase().trim()
+      );
+
+    const transferredAttackPayload = matchingAttack
+      ? { ...matchingAttack, id: Math.random().toString(36).substring(2, 9) }
+      : undefined;
+
+    const nextReceiverAttacks =
+      transferredAttackPayload && !receiverAlreadyHasAttack
+        ? [...receiverAttacks, transferredAttackPayload]
+        : receiverAttacks;
+
+    // 3. Executa a gravação nos dois personagens em uma única transação atômica no SQLite
+    const [updatedSender] = await prisma.$transaction([
+      prisma.character.update({
+        where: { id: senderChar.id },
+        data: {
+          inventory: nextSenderInventory as Prisma.InputJsonValue,
+          attacks: nextSenderAttacks as Prisma.InputJsonValue,
+        },
+      }),
+      prisma.character.update({
+        where: { id: receiverChar.id },
+        data: {
+          inventory: nextReceiverInventory as Prisma.InputJsonValue,
+          attacks: nextReceiverAttacks as Prisma.InputJsonValue,
+        },
+      }),
+    ]);
+
+    return res.json({
+      message: `${transferQty}x ${itemToTransfer.name} entregue para ${receiverChar.name}!`,
+      updatedSender,
+      transferredItem: transferredItemPayload,
+      transferredAttack: transferredAttackPayload,
+    });
+  } catch (error) {
+    console.error('Erro na transferência de item:', error);
+    return res.status(500).json({ error: 'Erro interno ao transferir item.' });
+  }
+});

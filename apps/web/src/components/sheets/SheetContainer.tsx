@@ -8,13 +8,18 @@ import {
   CompendiumEntryData,
   SystemSkillDefinition,
   SheetPermissions,
+  RPGItem,
+  PreparedAttack,
   calculateActiveBonuses,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
+  TradeTargetCharacter,
   fetchCharacterById,
   updateCharacter,
   fetchCompendium,
+  fetchCampaignTradeTargets,
+  transferItemBetweenCharacters,
 } from '../../services/api';
 import { OrdemSheet } from './OrdemSheet';
 import { TormentaSheet } from './TormentaSheet';
@@ -36,6 +41,7 @@ interface SheetContainerProps {
     characterId?: string
   ) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
+  onNotifyItemGiven?: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
   externalPermissions?: SheetPermissions | null;
   externalReloadSignal?: { characterId: string; timestamp: number } | null;
   initiativeRequestSignal?: number;
@@ -47,6 +53,7 @@ export function SheetContainer({
   onBack,
   onRollDice,
   onCharacterSaved,
+  onNotifyItemGiven,
   externalPermissions,
   externalReloadSignal,
   initiativeRequestSignal,
@@ -61,12 +68,17 @@ export function SheetContainer({
   const [isEditMode, setIsEditMode] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState('');
 
-  // Estados dos Modais de Condição (Explicação ao clicar e Seletor do Mestre)
   const [selectedConditionModal, setSelectedConditionModal] = useState<ActiveCondition | null>(null);
   const [showMasterConditionPicker, setShowMasterConditionPicker] = useState(false);
   const [showInitiativePrompt, setShowInitiativePrompt] = useState(false);
 
-  // Abre o modal de convocação sempre que o Mestre solicitar Teste de Iniciativa (exceto na tela do próprio Mestre)
+  // Estados do Modal de Passar Item para Aliado (Etapa 4E)
+  const [itemToTradeModal, setItemToTradeModal] = useState<RPGItem | null>(null);
+  const [tradeAllies, setTradeAllies] = useState<TradeTargetCharacter[]>([]);
+  const [selectedAllyId, setSelectedAllyId] = useState('');
+  const [tradeQuantity, setTradeQuantity] = useState<number>(1);
+  const [isTransferring, setIsTransferring] = useState(false);
+
   useEffect(() => {
     if (initiativeRequestSignal && character && character.ownerId === currentUserId) {
       setShowInitiativePrompt(true);
@@ -79,7 +91,6 @@ export function SheetContainer({
       try {
         const charData = await fetchCharacterById(characterId);
 
-        // Repara automaticamente o Sangue de Ferro se já estava salvo na ficha com o valor antigo (10 fixo)
         const raw = (charData.sheetData || {}) as Record<string, any>;
         if (Array.isArray(raw.abilities)) {
           raw.abilities = raw.abilities.map((ab: CharacterAbility) => {
@@ -98,7 +109,7 @@ export function SheetContainer({
 
         setCharacter(charData);
 
-        const compData = await fetchCompendium(charData.system) as any;
+        const compData = (await fetchCompendium(charData.system)) as any;
         setCompendiumEntries(compData.entries || []);
         setCustomSkills(compData.skills || []);
         setViewerIsAdmin(Boolean(compData.isAdmin));
@@ -111,7 +122,6 @@ export function SheetContainer({
     loadSheetAndCompendium();
   }, [characterId]);
 
-  // Escuta mudanças de Travas do Mestre em tempo real via Socket.io
   useEffect(() => {
     if (!externalPermissions) return;
     setCharacter((prev) => {
@@ -129,7 +139,6 @@ export function SheetContainer({
     }
   }, [externalPermissions]);
 
-  // Escuta quando o Mestre altera Vida ou Condições desta ficha pelo Escudo do Mestre
   useEffect(() => {
     if (externalReloadSignal && externalReloadSignal.characterId === characterId) {
       fetchCharacterById(characterId)
@@ -164,6 +173,7 @@ export function SheetContainer({
   const canEditAttributes = isFreeVault || isDM || (!isLockedByMaster && Boolean(campaign?.allowEditAttributes));
   const canEditAbilities = isFreeVault || isDM || (!isLockedByMaster && Boolean(campaign?.allowEditAbilities));
   const canEditInventory = isFreeVault || isDM || (!isLockedByMaster && Boolean(campaign?.allowEditInventory));
+  const canTrade = Boolean(campaign) && (isDM || (!isLockedByMaster && Boolean(campaign?.allowTrade)));
 
   const rawSheet = (character.sheetData || {}) as Record<string, any>;
   const characterAbilities: CharacterAbility[] = Array.isArray(rawSheet.abilities)
@@ -213,6 +223,65 @@ export function SheetContainer({
     }
   }
 
+  // Abre o Modal para passar um item da mochila para um aliado da campanha
+  async function handleOpenTradeModal(item: RPGItem) {
+    if (!character?.campaignId) return;
+    setItemToTradeModal(item);
+    setSelectedAllyId('');
+    setTradeQuantity(1);
+    try {
+      const data = await fetchCampaignTradeTargets(character.campaignId);
+      setTradeAllies(data.characters.filter((c) => c.id !== character.id));
+    } catch (err: any) {
+      alert(err.message);
+      setItemToTradeModal(null);
+    }
+  }
+
+  // Confirma a transferência atômica do item (e quantidade escolhida) para o aliado
+  async function handleConfirmTransfer(e: React.FormEvent) {
+    e.preventDefault();
+    if (!character?.campaignId || !itemToTradeModal || !selectedAllyId) return;
+
+    setIsTransferring(true);
+    try {
+      const result = await transferItemBetweenCharacters(
+        character.campaignId,
+        character.id,
+        selectedAllyId,
+        itemToTradeModal.id,
+        tradeQuantity
+      );
+
+      setCharacter((prev) =>
+        prev
+          ? {
+              ...prev,
+              inventory: result.updatedSender.inventory,
+              attacks: result.updatedSender.attacks,
+            }
+          : null
+      );
+
+      // Sincroniza o Escudo do Mestre e a ficha do aliado, além de abrir o Modal de Item Recebido na tela dele!
+      if (onCharacterSaved) {
+        onCharacterSaved(character.id, character.campaignId);
+        onCharacterSaved(selectedAllyId, character.campaignId);
+      }
+      if (onNotifyItemGiven) {
+        onNotifyItemGiven(selectedAllyId, result.transferredItem, result.transferredAttack);
+      }
+
+      setFeedbackMsg(result.message);
+      setTimeout(() => setFeedbackMsg(''), 3500);
+      setItemToTradeModal(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsTransferring(false);
+    }
+  }
+
   function handleVitalChange(barId: string, field: 'current' | 'max', newValue: number) {
     if (!character || !canEditVitals) return;
 
@@ -253,7 +322,6 @@ export function SheetContainer({
     return true;
   }
 
-  // Aplica ou remove Condições (Exclusivo do Mestre / Admin)
   function handleApplyConditionFromCompendium(entry: CompendiumEntryData) {
     const newCond: ActiveCondition = {
       id: Math.random().toString(36).substring(2, 9),
@@ -294,7 +362,6 @@ export function SheetContainer({
 
   const availableConditions = compendiumEntries.filter((e) => e.category === 'condition');
 
-  // Cálculo automático da fórmula de Iniciativa do personagem para o Modal de Combate
   const initSkill = Array.isArray(rawSheet.skills)
     ? rawSheet.skills.find((s: any) => s.id === 'iniciativa')
     : null;
@@ -324,6 +391,8 @@ export function SheetContainer({
       bonuses.skillBonusAll +
       (bonuses.skillBonus['iniciativa'] || 0);
   }
+
+  const maxTradeQty = itemToTradeModal ? Math.max(1, itemToTradeModal.quantity || 1) : 1;
 
   return (
     <div className="flex flex-col gap-6">
@@ -368,7 +437,130 @@ export function SheetContainer({
           </div>
         </div>
       )}
-      {/* MODAL EXPLICATIVO DE CONDIÇÃO (Abre ao clicar na tag da condição ao lado do nome) */}
+
+      {/* MODAL DE PASSAR ITEM PARA ALIADO DA MESA (ETAPA 4E - COM SELETOR DE QUANTIDADE) */}
+      {itemToTradeModal && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <form
+            onSubmit={handleConfirmTransfer}
+            className="bg-zinc-900 border-2 border-blue-500 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">
+                  🤝 Passar Item para Aliado
+                </span>
+                <h3 className="text-lg font-extrabold text-white mt-0.5">
+                  {itemToTradeModal.name}
+                </h3>
+                <span className="text-xs text-zinc-400">
+                  Disponível na sua mochila: <strong>{maxTradeQty}x</strong> ({itemToTradeModal.slots} esp. cada)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setItemToTradeModal(null)}
+                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-300 mb-1.5">
+                1. Escolha qual companheiro da mesa receberá o item:
+              </label>
+              {tradeAllies.length === 0 ? (
+                <p className="text-xs text-amber-400 bg-amber-950/30 border border-amber-800/60 p-3 rounded-xl">
+                  Não há outros personagens vinculados a esta campanha no momento.
+                </p>
+              ) : (
+                <select
+                  required
+                  value={selectedAllyId}
+                  onChange={(e) => setSelectedAllyId(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white"
+                >
+                  <option value="">-- Selecione um aliado da mesa --</option>
+                  {tradeAllies.map((ally) => (
+                    <option key={ally.id} value={ally.id}>
+                      🛡️ {ally.name} (Jogador: @{ally.owner.username})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Se o jogador tiver mais de 1 unidade, permite escolher quantas quer passar */}
+            {maxTradeQty > 1 && (
+              <div className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex items-center justify-between gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-200">
+                    2. Quantidade a entregar:
+                  </label>
+                  <span className="text-[11px] font-mono text-zinc-500">
+                    Você ficará com: {Math.max(0, maxTradeQty - tradeQuantity)}x
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTradeQuantity((q) => Math.max(1, q - 1))}
+                    className="w-8 h-8 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg font-mono font-bold text-white cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={maxTradeQty}
+                    required
+                    value={tradeQuantity}
+                    onChange={(e) =>
+                      setTradeQuantity(Math.max(1, Math.min(maxTradeQty, Number(e.target.value))))
+                    }
+                    className="w-16 bg-zinc-900 border border-blue-500/80 rounded-lg py-1 text-center font-mono text-sm font-extrabold text-blue-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setTradeQuantity((q) => Math.min(maxTradeQty, q + 1))}
+                    className="w-8 h-8 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg font-mono font-bold text-white cursor-pointer"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTradeQuantity(maxTradeQty)}
+                    className="px-2 h-8 bg-zinc-900 hover:bg-blue-600 border border-zinc-700 rounded-lg font-mono text-xs font-bold text-blue-400 hover:text-white cursor-pointer"
+                  >
+                    Tudo
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setItemToTradeModal(null)}
+                className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={!selectedAllyId || isTransferring}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white rounded-lg text-xs font-extrabold cursor-pointer shadow"
+              >
+                {isTransferring ? 'Entregando...' : `🤝 Entregar (${tradeQuantity}x)`}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL EXPLICATIVO DE CONDIÇÃO */}
       {selectedConditionModal && (
         <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-red-800 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4">
@@ -435,7 +627,7 @@ export function SheetContainer({
         </div>
       )}
 
-      {/* Cabeçalho da Ficha com Condições Expostas ao Lado do Nome */}
+      {/* Cabeçalho da Ficha com Condições Expostas */}
       <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-3">
         <div className="flex flex-wrap justify-between items-center gap-4">
           <div className="flex items-center gap-4">
@@ -461,7 +653,6 @@ export function SheetContainer({
                   <h2 className="text-2xl font-extrabold text-white">{character.name}</h2>
                 )}
 
-                {/* Condições Expostas ao Lado do Nome (Clicáveis para abrir o Modal Explicativo!) */}
                 {activeConditions.map((cond) => (
                   <button
                     key={cond.id}
@@ -475,7 +666,6 @@ export function SheetContainer({
                   </button>
                 ))}
 
-                {/* Botão exclusivo do Mestre/Admin para aplicar condição */}
                 {canMasterControl && (
                   <button
                     type="button"
@@ -495,6 +685,11 @@ export function SheetContainer({
                 <span className="text-xs text-zinc-400">
                   {campaign ? `Mesa: ${campaign.name}` : 'Ficha Livre no Cofre'}
                 </span>
+                {isLockedByMaster && (
+                  <span className="text-[10px] font-mono uppercase bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold">
+                    🔒 Travada pelo Mestre
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -534,7 +729,6 @@ export function SheetContainer({
           </div>
         </div>
 
-        {/* Gaveta Rápida do Mestre para Aplicar Condições */}
         {canMasterControl && showMasterConditionPicker && (
           <div className="bg-zinc-950 border border-red-900/60 p-3.5 rounded-xl flex flex-col gap-2 mt-1">
             <div className="flex justify-between items-center">
@@ -650,7 +844,7 @@ export function SheetContainer({
         })}
       </div>
 
-      {/* Módulos dos Sistemas (Usando atualização funcional segura prev => ...) */}
+      {/* Módulos dos Sistemas */}
       {character.system === 'ordem-paranormal' && (
         <OrdemSheet
           data={character.sheetData as OrdemSheetData}
@@ -707,7 +901,7 @@ export function SheetContainer({
         />
       )}
 
-      {/* Abas Inferiores com Busca Contextual e Atualização Funcional */}
+      {/* Abas Inferiores integradas com Troca entre Jogadores */}
       <SheetExtras
         system={character.system}
         bonuses={bonuses}
@@ -716,6 +910,7 @@ export function SheetContainer({
         canEditInventory={canEditInventory}
         canEditAbilities={canEditAbilities}
         canCreateCustom={canMasterControl}
+        canTrade={canTrade}
         attacks={character.attacks || []}
         abilities={characterAbilities}
         inventory={character.inventory || []}
@@ -746,6 +941,7 @@ export function SheetContainer({
             };
           })
         }
+        onInitiateTradeItem={handleOpenTradeModal}
         onSpendResource={handleSpendResource}
         onRoll={(label, count, sides, mod) =>
           onRollDice(character.name, character.system, label, count, sides, mod)

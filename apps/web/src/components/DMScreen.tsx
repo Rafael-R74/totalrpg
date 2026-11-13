@@ -317,8 +317,29 @@ async function handleDeliverItemToCharacter(
     attack?: PreparedAttack,
     fromMerchant?: boolean
   ) {
-    const nextInventory = [...(targetChar.inventory || []), item];
-    const nextAttacks = attack ? [...(targetChar.attacks || []), attack] : targetChar.attacks;
+    const currentInv = targetChar.inventory || [];
+    const existingItemIndex = currentInv.findIndex(
+      (i) => i.name.toLowerCase().trim() === item.name.toLowerCase().trim() && i.slots === item.slots
+    );
+
+    let nextInventory: RPGItem[];
+    if (existingItemIndex >= 0) {
+      // Se o jogador já possui este item na mochila, soma a quantidade na mesma pilha!
+      nextInventory = currentInv.map((i, idx) =>
+        idx === existingItemIndex ? { ...i, quantity: (i.quantity || 1) + (item.quantity || 1) } : i
+      );
+    } else {
+      nextInventory = [...currentInv, item];
+    }
+
+    // Evita duplicar o botão de ataque se o jogador já tinha essa mesma arma
+    const currentAttacks = targetChar.attacks || [];
+    const alreadyHasAttack =
+      attack &&
+      currentAttacks.some((a) => a.name.toLowerCase().trim() === attack.name.toLowerCase().trim());
+
+    const nextAttacks =
+      attack && !alreadyHasAttack ? [...currentAttacks, attack] : currentAttacks;
 
     await updateCharacter(targetChar.id, {
       inventory: nextInventory,

@@ -31,14 +31,18 @@ export function LootReceivedModal({ loot, onClose }: LootReceivedModalProps) {
           <span className="text-[11px] font-mono uppercase tracking-widest text-emerald-400 font-extrabold">
             ✨ Novo Item Recebido no Inventário!
           </span>
-          <h3 className="text-2xl font-extrabold text-white mt-1">{item.name}</h3>
+          <h3 className="text-2xl font-extrabold text-white mt-1">
+            {item.quantity > 1 ? `${item.quantity}x ` : ''}
+            {item.name}
+          </h3>
         </div>
 
         {/* Detalhes Técnicos do Item */}
         <div className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
           <div className="flex justify-center items-center gap-3">
             <span className="text-xs font-mono bg-zinc-900 text-zinc-300 border border-zinc-700 px-2.5 py-1 rounded-lg">
-              🎒 Espaços: <strong>{item.slots}</strong>
+              🎒 Espaços: <strong>{item.slots * (item.quantity || 1)}</strong>
+              {item.quantity > 1 ? ` (${item.slots} cada)` : ''}
             </span>
 
             {attack && (

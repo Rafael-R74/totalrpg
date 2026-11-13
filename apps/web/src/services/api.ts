@@ -360,3 +360,45 @@ export async function updateCampaignDMData(
     throw new Error(data.error || 'Erro ao salvar dados do Escudo no banco.');
   }
 }
+
+// --- COMÉRCIO & TROCA ENTRE JOGADORES (ETAPA 4E) ---
+export interface TradeTargetCharacter {
+  id: string;
+  name: string;
+  ownerId: string;
+  owner: { username: string };
+}
+
+export async function fetchCampaignTradeTargets(campaignId: string): Promise<{
+  allowTrade: boolean;
+  characters: TradeTargetCharacter[];
+}> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/trade-targets`, {
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao buscar aliados da mesa.');
+  return data;
+}
+
+export async function transferItemBetweenCharacters(
+  campaignId: string,
+  fromCharacterId: string,
+  toCharacterId: string,
+  itemId: string,
+  quantity: number
+): Promise<{
+  message: string;
+  updatedSender: FullCharacterResponse;
+  transferredItem: any;
+  transferredAttack?: any;
+}> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/transfer-item`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ fromCharacterId, toCharacterId, itemId, quantity }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao transferir item.');
+  return data;
+}
