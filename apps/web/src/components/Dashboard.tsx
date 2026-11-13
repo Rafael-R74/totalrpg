@@ -643,21 +643,19 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                     )}
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start gap-2">
-                        <h3 className="font-bold text-base text-white truncate">{char.name}</h3>
-                        <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono uppercase shrink-0">
+                      <h3 className="font-bold text-base text-white truncate" title={char.name}>
+                        {char.name}
+                      </h3>
+                      {char.campaign && (
+                        <p className="text-xs text-emerald-400 font-medium mt-1.5 truncate">
+                          Vinculado a: {char.campaign.name}
+                        </p>
+                      )}
+                      <div className="mt-1.5">
+                        <span className="inline-block text-[10px] bg-zinc-800 text-amber-400 border border-zinc-700/80 px-2 py-0.5 rounded font-mono uppercase">
                           {char.system}
                         </span>
                       </div>
-                      <p className="text-xs text-zinc-500 mt-2">
-                        {char.campaign ? (
-                          <span className="text-emerald-400 font-medium">
-                            Vinculado a: {char.campaign.name}
-                          </span>
-                        ) : (
-                          'Disponível no Cofre'
-                        )}
-                      </p>
                     </div>
                   </div>
                   <div className="flex gap-2 mt-2">

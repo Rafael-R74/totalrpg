@@ -57,10 +57,12 @@ export interface OrdemOriginDefinition {
   powerDescription: string;
   powerCost: number;
   modifiers: RuleModifier[];
-  halvesInitialSanity?: boolean;  // Cultista Arrependido
-  grantsParanormalPower?: boolean; // Cultista Arrependido
-  extraPeOddNex?: boolean;        // Universitário (+1 PE inicial e em cada NEX ímpar)
-  extraPeLimit?: number;          // Universitário (+1 no Limite de PE por turno)
+  requiresManualActivation?: boolean; // Poderes de custo 0 que só ativam quando o jogador aciona (ex: Magnum Opus, Vislumbres do Passado)
+  oncePerScene?: boolean;             // Poderes limitados a 1x por cena (ex: Faro para Pistas, Impostor, Posição de Combate)
+  halvesInitialSanity?: boolean;      // Cultista Arrependido
+  grantsParanormalPower?: boolean;    // Cultista Arrependido
+  extraPeOddNex?: boolean;            // Universitário (+1 PE inicial e em cada NEX ímpar)
+  extraPeLimit?: number;              // Universitário (+1 no Limite de PE por turno, sem afetar DT)
 }
 
 export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
@@ -72,7 +74,17 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Saber é Poder',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 2,
-    modifiers: [{ id: 'orig-acad', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 }],
+    modifiers: [
+      { id: 'orig-acad-atu', targetType: 'skill_bonus', targetKey: 'atualidades', value: 5 },
+      { id: 'orig-acad-cie', targetType: 'skill_bonus', targetKey: 'ciencias', value: 5 },
+      { id: 'orig-acad-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 },
+      { id: 'orig-acad-med', targetType: 'skill_bonus', targetKey: 'medicina', value: 5 },
+      { id: 'orig-acad-ocu', targetType: 'skill_bonus', targetKey: 'ocultismo', value: 5 },
+      { id: 'orig-acad-pro', targetType: 'skill_bonus', targetKey: 'profissao', value: 5 },
+      { id: 'orig-acad-sob', targetType: 'skill_bonus', targetKey: 'sobrevivencia', value: 5 },
+      { id: 'orig-acad-tat', targetType: 'skill_bonus', targetKey: 'tatica', value: 5 },
+      { id: 'orig-acad-tec', targetType: 'skill_bonus', targetKey: 'tecnologia', value: 5 },
+    ],
   },
   {
     id: 'agente_saude',
@@ -93,6 +105,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Vislumbres do Passado',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 0,
+    requiresManualActivation: true,
     modifiers: [],
   },
   {
@@ -114,8 +127,13 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 2,
     modifiers: [
-      { id: 'orig-atl-1', targetType: 'skill_bonus', targetKey: 'atletismo', value: 5 },
-      { id: 'orig-atl-2', targetType: 'skill_bonus', targetKey: 'acrobacia', value: 5 },
+      { id: 'orig-atl-acr', targetType: 'skill_bonus', targetKey: 'acrobacia', value: 5 },
+      { id: 'orig-atl-atl', targetType: 'skill_bonus', targetKey: 'atletismo', value: 5 },
+      { id: 'orig-atl-cri', targetType: 'skill_bonus', targetKey: 'crime', value: 5 },
+      { id: 'orig-atl-fur', targetType: 'skill_bonus', targetKey: 'furtividade', value: 5 },
+      { id: 'orig-atl-ini', targetType: 'skill_bonus', targetKey: 'iniciativa', value: 5 },
+      { id: 'orig-atl-pil', targetType: 'skill_bonus', targetKey: 'pilotagem', value: 5 },
+      { id: 'orig-atl-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: 5 },
     ],
   },
   {
@@ -178,7 +196,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Processo Otimizado',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 2,
-    modifiers: [],
+    modifiers: [{ id: 'orig-exec-all', targetType: 'skill_bonus', targetKey: 'all', value: 5 }],
   },
   {
     id: 'investigador',
@@ -188,7 +206,8 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Faro para Pistas',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 1,
-    modifiers: [{ id: 'orig-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 }],
+    oncePerScene: true,
+    modifiers: [{ id: 'orig-inv-all', targetType: 'skill_bonus', targetKey: 'all', value: 5 }],
   },
   {
     id: 'lutador',
@@ -198,7 +217,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Mão Pesada',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 0,
-    modifiers: [{ id: 'orig-lut', targetType: 'damage_bonus', targetKey: 'all', value: 2 }],
+    modifiers: [{ id: 'orig-lut-melee', targetType: 'damage_bonus', targetKey: 'melee', value: 2 }],
   },
   {
     id: 'magnata',
@@ -217,7 +236,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     skills: ['iniciativa', 'intimidacao'],
     powerName: 'Posição de Combate',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    powerCost: 2,
+    powerCost: 0,
     modifiers: [],
   },
   {
@@ -228,7 +247,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Para Bellum',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 0,
-    modifiers: [{ id: 'orig-mil', targetType: 'damage_bonus', targetKey: 'all', value: 2 }],
+    modifiers: [{ id: 'orig-mil-firearm', targetType: 'damage_bonus', targetKey: 'firearm', value: 2 }],
   },
   {
     id: 'operario',
@@ -238,10 +257,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Ferramenta de Trabalho',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 0,
-    modifiers: [
-      { id: 'orig-op-atk', targetType: 'attack_bonus', targetKey: 'all', value: 1 },
-      { id: 'orig-op-dmg', targetType: 'damage_bonus', targetKey: 'all', value: 1 },
-    ],
+    modifiers: [],
   },
   {
     id: 'policial',
@@ -270,7 +286,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     skills: ['intuicao', 'vontade'],
     powerName: 'Espírito Cívico',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    powerCost: 1,
+    powerCost: 0,
     modifiers: [],
   },
   {
@@ -301,7 +317,10 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Desbravador',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 2,
-    modifiers: [],
+    modifiers: [
+      { id: 'orig-tr-ade', targetType: 'skill_bonus', targetKey: 'adestramento', value: 5 },
+      { id: 'orig-tr-sob', targetType: 'skill_bonus', targetKey: 'sobrevivencia', value: 5 },
+    ],
   },
   {
     id: 'trambiqueiro',
@@ -311,6 +330,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Impostor',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     powerCost: 2,
+    oncePerScene: true,
     modifiers: [],
   },
   {
