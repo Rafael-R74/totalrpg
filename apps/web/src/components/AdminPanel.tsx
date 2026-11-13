@@ -16,7 +16,8 @@ import {
 } from '../services/api';
 
 const CATEGORY_LABELS: Record<CompendiumCategory, string> = {
-  power: '✨ Poderes & Habilidades',
+  power: '✨ Poderes de Classe / Gerais',
+  paranormal_power: '👁️ Poderes Paranormais',
   spell: '🔮 Rituais & Magias',
   item: '⚔️ Armas & Equipamentos',
   origin: '📜 Origens',
@@ -51,6 +52,8 @@ export function AdminPanel() {
   const [slots, setSlots] = useState(1);
   const [circle, setCircle] = useState(1);
   const [element, setElement] = useState('');
+  const [requirements, setRequirements] = useState('');
+  const [adminSearch, setAdminSearch] = useState('');
   const [modifiers, setModifiers] = useState<RuleModifier[]>([]);
 
   // Estados do Formulário de Nova Perícia
@@ -126,6 +129,7 @@ export function AdminPanel() {
           slots: activeSection === 'item' ? Number(slots) : undefined,
           circle: activeSection === 'spell' ? Number(circle) : undefined,
           element: element.trim() || undefined,
+          requirements: requirements.trim() || undefined,
         },
       });
 
@@ -134,6 +138,7 @@ export function AdminPanel() {
       setCost(0);
       setDamageFormula('');
       setElement('');
+      setRequirements('');
       setModifiers([]);
       loadCompendium();
     } catch (err: any) {
@@ -171,7 +176,16 @@ export function AdminPanel() {
     }
   }
 
-  const filteredEntries = entries.filter((e) => e.category === activeSection);
+  const filteredEntries = entries.filter((e) => {
+    if (e.category !== activeSection) return false;
+    if (!adminSearch.trim()) return true;
+    const q = adminSearch.toLowerCase();
+    return (
+      e.name.toLowerCase().includes(q) ||
+      e.description.toLowerCase().includes(q) ||
+      (e.metadata?.element || '').toLowerCase().includes(q)
+    );
+  });
   const resourceName = selectedSystem === 'ordem-paranormal' ? 'PE' : 'PM';
 
   return (
@@ -412,8 +426,11 @@ export function AdminPanel() {
               </div>
             </div>
 
-            {/* Campos Extras para Magias/Rituais ou Armas/Itens */}
-            {(activeSection === 'spell' || activeSection === 'item' || activeSection === 'power') && (
+            {/* Campos Extras para Magias/Rituais, Poderes Paranormais ou Armas/Itens */}
+            {(activeSection === 'spell' ||
+              activeSection === 'item' ||
+              activeSection === 'power' ||
+              activeSection === 'paranormal_power') && (
               <div className="grid grid-cols-3 gap-2 bg-zinc-950 p-3 rounded-lg border border-zinc-800/80">
                 <div>
                   <label className="block text-[10px] text-zinc-400 mb-1">Fórmula de Dano/Cura</label>
@@ -471,6 +488,31 @@ export function AdminPanel() {
                         value={element}
                         onChange={(e) => setElement(e.target.value)}
                         placeholder="Morte, Evocação..."
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {(activeSection === 'power' || activeSection === 'paranormal_power') && (
+                  <>
+                    <div>
+                      <label className="block text-[10px] text-zinc-400 mb-1">Elemento (Opcional)</label>
+                      <input
+                        type="text"
+                        value={element}
+                        onChange={(e) => setElement(e.target.value)}
+                        placeholder="Sangue, Morte, Energia..."
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-zinc-400 mb-1">Pré-requisitos</label>
+                      <input
+                        type="text"
+                        value={requirements}
+                        onChange={(e) => setRequirements(e.target.value)}
+                        placeholder="Ex: Sangue 1, NEX 30%"
                         className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
                       />
                     </div>
@@ -586,11 +628,17 @@ export function AdminPanel() {
 
           {/* Lista de Itens Cadastrados no Compêndio */}
           <div className="lg:col-span-7 bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-3">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-2">
               <h3 className="font-bold text-sm text-zinc-200">
                 Catálogo Atual: {CATEGORY_LABELS[activeSection]} ({filteredEntries.length})
               </h3>
-              {isLoading && <span className="text-xs text-zinc-500">Atualizando...</span>}
+              <input
+                type="text"
+                value={adminSearch}
+                onChange={(e) => setAdminSearch(e.target.value)}
+                placeholder="🔎 Pesquisar no catálogo..."
+                className="px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white"
+              />
             </div>
 
             {filteredEntries.length === 0 ? (

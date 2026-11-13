@@ -56,11 +56,13 @@ export interface DiceRollResult {
   label: string;
   formula: string;
   rolls: number[];
+  sides?: number;
   modifier: number;
   total: number;
   system: SystemId;
   timestamp: string;
   isSecret?: boolean;
+  rerolledAfortunado?: boolean;
 }
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
@@ -81,6 +83,7 @@ export interface ServerToClientEvents {
     item: RPGItem;
     attack?: PreparedAttack;
   }) => void;
+  'scene:ended': (payload: { campaignId: string; timestamp: number }) => void;
   'monitor:updated': (payload: {
     director: MonitorDirectorState;
     combatState: {
@@ -129,6 +132,12 @@ export interface ClientToServerEvents {
     item: RPGItem;
     attack?: PreparedAttack;
   }) => void;
+  'dice:rerollOne': (payload: {
+    campaignId: string;
+    rollResult: DiceRollResult;
+    dieIndex?: number;
+  }) => void;
+  'scene:end': (payload: { campaignId: string }) => void;
   'monitor:sync': (payload: {
     campaignId: string;
     director: MonitorDirectorState;
@@ -169,6 +178,17 @@ export interface OrdemSkill {
   otherModifier: number;
 }
 
+export interface SceneEffect {
+  id: string;
+  name: string;
+  source?: string;
+  description: string;
+  sourceAbilityId?: string;
+  tempHpGranted?: number;
+  tempPeGranted?: number;
+  modifiers?: RuleModifier[];
+}
+
 export interface OrdemSheetData {
   origin: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -180,6 +200,9 @@ export interface OrdemSheetData {
   peritoSkills?: string[];
   proficiencies?: string[];
   transcendedCount?: number;
+  tempHp?: number;
+  tempPe?: number;
+  sceneEffects?: SceneEffect[];
   displacement: number;
   attributes: OrdemAttributes;
   skills: OrdemSkill[];
@@ -211,6 +234,8 @@ export interface T20SheetData {
   level: number;
   deity: string;
   origin: string;
+  tempHp?: number;
+  sceneEffects?: SceneEffect[];
   attributes: T20Attributes;
   skills: T20Skill[];
   abilities?: CharacterAbility[];
@@ -234,16 +259,18 @@ export interface FullCharacterPayload {
 export interface CharacterAbility {
   id: string;
   name: string;
-  category: 'poder' | 'magia' | 'ritual' | 'origem' | 'classe';
+  category: 'poder' | 'poder_paranormal' | 'magia' | 'ritual' | 'origem' | 'classe';
   cost: number;
   description: string;
   damageFormula?: string;
+  element?: string;
+  hasAffinityUpgrade?: boolean;
   isActive?: boolean;        // Se true, aplica os modificadores passivos/sustentados na ficha
   modifiers?: RuleModifier[]; // Modificadores herdados do Compêndio
 }
 
 // Motor de Regras Dinâmico & Compêndio do Admin
-export type CompendiumCategory = 'power' | 'spell' | 'item' | 'origin' | 'condition';
+export type CompendiumCategory = 'power' | 'paranormal_power' | 'spell' | 'item' | 'origin' | 'condition';
 
 export type ModifierTargetType =
   | 'attribute'      // Afeta um atributo base (ex: for, agi, forca, destreza)

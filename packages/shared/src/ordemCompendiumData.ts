@@ -467,7 +467,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-aprender-ritual',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Aprender Ritual (Poder Paranormal)',
     description: 'Você aprende e pode conjurar um ritual de 1º círculo à sua escolha (até 2º círculo em NEX 45% e até 3º círculo em NEX 75%). Conta como um poder do elemento do ritual escolhido.',
     cost: 0,
@@ -475,20 +475,50 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     metadata: { element: 'Paranormal', requirements: 'Transcender' },
   },
   {
-    id: 'ord-para-resistir-elemento',
+    id: 'ord-para-resistir-conhecimento',
     system: 'ordem-paranormal',
-    category: 'power',
-    name: 'Resistir a <Elemento> (Poder Paranormal)',
-    description: 'Escolha entre Conhecimento, Energia, Morte ou Sangue. Você recebe resistência 10 contra esse elemento. Afinidade: aumenta a resistência para 20.',
+    category: 'paranormal_power',
+    name: 'Resistir a Conhecimento (Conhecimento)',
+    description: 'Você recebe resistência 10 contra dano de Conhecimento. Afinidade: aumenta a resistência para 20.',
     cost: 0,
     modifiers: [],
-    metadata: { element: 'Paranormal', requirements: 'Transcender' },
+    metadata: { element: 'Conhecimento', requirements: 'Transcender' },
+  },
+  {
+    id: 'ord-para-resistir-energia',
+    system: 'ordem-paranormal',
+    category: 'paranormal_power',
+    name: 'Resistir a Energia (Energia)',
+    description: 'Você recebe resistência 10 contra dano de Energia. Afinidade: aumenta a resistência para 20.',
+    cost: 0,
+    modifiers: [],
+    metadata: { element: 'Energia', requirements: 'Transcender' },
+  },
+  {
+    id: 'ord-para-resistir-morte',
+    system: 'ordem-paranormal',
+    category: 'paranormal_power',
+    name: 'Resistir a Morte (Morte)',
+    description: 'Você recebe resistência 10 contra dano de Morte. Afinidade: aumenta a resistência para 20.',
+    cost: 0,
+    modifiers: [],
+    metadata: { element: 'Morte', requirements: 'Transcender' },
+  },
+  {
+    id: 'ord-para-resistir-sangue',
+    system: 'ordem-paranormal',
+    category: 'paranormal_power',
+    name: 'Resistir a Sangue (Sangue)',
+    description: 'Você recebe resistência 10 contra dano de Sangue. Afinidade: aumenta a resistência para 20.',
+    cost: 0,
+    modifiers: [],
+    metadata: { element: 'Sangue', requirements: 'Transcender' },
   },
   // --- CONHECIMENTO ---
   {
     id: 'ord-para-conh-expansao',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Expansão de Conhecimento (Conhecimento)',
     description: 'Você aprende um poder de classe que não pertença à sua classe (cumprindo seus pré-requisitos). Afinidade: aprende um segundo poder de outra classe. Pré-requisito: Conhecimento 1.',
     cost: 0,
@@ -498,7 +528,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-percepcao',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Percepção Paranormal (Conhecimento)',
     description: 'Em cenas de investigação, sempre que fizer um teste para procurar pistas, pode rolar novamente um dado com resultado menor que 10. Afinidade: pode rolar novamente até dois dados < 10.',
     cost: 0,
@@ -508,7 +538,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-precognicao',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Precognição (Conhecimento)',
     description: 'Sexto sentido que avisa do perigo: você recebe +2 em Defesa e em testes de resistência. Afinidade: fica imune à condição desprevenido. Pré-requisito: Conhecimento 1.',
     cost: 0,
@@ -523,7 +553,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-sensitivo',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sensitivo (Conhecimento)',
     description: 'Sente emoções e intenções de outros seres, recebendo +5 em testes de Diplomacia, Intimidação e Intuição. Afinidade: em testes opostos dessas perícias, o oponente sofre -1d20.',
     cost: 0,
@@ -537,7 +567,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-visao-oculto',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Visão do Oculto (Conhecimento)',
     description: 'Você recebe +5 em testes de Percepção e enxerga no escuro. Afinidade: você ignora camuflagem.',
     cost: 0,
@@ -548,7 +578,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-afortunado',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Afortunado (Energia)',
     description: 'Uma vez por rolagem, você pode rolar novamente um resultado 1 em qualquer dado que não seja d20. Afinidade: 1x/teste, pode rolar novamente um resultado 1 em d20.',
     cost: 0,
@@ -558,7 +588,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-campo-protetor',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Campo Protetor (Energia)',
     description: 'Quando usa a ação esquiva, você pode gastar 1 PE para receber +5 em Defesa. Afinidade: também recebe +5 em Reflexos e evasão contra efeitos de Reflexos. Pré-requisito: Energia 1.',
     cost: 1,
@@ -568,7 +598,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-causalidade',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Causalidade Fortuita (Energia)',
     description: 'Em cenas de investigação, a DT para procurar pistas diminui em -5 para você até encontrar uma pista. Afinidade: a DT sempre diminui em -5 para você.',
     cost: 0,
@@ -578,7 +608,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-golpe-sorte',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Golpe de Sorte (Energia)',
     description: 'Seus ataques recebem +1 na margem de ameaça. Afinidade: seus ataques recebem +1 no multiplicador de crítico. Pré-requisito: Energia 1.',
     cost: 0,
@@ -588,7 +618,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-manipular-entropia',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Manipular Entropia (Energia)',
     description: 'Quando outro ser em alcance curto faz um teste de perícia, pode gastar 2 PE para fazê-lo rolar novamente um dos dados. Afinidade: rola novamente todos os dados que você escolher. Pré-requisito: Energia 1.',
     cost: 2,
@@ -599,7 +629,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-encarar',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Encarar a Morte (Morte)',
     description: 'Durante cenas de ação, seu limite de gasto de PE aumenta em +1 (não afeta a DT). Afinidade: aumenta em +2 (total +3).',
     cost: 0,
@@ -609,7 +639,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-escapar',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Escapar da Morte (Morte)',
     description: 'Uma vez por cena, quando receber dano que o deixaria com 0 PV, você fica com 1 PV (exceto dano massivo). Afinidade: evita completamente o dano. Pré-requisito: Morte 1.',
     cost: 0,
@@ -619,7 +649,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-potencial-aprimorado',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Potencial Aprimorado (Morte)',
     description: 'Você recebe +1 ponto de esforço (PE) para cada 5% de NEX. Afinidade: +2 PE por 5% de NEX.',
     cost: 0,
@@ -629,7 +659,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-potencial-reaproveitado',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Potencial Reaproveitado (Morte)',
     description: 'Uma vez por rodada, quando passa num teste de resistência, você ganha 2 PE temporários cumulativos até o fim da cena. Afinidade: ganha 3 PE temporários.',
     cost: 0,
@@ -639,7 +669,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-surto-temporal',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Surto Temporal (Morte)',
     description: 'Uma vez por cena, durante seu turno, você pode gastar 3 PE para realizar uma ação padrão adicional. Afinidade: 1x por turno. Pré-requisito: Morte 2.',
     cost: 3,
@@ -650,7 +680,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-anatomia-insana',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Anatomia Insana (Sangue)',
     description: 'Você tem 50% de chance (par em 1d4) de ignorar o dano adicional de um acerto crítico ou ataque furtivo. Afinidade: imune a críticos e ataques furtivos. Pré-requisito: Sangue 2.',
     cost: 0,
@@ -660,7 +690,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-arma-sangue',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Arma de Sangue (Sangue)',
     description: 'Gaste ação de movimento e 2 PE para produzir uma arma corpo a corpo leve (1d6 dano de Sangue). Ao agredir, pode gastar 1 PE para fazer um ataque extra com ela. Afinidade: permanente e causa 1d10.',
     cost: 2,
@@ -670,7 +700,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-sangue-ferro',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sangue de Ferro (Sangue)',
     description: 'O seu sangue flui de forma paranormal e agressiva. Você recebe +2 Pontos de Vida (PV) para cada 5% de NEX. Afinidade: recebe +5 em Fortitude e imunidade a venenos e doenças.',
     cost: 0,
@@ -680,7 +710,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-sangue-fervente',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sangue Fervente (Sangue)',
     description: 'Enquanto estiver machucado, você recebe +1 em Agilidade ou Força. Afinidade: o bônus aumenta para +2. Pré-requisito: Sangue 2.',
     cost: 0,
@@ -690,7 +720,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-sangue-vivo',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sangue Vivo (Sangue)',
     description: 'Na primeira vez que ficar machucado em uma cena, recebe cura acelerada 2 até a metade dos PV máximos. Afinidade: cura acelerada 5. Pré-requisito: Sangue 1.',
     cost: 0,

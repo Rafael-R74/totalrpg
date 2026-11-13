@@ -3,6 +3,7 @@ import {
   CharacterAbility,
   RPGItem,
   ActiveCondition,
+  SceneEffect,
   SystemId,
 } from './index';
 
@@ -24,7 +25,8 @@ export function calculateActiveBonuses(
   levelOrNex: number,
   abilities: CharacterAbility[],
   inventory: RPGItem[],
-  conditions: ActiveCondition[]
+  conditions: ActiveCondition[],
+  sceneEffects: SceneEffect[] = []
 ): ComputedBonuses {
   const result: ComputedBonuses = {
     attributes: {},
@@ -57,6 +59,12 @@ export function calculateActiveBonuses(
   for (const cond of conditions) {
     if (Array.isArray(cond.modifiers)) {
       activeModifiers.push(...cond.modifiers);
+    }
+  }
+
+  for (const eff of sceneEffects) {
+    if (Array.isArray(eff.modifiers)) {
+      activeModifiers.push(...eff.modifiers);
     }
   }
 

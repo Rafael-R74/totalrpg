@@ -50,7 +50,7 @@ export function CharacterWizardModal({
   const [originSearch, setOriginSearch] = useState('');
   const [ordemOriginId, setOrdemOriginId] = useState<string>('academico');
   const [amnesicoSkills, setAmnesicoSkills] = useState<string[]>(['percepcao', 'vontade']);
-  const [cultistaPowerId, setCultistaPowerId] = useState<string>('op-par-sangue-ferro');
+  const [cultistaPowerId, setCultistaPowerId] = useState<string>('ord-para-sang-sangue-ferro');
 
   const [ordemClassId, setOrdemClassId] = useState<
     'combatente' | 'especialista' | 'ocultista' | 'mundano'
@@ -68,16 +68,13 @@ export function CharacterWizardModal({
   const [combatDefenseSkill, setCombatDefenseSkill] = useState<'fortitude' | 'reflexos'>('fortitude');
   const [ordemFreeSkills, setOrdemFreeSkills] = useState<string[]>([]);
   const [peritoSkills, setPeritoSkills] = useState<string[]>([]);
-  const [chosenRitualIds, setChosenRitualIds] = useState<string[]>([
-    'op-rit-1-decadencia',
-    'op-rit-1-cicatrizacao',
-    'op-rit-1-terceiro-olho',
-  ]);
+  const [chosenRitualIds, setChosenRitualIds] = useState<string[]>([]);
+  const [ritualSearch, setRitualSearch] = useState<string>('');
   const [ritualElementFilter, setRitualElementFilter] = useState<string>('ALL');
-  const [chosenItemIds, setChosenItemIds] = useState<string[]>([
-    'op-item-lanterna-tatica',
-    'op-item-bandoleira',
-  ]);
+
+  const [itemSearch, setItemSearch] = useState<string>('');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState<'ALL' | 0 | 1>('ALL');
+  const [chosenItemQuantities, setChosenItemQuantities] = useState<Record<string, number>>({});
 
   // --- Estados Tormenta 20 ---
   const [t20RaceId, setT20RaceId] = useState<string>('humano');
@@ -192,7 +189,7 @@ export function CharacterWizardModal({
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter(
         (e) => e.category === 'spell' && (e.metadata?.circle || 1) === 1
-      ),
+      ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     []
   );
 
@@ -200,10 +197,9 @@ export function CharacterWizardModal({
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter(
         (e) =>
-          e.category === 'power' &&
-          e.metadata?.requirements?.toLowerCase().includes('poder paranormal') &&
+          e.category === 'paranormal_power' &&
           !e.metadata?.requirements?.match(/\b(Sangue|Morte|Conhecimento|Energia)\s*[12]/i)
-      ),
+      ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     []
   );
 
@@ -213,17 +209,31 @@ export function CharacterWizardModal({
         (e) =>
           e.category === 'item' &&
           (e.metadata?.categoryLevel ?? e.cost ?? 0) <= 1
-      ),
+      ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     []
   );
 
   const selectedCat1Count = useMemo(() => {
-    return chosenItemIds.reduce((acc, id) => {
+    return Object.entries(chosenItemQuantities).reduce((acc, [id, qty]) => {
+      if (qty <= 0) return acc;
       const entry = recruitItems.find((e) => e.id === id);
       const cat = entry?.metadata?.categoryLevel ?? entry?.cost ?? 0;
-      return cat === 1 ? acc + 1 : acc;
+      return cat === 1 ? acc + qty : acc;
     }, 0);
-  }, [chosenItemIds, recruitItems]);
+  }, [chosenItemQuantities, recruitItems]);
+
+  const filteredRecruitItems = useMemo(() => {
+    const q = itemSearch.trim().toLowerCase();
+    return recruitItems.filter((item) => {
+      const cat = item.metadata?.categoryLevel ?? item.cost ?? 0;
+      if (itemCategoryFilter !== 'ALL' && cat !== itemCategoryFilter) return false;
+      if (!q) return true;
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q)
+      );
+    });
+  }, [recruitItems, itemSearch, itemCategoryFilter]);
 
   // --- Memos Tormenta 20 ---
   const selectedT20Race = useMemo(
@@ -277,20 +287,31 @@ export function CharacterWizardModal({
   const toggleRitualChoice = (ritualId: string) => {
     setChosenRitualIds((prev) => {
       if (prev.includes(ritualId)) return prev.filter((id) => id !== ritualId);
-      if (prev.length >= 3) return prev;
+      if (prev.length >= 3) {
+        return [...prev.slice(1), ritualId];
+      }
       return [...prev, ritualId];
     });
   };
 
-  const toggleRecruitItem = (itemId: string) => {
+  const changeRecruitItemQty = (itemId: string, delta: number) => {
     const entry = recruitItems.find((e) => e.id === itemId);
     if (!entry) return;
     const cat = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
 
-    setChosenItemIds((prev) => {
-      if (prev.includes(itemId)) return prev.filter((id) => id !== itemId);
-      if (cat === 1 && selectedCat1Count >= 2) return prev;
-      return [...prev, itemId];
+    setChosenItemQuantities((prev) => {
+      const currentQty = prev[itemId] || 0;
+      const nextQty = Math.max(0, currentQty + delta);
+      if (delta > 0 && cat === 1 && selectedCat1Count >= 2) {
+        return prev;
+      }
+      const next = { ...prev };
+      if (nextQty === 0) {
+        delete next[itemId];
+      } else {
+        next[itemId] = nextQty;
+      }
+      return next;
     });
   };
 
@@ -312,6 +333,10 @@ export function CharacterWizardModal({
           new Set([...originSkillIds, ...classMandatorySkillIds, ...validFree])
         );
 
+        const chosenItemsArray = Object.entries(chosenItemQuantities)
+          .filter(([, qty]) => qty > 0)
+          .map(([id, quantity]) => ({ id, quantity }));
+
         const built = buildOrdemCharacter({
           originId: selectedOrdemOrigin.id,
           characterClass: ordemClassId,
@@ -322,7 +347,7 @@ export function CharacterWizardModal({
           chosenParanormalPowerId: selectedOrdemOrigin.grantsParanormalPower
             ? cultistaPowerId
             : undefined,
-          chosenItemIds,
+          chosenItems: chosenItemsArray,
         });
 
         const created = await createCharacter(name.trim(), system, {
@@ -377,13 +402,22 @@ export function CharacterWizardModal({
   }, [originSearch]);
 
   const filteredRituals = useMemo(() => {
-    if (ritualElementFilter === 'ALL') return firstCircleRituals;
-    return firstCircleRituals.filter(
-      (r) =>
-        (r.metadata?.element || '').toLowerCase() ===
-        ritualElementFilter.toLowerCase()
-    );
-  }, [firstCircleRituals, ritualElementFilter]);
+    const q = ritualSearch.trim().toLowerCase();
+    return firstCircleRituals.filter((r) => {
+      const el = (r.metadata?.element || '').toLowerCase();
+      if (
+        ritualElementFilter !== 'ALL' &&
+        !el.includes(ritualElementFilter.toLowerCase())
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        r.name.toLowerCase().includes(q) ||
+        r.description.toLowerCase().includes(q)
+      );
+    });
+  }, [firstCircleRituals, ritualElementFilter, ritualSearch]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
@@ -959,57 +993,111 @@ export function CharacterWizardModal({
 
               {/* Se for Ocultista: Escolher os 3 Rituais de 1º Círculo Iniciais */}
               {ordemClassId === 'ocultista' && (
-                <div className="p-4 rounded-xl bg-zinc-950 border border-purple-500/40 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="p-4 rounded-xl bg-zinc-950 border-2 border-purple-500/60 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h4 className="text-sm font-black uppercase text-purple-300">
                         🔮 Escolhido pelo Outro Lado: Selecione seus 3 Rituais de 1º Círculo ({chosenRitualIds.length}/3)
                       </h4>
                       <p className="text-xs text-zinc-400">
-                        Rituais escolhidos já entram prontos para conjuração na aba Rituais da sua ficha.
+                        Clique em até 3 rituais abaixo. Os rituais selecionados aparecem destacados em roxo/verde e no painel de escolhidos!
                       </p>
                     </div>
-                    <div className="flex gap-1">
-                      {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
-                        <button
-                          key={el}
-                          type="button"
-                          onClick={() => setRitualElementFilter(el)}
-                          className={`px-2.5 py-1 rounded text-[10px] font-bold ${
-                            ritualElementFilter === el
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-zinc-900 text-zinc-400'
-                          }`}
-                        >
-                          {el === 'ALL' ? 'Todos' : el}
-                        </button>
-                      ))}
-                    </div>
+                    <input
+                      type="text"
+                      value={ritualSearch}
+                      onChange={(e) => setRitualSearch(e.target.value)}
+                      placeholder="🔎 Pesquisar ritual por nome ou efeito..."
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                  {/* Barra Visual dos Rituais Selecionados */}
+                  <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-700/60 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-black uppercase text-purple-300">
+                      Rituais Escolhidos ({chosenRitualIds.length}/3):
+                    </span>
+                    {chosenRitualIds.length === 0 ? (
+                      <span className="text-xs text-zinc-400 italic">
+                        Nenhum ritual selecionado ainda. Clique nos cards abaixo para escolher 3 rituais!
+                      </span>
+                    ) : (
+                      chosenRitualIds.map((rId, idx) => {
+                        const rObj = firstCircleRituals.find((r) => r.id === rId);
+                        if (!rObj) return null;
+                        return (
+                          <span
+                            key={rId}
+                            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-600 text-white text-xs font-extrabold shadow"
+                          >
+                            <span>
+                              {idx + 1}. {rObj.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleRitualChoice(rId)}
+                              className="text-purple-200 hover:text-white font-black cursor-pointer"
+                              title="Remover ritual"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                      <button
+                        key={el}
+                        type="button"
+                        onClick={() => setRitualElementFilter(el)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
+                          ritualElementFilter === el
+                            ? 'bg-purple-600 text-white shadow'
+                            : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                        }`}
+                      >
+                        {el === 'ALL' ? 'Todos os Elementos' : el}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
                     {filteredRituals.map((rit) => {
                       const picked = chosenRitualIds.includes(rit.id);
+                      const pickedIndex = chosenRitualIds.indexOf(rit.id);
                       return (
                         <button
                           key={rit.id}
                           type="button"
                           onClick={() => toggleRitualChoice(rit.id)}
-                          className={`p-3 rounded-lg border text-left transition-all ${
+                          className={`p-3.5 rounded-xl border-2 text-left transition-all cursor-pointer ${
                             picked
-                              ? 'bg-purple-600/20 border-purple-400'
-                              : 'bg-zinc-900/70 border-zinc-800 hover:border-zinc-700'
+                              ? 'bg-purple-600/25 border-emerald-400 shadow-lg shadow-purple-950/50'
+                              : 'bg-zinc-900/80 border-zinc-800 hover:border-purple-500/60'
                           }`}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-white text-xs">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="font-extrabold text-white text-xs">
                               {rit.name}
                             </span>
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-purple-300">
-                              {rit.metadata?.element}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-purple-300">
+                                {rit.metadata?.element}
+                              </span>
+                              {picked && (
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500 text-zinc-950">
+                                  ✓ #{pickedIndex + 1} ESCOLHIDO
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-[11px] text-zinc-400 line-clamp-2">
+                          <div className="text-[10px] font-mono text-purple-300/90 mb-1">
+                            Execução: {rit.metadata?.execution || 'Padrão'} • Alcance: {rit.metadata?.range || 'Curto'} • Duração: {rit.metadata?.duration || 'Instantânea'}
+                          </div>
+                          <p className="text-[11px] text-zinc-300 leading-relaxed">
                             {rit.description}
                           </p>
                         </button>
@@ -1186,15 +1274,15 @@ export function CharacterWizardModal({
                 </div>
               )}
 
-              {/* Equipamento Inicial de Recruta (Patente Recruta: 2 itens Cat I, Cat 0 livre) */}
+              {/* Equipamento Inicial de Recruta (Patente Recruta: 2 itens Cat I, Cat 0 livre, Ordem Alfabética, Busca e Quantidade) */}
               <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h4 className="text-sm font-black uppercase text-amber-400">
-                      🎒 Arsenal & Equipamento Inicial (Patente Recruta)
+                      🎒 Arsenal & Equipamento Inicial (Patente Recruta — Ordem Alfabética)
                     </h4>
                     <p className="text-xs text-zinc-400">
-                      Como <strong>Recruta</strong>, você tem direito a até <strong>2 itens de Categoria I</strong> e itens de <strong>Categoria 0</strong> à vontade. Armas escolhidas já criam seus Ataques Preparados automaticamente!
+                      Como <strong>Recruta</strong>, você tem direito a até <strong>2 itens de Categoria I</strong> e itens de <strong>Categoria 0</strong> à vontade (inclusive múltiplas unidades do mesmo item, como munições!).
                     </p>
                   </div>
                   <span
@@ -1204,43 +1292,104 @@ export function CharacterWizardModal({
                         : 'bg-zinc-900 border-zinc-700 text-zinc-300'
                     }`}
                   >
-                    Categoria I: {selectedCat1Count} / 2
+                    Categoria I usada: {selectedCat1Count} / 2
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1">
-                  {recruitItems.map((item) => {
-                    const cat = item.metadata?.categoryLevel ?? item.cost ?? 0;
-                    const picked = chosenItemIds.includes(item.id);
-                    return (
+                {/* Barra de Pesquisa e Filtro de Categoria */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.target.value)}
+                    placeholder="🔎 Pesquisar arma, proteção, munição ou equipamento..."
+                    className="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:border-amber-500 focus:outline-none"
+                  />
+                  <div className="flex gap-1">
+                    {[
+                      { val: 'ALL' as const, label: 'Todos' },
+                      { val: 0 as const, label: 'Cat. 0 (Livre)' },
+                      { val: 1 as const, label: 'Cat. I (Máx. 2)' },
+                    ].map((f) => (
                       <button
-                        key={item.id}
+                        key={String(f.val)}
                         type="button"
-                        onClick={() => toggleRecruitItem(item.id)}
-                        className={`p-3 rounded-lg border text-left transition-all ${
+                        onClick={() => setItemCategoryFilter(f.val)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                          itemCategoryFilter === f.val
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                  {filteredRecruitItems.map((item) => {
+                    const cat = item.metadata?.categoryLevel ?? item.cost ?? 0;
+                    const qty = chosenItemQuantities[item.id] || 0;
+                    const picked = qty > 0;
+                    const canAddMore = cat === 0 || selectedCat1Count < 2;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 ${
                           picked
-                            ? 'bg-amber-600/20 border-amber-500'
+                            ? 'bg-amber-600/15 border-amber-500 shadow'
                             : 'bg-zinc-900/70 border-zinc-800 hover:border-zinc-700'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-white text-xs">
-                            {item.name}
-                          </span>
-                          <span
-                            className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
-                              cat === 0
-                                ? 'bg-emerald-950 text-emerald-300'
-                                : 'bg-amber-950 text-amber-300'
-                            }`}
-                          >
-                            Cat. {cat === 0 ? '0' : 'I'} • {item.metadata?.slots ?? 1} esp.
-                          </span>
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="font-bold text-white text-xs">
+                              {item.name}
+                            </span>
+                            <span
+                              className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 ${
+                                cat === 0
+                                  ? 'bg-emerald-950 text-emerald-300'
+                                  : 'bg-amber-950 text-amber-300'
+                              }`}
+                            >
+                              Cat. {cat === 0 ? '0' : 'I'} • {item.metadata?.slots ?? 1} esp.
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 line-clamp-2">
+                            {item.description}
+                          </p>
                         </div>
-                        <p className="text-[11px] text-zinc-400 line-clamp-2">
-                          {item.description}
-                        </p>
-                      </button>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80">
+                          <span className="text-[10px] font-mono text-zinc-400">
+                            {qty > 0 ? `Na mochila: ${qty}x` : 'Não selecionado'}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={qty <= 0}
+                              onClick={() => changeRecruitItemQty(item.id, -1)}
+                              className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-white font-black text-xs cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span className="w-6 text-center font-mono text-xs font-extrabold text-amber-400">
+                              {qty}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={!canAddMore}
+                              onClick={() => changeRecruitItemQty(item.id, 1)}
+                              className="w-7 h-7 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-white font-black text-xs cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -1303,6 +1452,17 @@ export function CharacterWizardModal({
                 onClick={() => {
                   if (step === 1 && !name.trim()) {
                     setErrorMsg('Preencha o nome do personagem antes de avançar.');
+                    return;
+                  }
+                  if (
+                    step === 3 &&
+                    system === 'ordem-paranormal' &&
+                    ordemClassId === 'ocultista' &&
+                    chosenRitualIds.length < 3
+                  ) {
+                    setErrorMsg(
+                      `Como Ocultista, selecione seus 3 Rituais iniciais de 1º Círculo antes de avançar (${chosenRitualIds.length}/3 selecionados).`
+                    );
                     return;
                   }
                   setErrorMsg('');

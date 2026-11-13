@@ -158,6 +158,13 @@ export default function App() {
       }
     });
 
+    socket.on('scene:ended', () => {
+      setLastUpdatedCharSignal({
+        characterId: openedCharacter?.characterId || 'ALL',
+        timestamp: Date.now(),
+      });
+    });
+
     return () => {
       socket.off('dice:rolled');
       socket.off('campaign:permissionsUpdated');
@@ -167,6 +174,7 @@ export default function App() {
       socket.off('postit:received');
       socket.off('postit:dismissed');
       socket.off('item:received');
+      socket.off('scene:ended');
     };
   }, [currentUser, activeRoomId, currentCampaignSession, openedCharacter]);
 
@@ -224,6 +232,14 @@ export default function App() {
       <DiceRollModal
         roll={activeRollModal}
         onClose={() => setActiveRollModal(null)}
+        onRerollOne={(rollResult, dieIndex) => {
+          if (!activeRoomId) return;
+          socket.emit('dice:rerollOne', {
+            campaignId: activeRoomId,
+            rollResult,
+            dieIndex,
+          });
+        }}
       />
 
       <LootReceivedModal
@@ -365,6 +381,11 @@ export default function App() {
               combatState,
               merchants,
               postIts,
+            })
+          }
+          onBroadcastSceneEnd={() =>
+            socket.emit('scene:end', {
+              campaignId: currentCampaignSession.campaignId,
             })
           }
           lastUpdatedCharSignal={lastUpdatedCharSignal}

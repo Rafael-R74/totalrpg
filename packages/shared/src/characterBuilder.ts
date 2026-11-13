@@ -245,10 +245,12 @@ export function checkOrdemPowerRequirements(
         const compMatch = ORDEM_COMPENDIUM_ENTRIES.find(
           (ce) => ce.name.toLowerCase() === ab.name.toLowerCase()
         );
-        const abElement = compMatch?.metadata?.element || '';
+        const abElement = ab.element || compMatch?.metadata?.element || '';
         return (
-          abElement.toLowerCase() === elCheck.element.toLowerCase() &&
-          (ab.category === 'poder' || ab.category === 'ritual')
+          abElement.toLowerCase().includes(elCheck.element.toLowerCase()) &&
+          (ab.category === 'poder' ||
+            ab.category === 'poder_paranormal' ||
+            ab.category === 'ritual')
         );
       }).length;
       if (ownedCount < requiredCount) {
@@ -263,6 +265,252 @@ export function checkOrdemPowerRequirements(
   };
 }
 
+export function getOrdemClassMilestoneSummary(
+  characterClass: OrdemSheetData['characterClass'],
+  nex: number,
+  trailId?: string
+): string {
+  const trailObj = ORDEM_TRAILS.find((t) => t.id === trailId);
+  const trailPowerAtNex = trailObj?.powers.find((p) => p.nex === nex);
+
+  const classLabel =
+    characterClass === 'combatente'
+      ? 'Combatente'
+      : characterClass === 'especialista'
+      ? 'Especialista'
+      : characterClass === 'ocultista'
+      ? 'Ocultista'
+      : 'Mundano';
+
+  switch (nex) {
+    case 5:
+      if (characterClass === 'combatente')
+        return 'Recruta Combatente • Habilidade inicial: Ataque Especial (2 PE, +5 no ataque ou dano)';
+      if (characterClass === 'especialista')
+        return 'Recruta Especialista • Habilidades iniciais: Eclético e Perito (2 PE, +1d6)';
+      if (characterClass === 'ocultista')
+        return 'Recruta Ocultista • Escolhido pelo Outro Lado (1º Círculo, 3 rituais iniciais)';
+      return 'Agente Recruta da Ordo Realitas (NEX 5%)';
+    case 10:
+      return trailObj
+        ? `Habilidade de Trilha (10% — ${trailObj.name}): ${trailPowerAtNex?.name || ''}`
+        : `Escolha de Trilha de ${classLabel} + 1º Poder da Trilha (10%)`;
+    case 15:
+    case 30:
+    case 45:
+    case 60:
+    case 90:
+      return `Poder de ${classLabel} (ou Transcender para Poder Paranormal)${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    case 20:
+    case 80:
+    case 95:
+      return `Aumento de Atributo (+1 ponto, máx. 5)${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    case 25:
+      if (characterClass === 'combatente')
+        return 'Aprimoramento de Ataque Especial (3 PE para +10 no ataque ou dano)';
+      if (characterClass === 'especialista')
+        return 'Aprimoramento de Perito (3 PE para somar +1d8 nas perícias escolhidas)';
+      if (characterClass === 'ocultista')
+        return 'Escolhido pelo Outro Lado: Desbloqueia Rituais de 2º Círculo + 1 Novo Ritual';
+      return 'Evolução de Habilidade Principal da Classe (NEX 25%)';
+    case 35: {
+      const cls = ORDEM_CLASSES.find((c) => c.id === characterClass);
+      const baseUp = cls?.trainingUpgradeBase ?? 2;
+      return `Grau de Treinamento: Aprimore ${baseUp} + Intelecto perícias treinadas para Veterano (+10)${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    }
+    case 40:
+      if (characterClass === 'especialista') {
+        return `2º Poder da Trilha (40%${trailPowerAtNex ? `: ${trailPowerAtNex.name}` : ''}) + Engenhosidade (Veterano no Eclético)`;
+      }
+      return `2º Poder da Trilha (40%${trailPowerAtNex ? `: ${trailPowerAtNex.name}` : ''})${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    case 50:
+      return `Aumento de Atributo (+1) + Versatilidade (Poder de Trilha 10% ou Poder de ${classLabel}) + Afinidade Elemental${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    case 55:
+      if (characterClass === 'combatente')
+        return 'Aprimoramento de Ataque Especial (4 PE para +15 no ataque ou dano)';
+      if (characterClass === 'especialista')
+        return 'Aprimoramento de Perito (4 PE para somar +1d10 nas perícias escolhidas)';
+      if (characterClass === 'ocultista')
+        return 'Escolhido pelo Outro Lado: Desbloqueia Rituais de 3º Círculo + 1 Novo Ritual';
+      return 'Evolução de Habilidade Principal da Classe (NEX 55%)';
+    case 65:
+      return `3º Poder da Trilha (65%${trailPowerAtNex ? `: ${trailPowerAtNex.name}` : ''})${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    case 70: {
+      const cls = ORDEM_CLASSES.find((c) => c.id === characterClass);
+      const baseUp = cls?.trainingUpgradeBase ?? 2;
+      return `Grau de Treinamento: Aprimore ${baseUp} + Intelecto perícias veteranas para Expert (+15)${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    }
+    case 75:
+      if (characterClass === 'especialista') {
+        return `Poder de Especialista (ou Transcender) + Engenhosidade (Expert no Eclético)`;
+      }
+      return `Poder de ${classLabel} (ou Transcender para Poder Paranormal)${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    case 85:
+      if (characterClass === 'combatente')
+        return 'Aprimoramento Supremo de Ataque Especial (5 PE para +20 no ataque ou dano)';
+      if (characterClass === 'especialista')
+        return 'Aprimoramento Supremo de Perito (5 PE para somar +1d12 nas perícias escolhidas)';
+      if (characterClass === 'ocultista')
+        return 'Escolhido pelo Outro Lado: Desbloqueia Rituais de 4º Círculo + 1 Novo Ritual';
+      return 'Evolução de Habilidade Principal da Classe (NEX 85%)';
+    case 99:
+      return `4º Poder Supremo da Trilha (99%${trailPowerAtNex ? `: ${trailPowerAtNex.name}` : ''})${
+        characterClass === 'ocultista' ? ' + 1 Novo Ritual' : ''
+      }`;
+    default:
+      return `Evolução de Exposição Paranormal (NEX ${nex}%)`;
+  }
+}
+
+export interface OrdemRitualCastForm {
+  mode: 'normal' | 'discente' | 'verdadeiro';
+  label: string;
+  extraCost: number;
+  totalCost: number;
+  requiredCircle: number;
+  requiresAffinity: boolean;
+  description: string;
+  damageFormula?: string;
+  tempHpFormula?: string;
+  tempHpFlat?: number;
+  sceneDefenseBonus?: number;
+}
+
+export function parseOrdemRitualForms(
+  ritualName: string,
+  ritualDescription: string,
+  baseCost: number,
+  baseDamageFormula?: string
+): OrdemRitualCastForm[] {
+  const lowerName = ritualName.toLowerCase();
+  const baseCircle =
+    baseCost >= 10 ? 4 : baseCost >= 6 ? 3 : baseCost >= 3 ? 2 : 1;
+
+  // Separa texto Normal, Discente e Verdadeiro
+  const discIdx = ritualDescription.search(/Discente\s*\(/i);
+  const verdIdx = ritualDescription.search(/Verdadeiro\s*\(/i);
+
+  const normalText =
+    discIdx >= 0
+      ? ritualDescription.slice(0, discIdx).trim()
+      : verdIdx >= 0
+      ? ritualDescription.slice(0, verdIdx).trim()
+      : ritualDescription.trim();
+
+  const discText =
+    discIdx >= 0
+      ? ritualDescription
+          .slice(discIdx, verdIdx >= 0 ? verdIdx : ritualDescription.length)
+          .trim()
+      : '';
+
+  const verdText =
+    verdIdx >= 0 ? ritualDescription.slice(verdIdx).trim() : '';
+
+  const isTempHpRitual =
+    lowerName.includes('consumir manancial') ||
+    lowerName.includes('tela de ruído');
+
+  const forms: OrdemRitualCastForm[] = [
+    {
+      mode: 'normal',
+      label: 'Normal',
+      extraCost: 0,
+      totalCost: Math.max(1, baseCost),
+      requiredCircle: baseCircle,
+      requiresAffinity: false,
+      description: normalText,
+      damageFormula: isTempHpRitual ? undefined : baseDamageFormula,
+      tempHpFormula: lowerName.includes('consumir manancial') ? '3d6' : undefined,
+      tempHpFlat: lowerName.includes('tela de ruído') ? 15 : undefined,
+      sceneDefenseBonus: lowerName.includes('armadura de sangue')
+        ? 5
+        : lowerName.includes('embaralhar')
+        ? 6
+        : undefined,
+    },
+  ];
+
+  function extractFormDetails(
+    mode: 'discente' | 'verdadeiro',
+    rawSegment: string
+  ): OrdemRitualCastForm | null {
+    if (!rawSegment) return null;
+    const headerMatch = rawSegment.match(
+      /^(?:Discente|Verdadeiro)\s*\(([^)]+)\)\s*:\s*(.*)$/i
+    );
+    const metaStr = headerMatch ? headerMatch[1] : '';
+    const effectDesc = headerMatch ? headerMatch[2] : rawSegment;
+
+    const costMatch = metaStr.match(/\+\s*(\d+)\s*PE/i);
+    const extraCost = costMatch ? Number(costMatch[1]) : mode === 'discente' ? 2 : 5;
+
+    const circleMatch = metaStr.match(/(\d+)º\s*círc/i) || effectDesc.match(/requer\s*(\d+)º\s*círc/i);
+    const requiredCircle = circleMatch ? Number(circleMatch[1]) : baseCircle;
+
+    const requiresAffinity =
+      metaStr.toLowerCase().includes('afinidade') ||
+      effectDesc.toLowerCase().includes('requer afinidade');
+
+    const diceMatch = effectDesc.match(/(\d+d\d+(?:[+-]\d+)?)/i);
+    const extractedFormula = diceMatch ? diceMatch[1] : baseDamageFormula;
+
+    let tempHpFormula: string | undefined;
+    let tempHpFlat: number | undefined;
+    let sceneDefenseBonus: number | undefined;
+
+    if (lowerName.includes('consumir manancial')) {
+      tempHpFormula = extractedFormula || (mode === 'discente' ? '6d6' : '10d6');
+    } else if (lowerName.includes('tela de ruído')) {
+      tempHpFlat = mode === 'discente' ? 30 : 60;
+    }
+
+    if (lowerName.includes('armadura de sangue')) {
+      sceneDefenseBonus = mode === 'discente' ? 10 : 15;
+    } else if (lowerName.includes('embaralhar')) {
+      sceneDefenseBonus = mode === 'discente' ? 12 : 16;
+    }
+
+    return {
+      mode,
+      label: mode === 'discente' ? 'Discente' : 'Verdadeiro',
+      extraCost,
+      totalCost: Math.max(1, baseCost) + extraCost,
+      requiredCircle,
+      requiresAffinity,
+      description: effectDesc,
+      damageFormula: isTempHpRitual ? undefined : extractedFormula,
+      tempHpFormula,
+      tempHpFlat,
+      sceneDefenseBonus,
+    };
+  }
+
+  const discForm = extractFormDetails('discente', discText);
+  if (discForm) forms.push(discForm);
+
+  const verdForm = extractFormDetails('verdadeiro', verdText);
+  if (verdForm) forms.push(verdForm);
+
+  return forms;
+}
+
 export interface BuildOrdemCharacterInput {
   originId: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -272,6 +520,7 @@ export interface BuildOrdemCharacterInput {
   chosenRitualIds?: string[];
   chosenParanormalPowerId?: string;
   chosenItemIds?: string[];
+  chosenItems?: Array<{ id: string; quantity: number }>;
   nex?: number;
   patent?: string;
   trailId?: string;
@@ -337,9 +586,10 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       abilities.push({
         id: `cult-${pEntry.id}`,
         name: pEntry.name,
-        category: 'poder',
+        category: 'poder_paranormal',
         cost: pEntry.cost,
         description: pEntry.description,
+        element: pEntry.metadata?.element,
         isActive: pEntry.cost === 0,
         modifiers: pEntry.modifiers || [],
       });
@@ -385,47 +635,50 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     }
   }
 
-  // 3. Montar Inventário Inicial e Ataques Preparados
+  // 3. Montar Inventário Inicial e Ataques Preparados (com suporte a múltiplas unidades!)
   const inventory: RPGItem[] = [];
   const attacks: PreparedAttack[] = [];
 
-  if (input.chosenItemIds && input.chosenItemIds.length > 0) {
-    for (const itemId of input.chosenItemIds) {
-      const itemEntry = ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === itemId);
-      if (!itemEntry) continue;
+  const normalizedItems: Array<{ id: string; quantity: number }> =
+    input.chosenItems && input.chosenItems.length > 0
+      ? input.chosenItems.filter((it) => it.quantity > 0)
+      : (input.chosenItemIds || []).map((id) => ({ id, quantity: 1 }));
 
-      const invItem: RPGItem = {
-        id: `init-item-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
+  for (const picked of normalizedItems) {
+    const itemEntry = ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === picked.id);
+    if (!itemEntry) continue;
+
+    const invItem: RPGItem = {
+      id: `init-item-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
+      name: itemEntry.name,
+      slots: itemEntry.metadata?.slots ?? 1,
+      quantity: Math.max(1, picked.quantity),
+      category: itemEntry.metadata?.categoryLevel ?? itemEntry.cost ?? 0,
+      description: itemEntry.description,
+      isEquipped: true,
+      modifiers: itemEntry.modifiers || [],
+    };
+    inventory.push(invItem);
+
+    // Se for arma (possui damageFormula), cria ataque preparado automaticamente!
+    if (itemEntry.metadata?.damageFormula) {
+      const isRanged =
+        itemEntry.description.toLowerCase().includes('disparo') ||
+        itemEntry.description.toLowerCase().includes('fogo') ||
+        (itemEntry.metadata?.range && itemEntry.metadata.range !== 'Corpo a Corpo');
+      const skillId = isRanged ? 'pontaria' : 'luta';
+      const attrVal = isRanged ? input.attributes.agi : input.attributes.for;
+      const skillBonus = allTrainedSet.has(skillId) ? 5 : 0;
+
+      attacks.push({
+        id: `atk-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
         name: itemEntry.name,
-        slots: itemEntry.metadata?.slots ?? 1,
-        quantity: 1,
-        category: itemEntry.metadata?.categoryLevel ?? itemEntry.cost ?? 0,
-        description: itemEntry.description,
-        isEquipped: true,
-        modifiers: itemEntry.modifiers || [],
-      };
-      inventory.push(invItem);
-
-      // Se for arma (possui damageFormula), cria ataque preparado automaticamente!
-      if (itemEntry.metadata?.damageFormula) {
-        const isRanged =
-          itemEntry.description.toLowerCase().includes('disparo') ||
-          itemEntry.description.toLowerCase().includes('fogo') ||
-          (itemEntry.metadata?.range && itemEntry.metadata.range !== 'Corpo a Corpo');
-        const skillId = isRanged ? 'pontaria' : 'luta';
-        const attrVal = isRanged ? input.attributes.agi : input.attributes.for;
-        const skillBonus = allTrainedSet.has(skillId) ? 5 : 0;
-
-        attacks.push({
-          id: `atk-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
-          name: itemEntry.name,
-          diceCount: Math.max(1, attrVal),
-          attackBonus: skillBonus,
-          damageFormula: itemEntry.metadata.damageFormula,
-          critRange: itemEntry.metadata.critRange || '20/x2',
-          damageType: itemEntry.metadata.element || 'Físico',
-        });
-      }
+        diceCount: Math.max(1, attrVal),
+        attackBonus: skillBonus,
+        damageFormula: itemEntry.metadata.damageFormula,
+        critRange: itemEntry.metadata.critRange || '20/x2',
+        damageType: itemEntry.metadata.element || 'Físico',
+      });
     }
   }
 
