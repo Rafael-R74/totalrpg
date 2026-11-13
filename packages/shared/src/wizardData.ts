@@ -57,10 +57,12 @@ export interface OrdemOriginDefinition {
   powerDescription: string;
   powerCost: number;
   modifiers: RuleModifier[];
-  halvesInitialSanity?: boolean;  // Cultista Arrependido
-  grantsParanormalPower?: boolean; // Cultista Arrependido
-  extraPeOddNex?: boolean;        // Universitário (+1 PE inicial e em cada NEX ímpar)
-  extraPeLimit?: number;          // Universitário (+1 no Limite de PE por turno)
+  requiresManualActivation?: boolean; // Poderes de custo 0 que só ativam quando o jogador aciona (ex: Magnum Opus, Vislumbres do Passado)
+  oncePerScene?: boolean;             // Poderes limitados a 1x por cena (ex: Faro para Pistas, Impostor, Posição de Combate)
+  halvesInitialSanity?: boolean;      // Cultista Arrependido
+  grantsParanormalPower?: boolean;    // Cultista Arrependido
+  extraPeOddNex?: boolean;            // Universitário (+1 PE inicial e em cada NEX ímpar)
+  extraPeLimit?: number;              // Universitário (+1 no Limite de PE por turno, sem afetar DT)
 }
 
 export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
@@ -72,12 +74,22 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Saber é Poder',
     powerDescription: 'Quando faz um teste usando Intelecto, você pode gastar 2 PE para receber +5 nesse teste.',
     powerCost: 2,
-    modifiers: [{ id: 'orig-acad', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 }],
+    modifiers: [
+      { id: 'orig-acad-atu', targetType: 'skill_bonus', targetKey: 'atualidades', value: 5 },
+      { id: 'orig-acad-cie', targetType: 'skill_bonus', targetKey: 'ciencias', value: 5 },
+      { id: 'orig-acad-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 },
+      { id: 'orig-acad-med', targetType: 'skill_bonus', targetKey: 'medicina', value: 5 },
+      { id: 'orig-acad-ocu', targetType: 'skill_bonus', targetKey: 'ocultismo', value: 5 },
+      { id: 'orig-acad-pro', targetType: 'skill_bonus', targetKey: 'profissao', value: 5 },
+      { id: 'orig-acad-sob', targetType: 'skill_bonus', targetKey: 'sobrevivencia', value: 5 },
+      { id: 'orig-acad-tat', targetType: 'skill_bonus', targetKey: 'tatica', value: 5 },
+      { id: 'orig-acad-tec', targetType: 'skill_bonus', targetKey: 'tecnologia', value: 5 },
+    ],
   },
   {
     id: 'agente_saude',
     name: 'Agente de Saúde',
-    description: 'Profissional da saúde (enfermeiro, médico, psicólogo ou socorrista) treinado no atendimento e cuidado de pessoas.',
+    description: 'Profissional da saúde (enfermeiro, farmacêutico, médico, psicólogo ou socorrista) treinado no atendimento e cuidado de pessoas.',
     skills: ['intuicao', 'medicina'],
     powerName: 'Técnica Medicinal',
     powerDescription: 'Sempre que cura um personagem, você adiciona seu Intelecto no total de PV curados.',
@@ -91,8 +103,9 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     skills: [],
     freeSkillChoices: 2,
     powerName: 'Vislumbres do Passado',
-    powerDescription: 'Uma vez por sessão, pode fazer um teste de Intelecto (DT 10) para reconhecer pessoas ou lugares familiares. Se passar, recebe 1d4 PE temporários e uma informação útil.',
+    powerDescription: 'Uma vez por sessão, você pode fazer um teste de Intelecto (DT 10) para reconhecer pessoas ou lugares familiares, que tenha encontrado antes de perder a memória. Se passar, recebe 1d4 PE temporários e, a critério do mestre, uma informação útil.',
     powerCost: 0,
+    requiresManualActivation: true,
     modifiers: [],
   },
   {
@@ -101,7 +114,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Ator, músico, escritor, dançarino ou influenciador cuja obra foi inspirada por uma experiência paranormal.',
     skills: ['artes', 'enganacao'],
     powerName: 'Magnum Opus',
-    powerDescription: 'Uma vez por missão, pode determinar que uma pessoa em cena de interação o reconheça, recebendo +5 em testes de Presença e perícias baseadas em Presença contra ela.',
+    powerDescription: 'Você é famoso por uma de suas obras. Uma vez por missão, pode determinar que uma pessoa envolvida em uma cena de interação o reconheça. Você recebe +5 em testes de Presença e de perícias baseadas em Presença contra aquela pessoa.',
     powerCost: 0,
     modifiers: [],
   },
@@ -114,8 +127,13 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerDescription: 'Quando faz um teste de perícia usando Força ou Agilidade (exceto Luta e Pontaria) você pode gastar 2 PE para receber +5 nesse teste.',
     powerCost: 2,
     modifiers: [
-      { id: 'orig-atl-1', targetType: 'skill_bonus', targetKey: 'atletismo', value: 5 },
-      { id: 'orig-atl-2', targetType: 'skill_bonus', targetKey: 'acrobacia', value: 5 },
+      { id: 'orig-atl-acr', targetType: 'skill_bonus', targetKey: 'acrobacia', value: 5 },
+      { id: 'orig-atl-atl', targetType: 'skill_bonus', targetKey: 'atletismo', value: 5 },
+      { id: 'orig-atl-cri', targetType: 'skill_bonus', targetKey: 'crime', value: 5 },
+      { id: 'orig-atl-fur', targetType: 'skill_bonus', targetKey: 'furtividade', value: 5 },
+      { id: 'orig-atl-ini', targetType: 'skill_bonus', targetKey: 'iniciativa', value: 5 },
+      { id: 'orig-atl-pil', targetType: 'skill_bonus', targetKey: 'pilotagem', value: 5 },
+      { id: 'orig-atl-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: 5 },
     ],
   },
   {
@@ -124,7 +142,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Cozinheiro amador ou profissional cujos pratos reconfortam a equipe nos momentos mais sombrios.',
     skills: ['fortitude', 'profissao'],
     powerName: 'Ingrediente Secreto',
-    powerDescription: 'Em cenas de interlúdio, ao fazer a ação alimentar-se, você e todos do grupo que se alimentarem recebem o benefício de dois pratos (acumulativos).',
+    powerDescription: 'Em cenas de interlúdio, você pode fazer a ação alimentar-se para cozinhar um prato especial. Você, e todos os membros do grupo que fizeram a ação alimentar-se, recebem o benefício de dois pratos (caso o mesmo benefício seja escolhido duas vezes, seus efeitos se acumulam).',
     powerCost: 0,
     modifiers: [],
   },
@@ -134,7 +152,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Vivia fora da lei até esbarrar em um assunto da Ordem, que preferiu recrutar seus talentos.',
     skills: ['crime', 'furtividade'],
     powerName: 'O Crime Compensa',
-    powerDescription: 'No final de uma missão, escolha um item encontrado na missão. Na próxima missão, pode incluí-lo no inventário sem contar no limite de itens por patente.',
+    powerDescription: 'No final de uma missão, escolha um item encontrado na missão. Em sua próxima missão, você pode incluir esse item em seu inventário sem que ele conte em seu limite de itens por patente.',
     powerCost: 0,
     modifiers: [],
   },
@@ -166,7 +184,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Engenheiro profissional ou inventor de garagem que coloca a mão na massa.',
     skills: ['profissao', 'tecnologia'],
     powerName: 'Ferramenta Favorita',
-    powerDescription: 'Um item à sua escolha (exceto armas) conta como uma categoria abaixo para você.',
+    powerDescription: 'Um item a sua escolha (exceto armas) conta como uma categoria abaixo (por exemplo, um item de categoria II conta como categoria I para você).',
     powerCost: 0,
     modifiers: [],
   },
@@ -176,9 +194,9 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Trabalhava em escritório, banco ou corporação lidando com administração e burocracia.',
     skills: ['diplomacia', 'profissao'],
     powerName: 'Processo Otimizado',
-    powerDescription: 'Sempre que faz um teste de perícia durante um teste estendido, ou uma ação para revisar documentos, pode pagar 2 PE para receber +5 nesse teste.',
+    powerDescription: 'Sempre que faz um teste de perícia durante um teste estendido, ou uma ação para revisar documentos (físicos ou digitais), pode pagar 2 PE para receber +5 nesse teste.',
     powerCost: 2,
-    modifiers: [],
+    modifiers: [{ id: 'orig-exec-all', targetType: 'skill_bonus', targetKey: 'all', value: 5 }],
   },
   {
     id: 'investigador',
@@ -188,7 +206,8 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Faro para Pistas',
     powerDescription: 'Uma vez por cena, quando fizer um teste para procurar pistas, você pode gastar 1 PE para receber +5 nesse teste.',
     powerCost: 1,
-    modifiers: [{ id: 'orig-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 }],
+    oncePerScene: true,
+    modifiers: [{ id: 'orig-inv-all', targetType: 'skill_bonus', targetKey: 'all', value: 5 }],
   },
   {
     id: 'lutador',
@@ -198,7 +217,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Mão Pesada',
     powerDescription: 'Você recebe +2 em rolagens de dano com ataques corpo a corpo.',
     powerCost: 0,
-    modifiers: [{ id: 'orig-lut', targetType: 'damage_bonus', targetKey: 'all', value: 2 }],
+    modifiers: [{ id: 'orig-lut-melee', targetType: 'damage_bonus', targetKey: 'melee', value: 2 }],
   },
   {
     id: 'magnata',
@@ -217,7 +236,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     skills: ['iniciativa', 'intimidacao'],
     powerName: 'Posição de Combate',
     powerDescription: 'No primeiro turno de cada cena de ação, você pode gastar 2 PE para receber uma ação de movimento adicional.',
-    powerCost: 2,
+    powerCost: 0,
     modifiers: [],
   },
   {
@@ -228,7 +247,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Para Bellum',
     powerDescription: 'Você recebe +2 em rolagens de dano com armas de fogo.',
     powerCost: 0,
-    modifiers: [{ id: 'orig-mil', targetType: 'damage_bonus', targetKey: 'all', value: 2 }],
+    modifiers: [{ id: 'orig-mil-firearm', targetType: 'damage_bonus', targetKey: 'firearm', value: 2 }],
   },
   {
     id: 'operario',
@@ -236,12 +255,9 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Pedreiro, industriário ou operador de máquinas com visão pragmática do mundo.',
     skills: ['fortitude', 'profissao'],
     powerName: 'Ferramenta de Trabalho',
-    powerDescription: 'Escolha uma arma simples ou tática que poderia ser usada como ferramenta em sua profissão. Você sabe usá-la e recebe +1 em testes de ataque, rolagens de dano e margem de ameaça com ela.',
+    powerDescription: 'Escolha uma arma simples ou tática que, a critério do mestre, poderia ser usada como ferramenta em sua profissão (como uma marreta para um pedreiro). Você sabe usar a arma escolhida e recebe +1 em testes de ataque, rolagens de dano e margem de ameaça com ela.',
     powerCost: 0,
-    modifiers: [
-      { id: 'orig-op-atk', targetType: 'attack_bonus', targetKey: 'all', value: 1 },
-      { id: 'orig-op-dmg', targetType: 'damage_bonus', targetKey: 'all', value: 1 },
-    ],
+    modifiers: [],
   },
   {
     id: 'policial',
@@ -279,7 +295,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Investigou a fundo conspirações ocultas até esbarrar na verdade sobre o Outro Lado.',
     skills: ['investigacao', 'ocultismo'],
     powerName: 'Eu Já Sabia',
-    powerDescription: 'Você não se abala tanto com entidades ou anomalias. Você recebe resistência a dano mental igual ao seu Intelecto.',
+    powerDescription: 'Você não se abala tanto com entidades ou anomalias. Afinal, sempre soube que isso tudo existia. Você recebe resistência a dano mental igual ao seu Intelecto.',
     powerCost: 0,
     modifiers: [],
   },
@@ -289,7 +305,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Programador, engenheiro de software ou especialista em sistemas informatizados.',
     skills: ['investigacao', 'tecnologia'],
     powerName: 'Motor de Busca',
-    powerDescription: 'A critério do mestre, sempre que tiver acesso à internet, você pode gastar 2 PE para substituir um teste de perícia qualquer por um teste de Tecnologia.',
+    powerDescription: 'A critério do mestre, sempre que tiver acesso a internet, você pode gastar 2 PE para substituir um teste de perícia qualquer por um teste de Tecnologia.',
     powerCost: 2,
     modifiers: [],
   },
@@ -299,9 +315,12 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Trabalhava no campo ou áreas isoladas (fazendeiro, pescador, biólogo, veterinário).',
     skills: ['adestramento', 'sobrevivencia'],
     powerName: 'Desbravador',
-    powerDescription: 'Quando faz um teste de Adestramento ou Sobrevivência, você pode gastar 2 PE para receber +5 nesse teste. Além disso, não sofre penalidade em deslocamento por terreno difícil.',
+    powerDescription: 'Quando faz um teste de Adestramento ou Sobrevivência, você pode gastar 2 PE para receber +5 nesse teste. Além disso, você não sofre penalidade em deslocamento por terreno difícil.',
     powerCost: 2,
-    modifiers: [],
+    modifiers: [
+      { id: 'orig-tr-ade', targetType: 'skill_bonus', targetKey: 'adestramento', value: 5 },
+      { id: 'orig-tr-sob', targetType: 'skill_bonus', targetKey: 'sobrevivencia', value: 5 },
+    ],
   },
   {
     id: 'trambiqueiro',
@@ -311,6 +330,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerName: 'Impostor',
     powerDescription: 'Uma vez por cena, você pode gastar 2 PE para substituir um teste de perícia qualquer por um teste de Enganação.',
     powerCost: 2,
+    oncePerScene: true,
     modifiers: [],
   },
   {
@@ -319,7 +339,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     description: 'Aluno de uma faculdade que descobriu algo proibido em seus estudos.',
     skills: ['atualidades', 'investigacao'],
     powerName: 'Dedicação',
-    powerDescription: 'Você recebe +1 PE, e mais 1 PE adicional a cada NEX ímpar (15%, 25%...). Além disso, seu limite de PE por turno aumenta em 1 (não afeta a DT de seus efeitos).',
+    powerDescription: 'Você recebe +1 PE, e mais 1 PE adicional a cada NEX ímpar (15%, 25%...). Além disso, seu limite de PE por turno aumenta em 1 (em NEX 5% seu limite é 2, em NEX 10% é 3 e assim por diante; isso não afeta a DT de seus efeitos).',
     powerCost: 0,
     modifiers: [],
     extraPeOddNex: true,

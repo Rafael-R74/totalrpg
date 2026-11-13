@@ -7,11 +7,13 @@ import {
   CompendiumEntryData,
   ComputedBonuses,
   OrdemSheetData,
+  ORDEM_ORIGINS,
   ORDEM_PATENTS,
   checkOrdemPowerRequirements,
   parseOrdemRitualForms,
   OrdemRitualCastForm,
   getOrdemPeLimit,
+  boostCritRangeBySteps,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 
@@ -37,6 +39,7 @@ interface SheetExtrasProps {
   onSpendResource: (amount: number) => boolean;
   onRoll: (label: string, count: number, sides: number, modifier: number, isDamage?: boolean) => void;
   onCastOrdemRitual?: (ritual: CharacterAbility, form: OrdemRitualCastForm) => void;
+  onTriggerOriginSpecial?: (originId: string) => void;
 }
 
 function parseDiceFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -74,8 +77,18 @@ export function SheetExtras({
   onSpendResource,
   onRoll,
   onCastOrdemRitual,
+  onTriggerOriginSpecial,
 }: SheetExtrasProps) {
   const [activeSubTab, setActiveSubTab] = useState<'combat' | 'powers' | 'spells' | 'inventory'>('combat');
+
+  const normOrigin = (ordemSheetData?.origin || '').trim().toLowerCase();
+  const originObj = ORDEM_ORIGINS.find(
+    (o) => o.id === normOrigin || o.name.toLowerCase() === normOrigin
+  );
+  const originId = originObj?.id || '';
+  const hasMochilaUtilidades = abilities.some((ab) =>
+    ab.name.toLowerCase().includes('mochila de utilidades')
+  );
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'compendium' | 'custom'>('compendium');
@@ -126,7 +139,7 @@ export function SheetExtras({
     setIsAddModalOpen(true);
   }
 
-  function handleSelectFromCompendium(entry: CompendiumEntryData) {
+  function handleSelectFromCompendium(entry: CompendiumEntryData, chosenElement?: string) {
     const newId = Math.random().toString(36).substring(2, 9);
 
     if (
@@ -135,10 +148,20 @@ export function SheetExtras({
       entry.category === 'spell' ||
       entry.category === 'origin'
     ) {
+      const isAmaldicoar =
+        entry.id === 'ord-rit-amaldicoar-arma' ||
+        entry.name.toLowerCase().includes('amaldiçoar arma');
       const isPassive = entry.cost === 0 && !entry.metadata?.damageFormula;
+      const finalName = chosenElement
+        ? `Amaldiçoar Arma — ${chosenElement} (1º Círculo)`
+        : entry.name;
+      const finalDesc = chosenElement
+        ? `[Elemento: ${chosenElement}] ${entry.description}`
+        : entry.description;
+
       const newAb: CharacterAbility = {
         id: newId,
-        name: entry.name,
+        name: finalName,
         category:
           entry.category === 'spell'
             ? system === 'ordem-paranormal'
@@ -148,8 +171,9 @@ export function SheetExtras({
             ? 'poder_paranormal'
             : 'poder',
         cost: entry.cost,
-        description: entry.description,
-        damageFormula: entry.metadata?.damageFormula,
+        element: chosenElement || entry.metadata?.element,
+        description: finalDesc,
+        damageFormula: isAmaldicoar ? undefined : entry.metadata?.damageFormula,
         isActive: isPassive ? true : false,
         modifiers: entry.modifiers || [],
       };
@@ -170,10 +194,15 @@ export function SheetExtras({
 
       let newAtk: PreparedAttack | undefined = undefined;
       if (entry.metadata?.damageFormula) {
+        const lowerDesc = entry.description.toLowerCase();
+        const isFirearm =
+          lowerDesc.includes('fogo') ||
+          (entry.metadata?.element || '').toLowerCase().includes('balístico');
         const isRanged =
-          entry.description.toLowerCase().includes('disparo') ||
-          entry.description.toLowerCase().includes('fogo') ||
+          isFirearm ||
+          lowerDesc.includes('disparo') ||
           (entry.metadata?.range && entry.metadata.range !== 'Corpo a Corpo');
+        const isMelee = !isRanged;
         const skillId = isRanged ? 'pontaria' : 'luta';
         const attrVal =
           system === 'ordem-paranormal' && ordemSheetData
@@ -185,7 +214,6 @@ export function SheetExtras({
           system === 'ordem-paranormal' && ordemSheetData
             ? ordemSheetData.skills.find((s) => s.id === skillId)
             : undefined;
-
         newAtk = {
           id: Math.random().toString(36).substring(2, 9),
           name: entry.name,
@@ -194,6 +222,8 @@ export function SheetExtras({
           damageFormula: entry.metadata.damageFormula,
           critRange: entry.metadata.critRange || '20/x2',
           damageType: entry.metadata.element || 'Arma',
+          isMelee,
+          isFirearm,
         };
       }
 
@@ -584,18 +614,49 @@ export function SheetExtras({
                             <p className="text-xs text-zinc-400">{entry.description}</p>
                           </div>
 
-                          <button
-                            type="button"
-                            disabled={alreadyOwned}
-                            onClick={() => handleSelectFromCompendium(entry)}
-                            className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow ${
-                              alreadyOwned
-                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                                : 'bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer'
-                            }`}
-                          >
-                            {alreadyOwned ? '✓ Já possui' : '+ Adicionar'}
-                          </button>
+                          {entry.id === 'ord-rit-amaldicoar-arma' ||
+                          entry.name.toLowerCase().includes('amaldiçoar arma') ? (
+                            <div className="flex flex-col gap-1 shrink-0">
+                              <span className="text-[10px] font-bold text-amber-400 text-right">
+                                Escolha o elemento:
+                              </span>
+                              <div className="grid grid-cols-2 gap-1">
+                                {(['Sangue', 'Morte', 'Conhecimento', 'Energia'] as const).map((el) => {
+                                  const hasThisEl = abilities.some((ab) =>
+                                    ab.name.toLowerCase().includes(`amaldiçoar arma — ${el.toLowerCase()}`)
+                                  );
+                                  return (
+                                    <button
+                                      key={el}
+                                      type="button"
+                                      disabled={hasThisEl}
+                                      onClick={() => handleSelectFromCompendium(entry, el)}
+                                      className={`px-2 py-1 rounded text-[10px] font-bold border ${
+                                        hasThisEl
+                                          ? 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
+                                          : 'bg-purple-800 hover:bg-purple-600 border-purple-500 text-white cursor-pointer'
+                                      }`}
+                                    >
+                                      {hasThisEl ? `✓ ${el}` : `+ ${el}`}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={alreadyOwned}
+                              onClick={() => handleSelectFromCompendium(entry)}
+                              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow ${
+                                alreadyOwned
+                                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                  : 'bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer'
+                              }`}
+                            >
+                              {alreadyOwned ? '✓ Já possui' : '+ Adicionar'}
+                            </button>
+                          )}
                         </div>
                       );
                     })
@@ -862,8 +923,33 @@ export function SheetExtras({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {attacks.map((atk) => {
                 const dmgParsed = parseDiceFormula(atk.damageFormula);
-                const finalAttackBonus = atk.attackBonus + bonuses.attackBonus;
-                const finalDamageMod = dmgParsed.modifier + bonuses.damageBonus;
+
+                // Inferência de arma de fogo vs corpo a corpo para ataques antigos sem a flag
+                const invMatch = inventory.find(
+                  (it) => it.name.toLowerCase() === atk.name.toLowerCase()
+                );
+                const descLower = (invMatch?.description || '').toLowerCase();
+                const isFirearm =
+                  atk.isFirearm !== undefined
+                    ? atk.isFirearm
+                    : descLower.includes('fogo') ||
+                      (atk.damageType || '').toLowerCase().includes('balístico');
+                const isMelee =
+                  atk.isMelee !== undefined
+                    ? atk.isMelee
+                    : !isFirearm && !descLower.includes('disparo');
+
+                const specificTypeDamageBonus =
+                  (isMelee ? bonuses.meleeDamageBonus : 0) +
+                  (isFirearm ? bonuses.firearmDamageBonus : 0);
+
+                const finalAttackBonus =
+                  atk.attackBonus + bonuses.attackBonus;
+                const finalDamageMod =
+                  dmgParsed.modifier +
+                  bonuses.damageBonus +
+                  specificTypeDamageBonus;
+                const effectiveCritRange = atk.critRange;
 
                 return (
                   <div
@@ -871,8 +957,12 @@ export function SheetExtras({
                     className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex justify-between items-center gap-2"
                   >
                     <div>
-                      <h4 className="font-bold text-sm text-white">{atk.name}</h4>
-                      <span className="text-[11px] font-mono text-zinc-500">Crítico: {atk.critRange}</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h4 className="font-bold text-sm text-white">{atk.name}</h4>
+                      </div>
+                      <span className="text-[11px] font-mono text-zinc-500">
+                        Crítico: {effectiveCritRange}
+                      </span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1029,35 +1119,25 @@ export function SheetExtras({
                               !!ordemSheetData.affinity &&
                               ordemSheetData.affinity !== 'Nenhuma');
                           const peLimitOk = f.totalCost <= prog.peTurnLimit;
-                          const canCastForm = circleOk && affinityOk;
+                          const canCastForm = circleOk && affinityOk && peLimitOk;
 
-                          const missingReasons: string[] = [];
-                          if (!circleOk) missingReasons.push(`Requer ${f.requiredCircle}º Círculo`);
-                          if (!affinityOk) missingReasons.push('Requer Afinidade (NEX 50%+)');
-                          if (!peLimitOk)
-                            missingReasons.push(
-                              `Acima do Limite de PE/Turno (${prog.peTurnLimit} PE)`
-                            );
+                          // Se o personagem não cumpre os requisitos para Discente ou Verdadeiro (Círculo, Afinidade ou Limite de PE), o botão não deve nem aparecer!
+                          if (f.mode !== 'normal' && !canCastForm) {
+                            return null;
+                          }
 
                           return (
                             <button
                               key={f.mode}
                               type="button"
-                              disabled={!canCastForm}
                               onClick={() => onCastOrdemRitual(ab, f)}
-                              title={
-                                missingReasons.length > 0
-                                  ? `${f.description} (${missingReasons.join(' • ')})`
-                                  : f.description
-                              }
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap ${
-                                !canCastForm
-                                  ? 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
-                                  : f.mode === 'normal'
-                                  ? 'bg-purple-950/60 hover:bg-purple-700 text-purple-200 hover:text-white border-purple-700/60 cursor-pointer'
+                              title={f.description}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap cursor-pointer ${
+                                f.mode === 'normal'
+                                  ? 'bg-purple-950/60 hover:bg-purple-700 text-purple-200 hover:text-white border-purple-700/60'
                                   : f.mode === 'discente'
-                                  ? 'bg-amber-950/60 hover:bg-amber-600 text-amber-300 hover:text-white border-amber-700/60 cursor-pointer'
-                                  : 'bg-red-950/60 hover:bg-red-700 text-red-300 hover:text-white border-red-700/60 cursor-pointer'
+                                  ? 'bg-amber-950/60 hover:bg-amber-600 text-amber-300 hover:text-white border-amber-700/60'
+                                  : 'bg-red-950/60 hover:bg-red-700 text-red-300 hover:text-white border-red-700/60'
                               }`}
                             >
                               {f.mode === 'normal' && `🔮 Normal (-${f.totalCost} PE)`}
@@ -1073,15 +1153,56 @@ export function SheetExtras({
                           );
                         })
                       ) : (
-                        !isPassive && (
-                          <button
-                            type="button"
-                            onClick={() => handleUseAbility(ab)}
-                            className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-700/50 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                          >
-                            ✨ Usar {ab.cost > 0 ? `(-${ab.cost} ${resourceLabel})` : ''}
-                          </button>
-                        )
+                        <>
+                          {ab.id === 'orig-amnesico' && onTriggerOriginSpecial && (
+                            <button
+                              type="button"
+                              onClick={() => onTriggerOriginSpecial('amnesico')}
+                              className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                            >
+                              🧠 Vislumbres (INT DT 10 → +1d4 PE Temp)
+                            </button>
+                          )}
+                          {ab.id === 'orig-religioso' && ordemSheetData && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const effPre =
+                                  ordemSheetData.attributes.pre +
+                                  (bonuses.attributes['pre'] || 0);
+                                onRoll(
+                                  `Acalentar (Sanidade Recuperada: 1d6 + ${effPre} PRE)`,
+                                  1,
+                                  6,
+                                  effPre,
+                                  true
+                                );
+                              }}
+                              className="px-3 py-1.5 bg-blue-950/70 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                            >
+                              🙏 Acalentar (1d6 + PRE SAN)
+                            </button>
+                          )}
+                          {!isPassive && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (ab.id === 'orig-ti' && onTriggerOriginSpecial) {
+                                  onTriggerOriginSpecial('ti');
+                                  return;
+                                }
+                                if (ab.id === 'orig-trambiqueiro' && onTriggerOriginSpecial) {
+                                  onTriggerOriginSpecial('trambiqueiro');
+                                  return;
+                                }
+                                handleUseAbility(ab);
+                              }}
+                              className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-700/50 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                            >
+                              ✨ Usar {ab.cost > 0 ? `(-${ab.cost} ${resourceLabel})` : ''}
+                            </button>
+                          )}
+                        </>
                       )}
                       {allowAb && (
                         <button
@@ -1147,9 +1268,18 @@ export function SheetExtras({
                   ORDEM_PATENTS[0];
                 const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
                 for (const it of inventory) {
-                  const cat = it.category || 0;
-                  if (cat >= 1 && cat <= 4) {
-                    counts[cat as 1 | 2 | 3 | 4] += it.quantity || 1;
+                  const rawCat = it.category || 0;
+                  const qty = it.quantity || 1;
+                  if (it.isFavoriteTool) {
+                    const reducedCat = Math.max(0, rawCat - 1);
+                    if (reducedCat >= 1 && reducedCat <= 4) {
+                      counts[reducedCat as 1 | 2 | 3 | 4] += 1;
+                    }
+                    if (qty > 1 && rawCat >= 1 && rawCat <= 4) {
+                      counts[rawCat as 1 | 2 | 3 | 4] += qty - 1;
+                    }
+                  } else if (rawCat >= 1 && rawCat <= 4) {
+                    counts[rawCat as 1 | 2 | 3 | 4] += qty;
                   }
                 }
                 return (
@@ -1245,6 +1375,11 @@ export function SheetExtras({
                             </span>
                           )
                         )}
+                        {item.isFavoriteTool && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
+                            🔧 Ferramenta Favorita (-1 Cat.)
+                          </span>
+                        )}
                       </div>
 
                       {item.description && (
@@ -1260,6 +1395,28 @@ export function SheetExtras({
                           />
                           Equipado / Em mãos
                         </label>
+
+                        {(originId === 'engenheiro' || hasMochilaUtilidades) &&
+                          !attacks.some(
+                            (a) => a.name.toLowerCase() === item.name.toLowerCase()
+                          ) && (
+                            <label className="flex items-center gap-1.5 text-[11px] text-amber-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.isFavoriteTool)}
+                                onChange={() =>
+                                  onUpdateInventory(
+                                    inventory.map((i) => ({
+                                      ...i,
+                                      isFavoriteTool:
+                                        i.id === item.id ? !i.isFavoriteTool : false,
+                                    }))
+                                  )
+                                }
+                              />
+                              🔧 Ferramenta Favorita (-1 Cat.)
+                            </label>
+                          )}
 
                         {allowInv && (
                           <ImageUploadField
