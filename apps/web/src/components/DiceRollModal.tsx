@@ -83,7 +83,11 @@ export function DiceRollModal({ roll, onClose, onRerollOne }: DiceRollModalProps
                 {roll.rolls.map((val, idx) => {
                   const isKeptInOrdem =
                     roll.system === 'ordem-paranormal' && val === highestRoll && roll.rolls.length > 1;
-                  const canRerollThisDie = val === 1 && !roll.rerolledAfortunado && !!onRerollOne;
+                  const canRerollThisDie =
+                    val === 1 &&
+                    Boolean(roll.hasAfortunado) &&
+                    !roll.rerolledAfortunado &&
+                    !!onRerollOne;
                   return (
                     <button
                       type="button"
@@ -113,7 +117,10 @@ export function DiceRollModal({ roll, onClose, onRerollOne }: DiceRollModalProps
                 })}
               </div>
 
-              {!roll.rerolledAfortunado && roll.rolls.includes(1) && onRerollOne && (
+              {Boolean(roll.hasAfortunado) &&
+                !roll.rerolledAfortunado &&
+                roll.rolls.includes(1) &&
+                onRerollOne && (
                 <button
                   type="button"
                   onClick={() => onRerollOne(roll, roll.rolls.indexOf(1))}

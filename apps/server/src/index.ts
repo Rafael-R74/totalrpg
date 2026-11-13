@@ -104,16 +104,23 @@ io.on('connection', (socket) => {
       modifier,
       system,
       isSecret,
+      fixedRolls,
+      hasAfortunado,
     }) => {
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
       const safeCount = isOrdemZeroDicePenalty
         ? 2
         : Math.max(1, Math.min(50, count));
-      const rolls: number[] = [];
+      const rolls: number[] =
+        Array.isArray(fixedRolls) && fixedRolls.length > 0
+          ? fixedRolls
+          : [];
 
-      for (let i = 0; i < safeCount; i++) {
-        rolls.push(Math.floor(Math.random() * sides) + 1);
+      if (rolls.length === 0) {
+        for (let i = 0; i < safeCount; i++) {
+          rolls.push(Math.floor(Math.random() * sides) + 1);
+        }
       }
 
       let diceTotal = 0;
@@ -146,6 +153,7 @@ io.on('connection', (socket) => {
         system,
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         isSecret: Boolean(isSecret),
+        hasAfortunado: Boolean(hasAfortunado),
       };
 
       if (isSecret) {

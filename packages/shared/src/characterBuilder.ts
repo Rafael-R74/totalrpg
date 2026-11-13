@@ -107,9 +107,10 @@ export function getOrdemRitualDT(
   effectivePre: number,
   trailId?: string,
   abilities?: CharacterAbility[],
-  originIdOrName?: string
+  _originIdOrName?: string
 ): number {
-  const peLimit = getOrdemPeLimit(nex, originIdOrName, abilities);
+  // Livro v1.3, p. 21 (Universitário — Dedicação): o +1 no limite de PE por turno NÃO afeta a DT de seus efeitos!
+  const peLimitForDt = getOrdemPeLimit(nex, undefined, abilities);
   const graduadoBonus = trailId === 'graduado' && nex >= 65 ? 5 : 0;
   const especialistaBonus = (abilities || []).some(
     (a) =>
@@ -118,7 +119,33 @@ export function getOrdemRitualDT(
   )
     ? 2
     : 0;
-  return 10 + peLimit + effectivePre + graduadoBonus + especialistaBonus;
+  return 10 + peLimitForDt + effectivePre + graduadoBonus + especialistaBonus;
+}
+
+export function getOrdemEffectiveCredit(
+  patentName: string,
+  _originIdOrName?: string
+): string {
+  const pat = ORDEM_PATENTS.find(
+    (p) => p.name.toLowerCase() === (patentName || '').toLowerCase()
+  );
+  return pat?.creditLimit || (patentName === 'Mundano' ? 'Baixo' : 'Baixo');
+}
+
+export function boostCritRangeBySteps(critRange: string, steps: number): string {
+  if (!steps || steps <= 0) return critRange;
+  const clean = (critRange || '20/x2').trim();
+  const match = clean.match(/^(\d+)\s*\/\s*(x\d+)$/i);
+  if (match) {
+    const newThreat = Math.max(2, Number(match[1]) - steps);
+    return `${newThreat}/${match[2]}`;
+  }
+  const multOnly = clean.match(/^(x\d+)$/i);
+  if (multOnly) {
+    const newThreat = Math.max(2, 20 - steps);
+    return `${newThreat}/${multOnly[1]}`;
+  }
+  return clean;
 }
 
 export function getOrdemMaxLoad(
@@ -426,6 +453,7 @@ export function parseOrdemRitualForms(
   const isTempHpRitual =
     lowerName.includes('consumir manancial') ||
     lowerName.includes('tela de ruído');
+  const isAmaldicoarArma = lowerName.includes('amaldiçoar arma');
 
   const forms: OrdemRitualCastForm[] = [
     {
@@ -436,7 +464,7 @@ export function parseOrdemRitualForms(
       requiredCircle: baseCircle,
       requiresAffinity: false,
       description: normalText,
-      damageFormula: isTempHpRitual ? undefined : baseDamageFormula,
+      damageFormula: isTempHpRitual || isAmaldicoarArma ? undefined : baseDamageFormula,
       tempHpFormula: lowerName.includes('consumir manancial') ? '3d6' : undefined,
       tempHpFlat: lowerName.includes('tela de ruído') ? 15 : undefined,
       sceneDefenseBonus: lowerName.includes('armadura de sangue')
@@ -461,12 +489,26 @@ export function parseOrdemRitualForms(
     const costMatch = metaStr.match(/\+\s*(\d+)\s*PE/i);
     const extraCost = costMatch ? Number(costMatch[1]) : mode === 'discente' ? 2 : 5;
 
-    const circleMatch = metaStr.match(/(\d+)º\s*círc/i) || effectDesc.match(/requer\s*(\d+)º\s*círc/i);
-    const requiredCircle = circleMatch ? Number(circleMatch[1]) : baseCircle;
+    const circleMatch =
+      metaStr.match(/(\d+)º\s*círc/i) || effectDesc.match(/requer\s*(\d+)º\s*círc/i);
+    let requiredCircle = circleMatch ? Number(circleMatch[1]) : baseCircle;
+
+    if (!circleMatch) {
+      if (lowerName.includes('armadura de sangue')) {
+        requiredCircle = mode === 'discente' ? 3 : 4;
+      } else if (lowerName.includes('cicatrização')) {
+        requiredCircle = mode === 'discente' ? 2 : 4;
+      } else if (baseCircle === 1) {
+        if (extraCost >= 9) requiredCircle = 4;
+        else if (extraCost >= 5) requiredCircle = 3;
+        else if (extraCost >= 2 && mode === 'verdadeiro') requiredCircle = 3;
+      }
+    }
 
     const requiresAffinity =
       metaStr.toLowerCase().includes('afinidade') ||
-      effectDesc.toLowerCase().includes('requer afinidade');
+      effectDesc.toLowerCase().includes('requer afinidade') ||
+      (lowerName.includes('armadura de sangue') && mode === 'verdadeiro');
 
     const diceMatch = effectDesc.match(/(\d+d\d+(?:[+-]\d+)?)/i);
     const extractedFormula = diceMatch ? diceMatch[1] : baseDamageFormula;
@@ -484,7 +526,7 @@ export function parseOrdemRitualForms(
     if (lowerName.includes('armadura de sangue')) {
       sceneDefenseBonus = mode === 'discente' ? 10 : 15;
     } else if (lowerName.includes('embaralhar')) {
-      sceneDefenseBonus = mode === 'discente' ? 12 : 16;
+      sceneDefenseBonus = mode === 'discente' ? 10 : 16;
     }
 
     return {
@@ -495,7 +537,7 @@ export function parseOrdemRitualForms(
       requiredCircle,
       requiresAffinity,
       description: effectDesc,
-      damageFormula: isTempHpRitual ? undefined : extractedFormula,
+      damageFormula: isTempHpRitual || isAmaldicoarArma ? undefined : extractedFormula,
       tempHpFormula,
       tempHpFlat,
       sceneDefenseBonus,
@@ -521,6 +563,8 @@ export interface BuildOrdemCharacterInput {
   chosenParanormalPowerId?: string;
   chosenItemIds?: string[];
   chosenItems?: Array<{ id: string; quantity: number }>;
+  workToolWeaponName?: string;
+  favoriteToolItemId?: string;   // Engenheiro — Ferramenta Favorita
   nex?: number;
   patent?: string;
   trailId?: string;
@@ -556,14 +600,17 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
   }));
 
   // 2. Montar lista de Habilidades (Poder da Origem + Habilidades Iniciais da Classe + Trilha se NEX >= 10 + Rituais do Ocultista)
+  const isOriginPassive =
+    origin.powerCost === 0 && !origin.requiresManualActivation;
+
   const abilities: CharacterAbility[] = [
     {
       id: `orig-${origin.id}`,
-      name: `${origin.powerName} (Origem: ${origin.name})`,
+      name: `${origin.powerName} (Poder de ${origin.name})`,
       category: 'origem',
-      cost: 0,
+      cost: origin.powerCost,
       description: origin.powerDescription,
-      isActive: true,
+      isActive: isOriginPassive,
       modifiers: origin.modifiers || [],
     },
     ...cls.initialAbilities.map((ab, idx) => ({
@@ -616,18 +663,27 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     }
   }
 
-  // Se Ocultista escolheu rituais iniciais
+  // Se Ocultista escolheu rituais iniciais (suporta "id:Elemento" para Amaldiçoar Arma)
   if (input.chosenRitualIds && input.chosenRitualIds.length > 0) {
-    for (const rId of input.chosenRitualIds) {
+    for (const rawRitId of input.chosenRitualIds) {
+      const [rId, chosenElement] = rawRitId.split(':');
       const rEntry = ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === rId);
       if (rEntry) {
+        const isAmaldicoar = rEntry.id === 'ord-rit-amaldicoar-arma' || rEntry.name.toLowerCase().includes('amaldiçoar arma');
+        const finalName = chosenElement
+          ? `Amaldiçoar Arma — ${chosenElement} (1º Círculo)`
+          : rEntry.name;
+        const finalDesc = chosenElement
+          ? `[Elemento: ${chosenElement}] ${rEntry.description}`
+          : rEntry.description;
         abilities.push({
-          id: `rit-${rEntry.id}`,
-          name: rEntry.name,
+          id: chosenElement ? `rit-${rEntry.id}-${chosenElement.toLowerCase()}` : `rit-${rEntry.id}`,
+          name: finalName,
           category: 'ritual',
           cost: rEntry.cost,
-          description: rEntry.description,
-          damageFormula: rEntry.metadata?.damageFormula,
+          element: chosenElement || rEntry.metadata?.element,
+          description: finalDesc,
+          damageFormula: isAmaldicoar ? undefined : rEntry.metadata?.damageFormula,
           isActive: false,
           modifiers: rEntry.modifiers || [],
         });
@@ -644,28 +700,46 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       ? input.chosenItems.filter((it) => it.quantity > 0)
       : (input.chosenItemIds || []).map((id) => ({ id, quantity: 1 }));
 
+  let favToolAssigned = false;
+
   for (const picked of normalizedItems) {
     const itemEntry = ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === picked.id);
     if (!itemEntry) continue;
+
+    const isWeapon = Boolean(itemEntry.metadata?.damageFormula);
+    const isFavTool =
+      origin.id === 'engenheiro' &&
+      !isWeapon &&
+      !favToolAssigned &&
+      input.favoriteToolItemId === itemEntry.id;
+    if (isFavTool) favToolAssigned = true;
+
+    const baseCategory = itemEntry.metadata?.categoryLevel ?? itemEntry.cost ?? 0;
 
     const invItem: RPGItem = {
       id: `init-item-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
       name: itemEntry.name,
       slots: itemEntry.metadata?.slots ?? 1,
       quantity: Math.max(1, picked.quantity),
-      category: itemEntry.metadata?.categoryLevel ?? itemEntry.cost ?? 0,
+      category: baseCategory,
       description: itemEntry.description,
       isEquipped: true,
+      isFavoriteTool: isFavTool || undefined,
       modifiers: itemEntry.modifiers || [],
     };
     inventory.push(invItem);
 
     // Se for arma (possui damageFormula), cria ataque preparado automaticamente!
     if (itemEntry.metadata?.damageFormula) {
+      const lowerDesc = itemEntry.description.toLowerCase();
+      const isFirearm =
+        lowerDesc.includes('fogo') ||
+        (itemEntry.metadata?.element || '').toLowerCase().includes('balístico');
       const isRanged =
-        itemEntry.description.toLowerCase().includes('disparo') ||
-        itemEntry.description.toLowerCase().includes('fogo') ||
+        isFirearm ||
+        lowerDesc.includes('disparo') ||
         (itemEntry.metadata?.range && itemEntry.metadata.range !== 'Corpo a Corpo');
+      const isMelee = !isRanged;
       const skillId = isRanged ? 'pontaria' : 'luta';
       const attrVal = isRanged ? input.attributes.agi : input.attributes.for;
       const skillBonus = allTrainedSet.has(skillId) ? 5 : 0;
@@ -678,6 +752,8 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         damageFormula: itemEntry.metadata.damageFormula,
         critRange: itemEntry.metadata.critRange || '20/x2',
         damageType: itemEntry.metadata.element || 'Físico',
+        isMelee,
+        isFirearm,
       });
     }
   }
@@ -691,6 +767,8 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     transcendedCount: 0,
   });
 
+  const finalProficiencies = [...cls.proficiencies];
+
   const sheetData: OrdemSheetData = {
     origin: origin.name,
     characterClass: cls.id,
@@ -700,7 +778,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     prestigePoints:
       ORDEM_PATENTS.find((p) => p.name === patent)?.minPrestige ?? 0,
     peritoSkills: input.peritoSkillIds || [],
-    proficiencies: cls.proficiencies,
+    proficiencies: finalProficiencies,
     transcendedCount: 0,
     displacement: 9,
     attributes: { ...input.attributes },

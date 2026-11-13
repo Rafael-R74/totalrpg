@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import {
   OrdemSheetData,
   OrdemAttributes,
   OrdemSkill,
   CharacterAbility,
+  SceneEffect,
   createDefaultOrdemSheet,
   ComputedBonuses,
   SystemSkillDefinition,
@@ -12,6 +14,7 @@ import {
   ORDEM_SKILLS_METADATA,
   getOrdemPeLimit,
   getOrdemRitualDT,
+  getOrdemEffectiveCredit,
 } from '@totalrpg/shared';
 
 interface OrdemSheetProps {
@@ -27,6 +30,8 @@ interface OrdemSheetProps {
   onSyncTrailAbilities?: (trailId: string, nex: number) => void;
   onOpenNexEvolution?: () => void;
   onOpenInterlude?: () => void;
+  onCheckResource?: (amount: number, powerLabel?: string) => boolean;
+  onSpendResource?: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
   onRoll: (label: string, count: number, sides: number, modifier: number) => void;
 }
 
@@ -51,8 +56,12 @@ export function OrdemSheet({
   onSyncTrailAbilities,
   onOpenNexEvolution,
   onOpenInterlude,
+  onCheckResource,
+  onSpendResource,
   onRoll,
 }: OrdemSheetProps) {
+  const [armOriginBoost, setArmOriginBoost] = useState(false);
+
   const fallback = createDefaultOrdemSheet().sheetData;
   const baseSkills = data?.skills && data.skills.length > 0 ? data.skills : fallback.skills;
 
@@ -81,7 +90,23 @@ export function OrdemSheet({
   const allowSkillEdit = isEditMode && canEditAbilities;
 
   const effectiveAgi = safeData.attributes.agi + (bonuses.attributes['agi'] || 0);
+  const effectiveInt = safeData.attributes.int + (bonuses.attributes['int'] || 0);
   const effectivePre = safeData.attributes.pre + (bonuses.attributes['pre'] || 0);
+
+  const normOrigin = (safeData.origin || '').trim().toLowerCase();
+  const originObj = ORDEM_ORIGINS.find(
+    (o) => o.id === normOrigin || o.name.toLowerCase() === normOrigin
+  );
+  const originId = originObj?.id || '';
+
+  const effectiveCredit = getOrdemEffectiveCredit(safeData.patent, safeData.origin);
+  const isTeoricoConspiracao = originId === 'teorico_conspiracao';
+  const mentalResistance = isTeoricoConspiracao ? Math.max(0, effectiveInt) : 0;
+  const isTrabalhadorRural = originId === 'trabalhador_rural';
+
+  const sceneEffects = safeData.sceneEffects || [];
+  const faroPistasUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-faro-pistas');
+  const impostorUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-impostor');
 
   // Defesa em Ordem Paranormal: 10 + AGI + Bônus - 5 se sobrecarregado
   const overloadPenalty = isOverloaded ? -5 : 0;
@@ -128,88 +153,36 @@ export function OrdemSheet({
       {/* Cabeçalho Biográfico & Progressão de Ordem Paranormal v1.3 */}
       <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          {/* Origem */}
+          {/* Origem (Fixa após a criação do personagem) */}
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
               Origem
             </label>
-            {allowAttrEdit ? (
-              <select
-                value={safeData.origin}
-                onChange={(e) => onChange({ ...safeData, origin: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
-              >
-                {ORDEM_ORIGINS.map((o) => (
-                  <option key={o.id} value={o.name}>
-                    {o.name} ({o.powerName})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <p className="text-sm font-semibold text-white">{safeData.origin}</p>
-            )}
+            <p className="text-sm font-semibold text-white">{safeData.origin}</p>
           </div>
 
-          {/* Classe */}
+          {/* Classe (Fixa após a criação do personagem) */}
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
               Classe
             </label>
-            {allowAttrEdit ? (
-              <select
-                value={safeData.characterClass}
-                onChange={(e) =>
-                  onChange({
-                    ...safeData,
-                    characterClass: e.target.value as OrdemSheetData['characterClass'],
-                    trail: undefined,
-                  })
-                }
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
-              >
-                <option value="combatente">Combatente</option>
-                <option value="especialista">Especialista</option>
-                <option value="ocultista">Ocultista</option>
-                <option value="mundano">Mundano (0%)</option>
-              </select>
-            ) : (
-              <p className="text-sm font-semibold text-amber-400 uppercase">
-                {safeData.characterClass}
-              </p>
-            )}
+            <p className="text-sm font-semibold text-amber-400 uppercase">
+              {safeData.characterClass}
+            </p>
           </div>
 
-          {/* Trilha (10%+) */}
+          {/* Trilha (10%+ — Fixa após ser escolhida) */}
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
               Trilha (NEX 10%+)
             </label>
-            {allowAttrEdit && safeData.characterClass !== 'mundano' ? (
-              <div className="flex gap-1">
-                <select
-                  value={safeData.trail || ''}
-                  onChange={(e) => {
-                    const nextTrail = e.target.value || undefined;
-                    onChange({ ...safeData, trail: nextTrail });
-                    if (nextTrail && onSyncTrailAbilities) {
-                      onSyncTrailAbilities(nextTrail, safeData.nex);
-                    }
-                  }}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
-                >
-                  <option value="">-- Sem Trilha --</option>
-                  {classTrails.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <p className="text-sm font-semibold text-amber-300">
-                {activeTrailObj ? activeTrailObj.name : safeData.nex >= 10 ? 'Não escolhida' : 'Bloqueada (<10%)'}
-              </p>
-            )}
+            <p className="text-sm font-semibold text-amber-300">
+              {activeTrailObj
+                ? activeTrailObj.name
+                : safeData.nex >= 10
+                ? 'Não escolhida'
+                : 'Bloqueada (<10%)'}
+            </p>
           </div>
 
           {/* NEX (%) + Botão Evoluir NEX */}
@@ -251,10 +224,10 @@ export function OrdemSheet({
             </div>
           </div>
 
-          {/* Patente & Prestígio */}
+          {/* Patente, Prestígio & Limite de Crédito */}
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
-              Patente & Prestígio
+              Patente & Crédito
             </label>
             {allowAttrEdit ? (
               <div className="flex gap-1">
@@ -285,52 +258,46 @@ export function OrdemSheet({
                 />
               </div>
             ) : (
-              <p className="text-sm font-semibold text-white">
-                {safeData.patent}{' '}
-                <span className="text-xs font-mono text-zinc-400">
-                  ({safeData.prestigePoints ?? 0} PP)
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  {safeData.patent}{' '}
+                  <span className="text-xs font-mono text-zinc-400">
+                    ({safeData.prestigePoints ?? 0} PP)
+                  </span>
+                </p>
+                <span className="inline-block text-[10px] font-mono text-emerald-400">
+                  💰 Crédito: <strong>{effectiveCredit}</strong>
                 </span>
-              </p>
+              </div>
             )}
           </div>
 
-          {/* Afinidade Elemental (50%+) ou Cena de Interlúdio */}
+          {/* Afinidade Elemental (50%+) e Cena de Interlúdio (Exclusivo do Mestre) */}
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
-              {safeData.nex >= 50 ? 'Afinidade (50%+)' : 'Descanso / Interlúdio'}
+              {onOpenInterlude ? 'Afinidade / Interlúdio' : 'Afinidade (50%+)'}
             </label>
-            {safeData.nex >= 50 && allowAttrEdit ? (
-              <select
-                value={safeData.affinity || ''}
-                onChange={(e) =>
-                  onChange({ ...safeData, affinity: e.target.value || undefined })
-                }
-                className="w-full bg-zinc-950 border border-purple-500/50 rounded px-2 py-1.5 text-xs text-purple-200"
-              >
-                <option value="">-- Sem Afinidade --</option>
-                <option value="Sangue">🩸 Sangue</option>
-                <option value="Morte">💀 Morte</option>
-                <option value="Conhecimento">👁️ Conhecimento</option>
-                <option value="Energia">⚡ Energia</option>
-              </select>
-            ) : (
-              <div className="flex items-center gap-2">
-                {safeData.affinity && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
-                    {safeData.affinity}
-                  </span>
-                )}
-                {onOpenInterlude && (
-                  <button
-                    type="button"
-                    onClick={onOpenInterlude}
-                    className="px-2.5 py-1 bg-indigo-950/80 hover:bg-indigo-800 text-indigo-200 border border-indigo-700 rounded-lg text-xs font-bold transition cursor-pointer"
-                  >
-                    🌙 Cena de Interlúdio
-                  </button>
-                )}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {safeData.affinity ? (
+                <span className="text-xs font-bold px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
+                  {safeData.affinity}
+                </span>
+              ) : (
+                <span className="text-xs text-zinc-500 font-semibold">
+                  {safeData.nex >= 50 ? 'Não escolhida' : 'Bloqueada (<50%)'}
+                </span>
+              )}
+              {onOpenInterlude && (
+                <button
+                  type="button"
+                  onClick={onOpenInterlude}
+                  className="px-2.5 py-1 bg-indigo-950/80 hover:bg-indigo-800 text-indigo-200 border border-indigo-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                  title="Exclusivo do Mestre: Aplicar recuperação de Cena de Interlúdio"
+                >
+                  🌙 Cena de Interlúdio
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -375,7 +342,7 @@ export function OrdemSheet({
                 🔮 DT de Rituais / Poderes
               </span>
               <span className="text-[10px] text-zinc-500">
-                10 + Limite PE ({peLimitPerTurn}) + PRE ({effectivePre})
+                10 + Limite Base + PRE ({effectivePre})
               </span>
             </div>
             <span className="text-xl font-black font-mono text-purple-300">
@@ -389,7 +356,11 @@ export function OrdemSheet({
                 🏃 Deslocamento
               </span>
               <span className="text-[10px] text-zinc-500">
-                {isOverloaded ? '⚠️ Reduzido (-3m sobrecarga)' : 'Padrão da cena'}
+                {isOverloaded
+                  ? '⚠️ Reduzido (-3m sobrecarga)'
+                  : isTrabalhadorRural
+                  ? '🌿 Ignora Terreno Difícil'
+                  : 'Padrão da cena'}
               </span>
             </div>
             <span
@@ -401,6 +372,15 @@ export function OrdemSheet({
             </span>
           </div>
         </div>
+
+        {/* Indicadores Passivos Especiais da Origem (Teórico da Conspiração, etc.) */}
+        {isTeoricoConspiracao && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/70 text-cyan-200 text-xs font-bold">
+              🧠 Eu Já Sabia (Teórico da Conspiração): Resistência a Dano Mental = {mentalResistance} (Intelecto)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Pentágono de Atributos com Bônus Ativos e Regra de 0 Dados (2d20 menor) */}
@@ -429,7 +409,21 @@ export function OrdemSheet({
                 key={attrKey}
                 onClick={() => {
                   if (!allowAttrEdit) {
-                    onRoll(`Teste de ${ATTRIBUTE_LABELS[attrKey]}`, rawTotalDice, 20, 0);
+                    let attrMod = 0;
+                    let labelSuffix = '';
+                    // Acadêmico — Saber é Poder (+5 em testes usando Intelecto por 2 PE)
+                    if (armOriginBoost && originId === 'academico' && attrKey === 'int') {
+                      if (onSpendResource && !onSpendResource(2)) return;
+                      attrMod += 5;
+                      labelSuffix = ' [Saber é Poder +5]';
+                      setArmOriginBoost(false);
+                    }
+                    onRoll(
+                      `Teste de ${ATTRIBUTE_LABELS[attrKey]}${labelSuffix}`,
+                      rawTotalDice,
+                      20,
+                      attrMod
+                    );
                   }
                 }}
                 className={`bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center gap-1 transition ${
@@ -479,7 +473,7 @@ export function OrdemSheet({
 
       {/* Perícias (Tabela 2.1 Oficial v1.3: Somente Treinada, Penalidade de Carga, Kit, 0d20) */}
       <div className="bg-zinc-900 p-5 rounded-xl border border-zinc-800">
-        <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
           <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500">
             Perícias ({safeData.skills.length})
           </h3>
@@ -495,6 +489,106 @@ export function OrdemSheet({
             </span>
           </div>
         </div>
+
+        {/* Barra de Automação Rápida do Poder de Origem para Testes de Perícia */}
+        {['academico', 'atleta', 'executivo', 'investigador', 'trabalhador_rural', 'ti', 'trambiqueiro'].includes(
+          originId
+        ) && (
+          <div className="mb-3 p-3 rounded-xl bg-amber-950/20 border border-amber-700/40 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs text-amber-200">
+              <strong className="text-amber-400">
+                ✨ {originObj?.powerName} (Poder de {originObj?.name}):
+              </strong>{' '}
+              <span className="text-zinc-300">{originObj?.powerDescription}</span>
+            </div>
+
+            {originId === 'ti' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSpendResource && !onSpendResource(2)) return;
+                  const tecSk = safeData.skills.find((s) => s.id === 'tecnologia');
+                  const tecDice =
+                    effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['tecnologia'] || 0);
+                  const tecMod =
+                    (tecSk?.trainingDegree || 0) +
+                    (tecSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['tecnologia'] || 0);
+                  onRoll('Motor de Busca (Substituído por Tecnologia)', tecDice, 20, tecMod);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shrink-0 shadow"
+              >
+                💻 Usar Motor de Busca (-2 PE → Rolar Tecnologia)
+              </button>
+            ) : originId === 'trambiqueiro' ? (
+              <button
+                type="button"
+                disabled={impostorUsedInScene}
+                onClick={() => {
+                  if (impostorUsedInScene) return;
+                  if (
+                    onSpendResource &&
+                    !onSpendResource(2, {
+                      id: 'orig-scene-impostor',
+                      name: 'Impostor (Poder de Trambiqueiro)',
+                      source: '1x/Cena',
+                      description: 'Teste de perícia substituído por Enganação nesta cena',
+                    })
+                  ) {
+                    return;
+                  }
+                  const engSk = safeData.skills.find((s) => s.id === 'enganacao');
+                  const engDice =
+                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['enganacao'] || 0);
+                  const engMod =
+                    (engSk?.trainingDegree || 0) +
+                    (engSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['enganacao'] || 0);
+                  onRoll('Impostor (Substituído por Enganação — 1x/Cena)', engDice, 20, engMod);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
+                  impostorUsedInScene
+                    ? 'bg-zinc-900 border border-zinc-700 text-zinc-500 cursor-not-allowed'
+                    : 'bg-amber-600 hover:bg-amber-500 text-white cursor-pointer shadow'
+                }`}
+              >
+                {impostorUsedInScene
+                  ? '✓ Impostor já usado nesta cena'
+                  : '🎭 Usar Impostor (-2 PE → Rolar Enganação, 1x/Cena)'}
+              </button>
+            ) : originId === 'investigador' && faroPistasUsedInScene ? (
+              <span className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-500 text-xs font-bold shrink-0">
+                ✓ Faro para Pistas já usado nesta cena
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!armOriginBoost) {
+                    if (
+                      onCheckResource &&
+                      !onCheckResource(originObj?.powerCost || 0, originObj?.powerName)
+                    ) {
+                      return;
+                    }
+                  }
+                  setArmOriginBoost((prev) => !prev);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                  armOriginBoost
+                    ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow-lg'
+                    : 'bg-zinc-900 hover:bg-amber-950 text-amber-300 border-amber-600/60'
+                }`}
+              >
+                {armOriginBoost
+                  ? `⚡ ${originObj?.powerName} (Poder de ${originObj?.name}) ARMADO (+5 no próximo teste, -${originObj?.powerCost} PE)`
+                  : `✨ Armar ${originObj?.powerName} (Poder de ${originObj?.name}) (+5 no próximo teste, -${originObj?.powerCost} PE)`}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-1">
           {safeData.skills.map((skill) => {
@@ -533,7 +627,52 @@ export function OrdemSheet({
                       ) {
                         return;
                       }
-                      onRoll(`Perícia: ${skill.name}`, rawDiceCount, 20, totalBonus);
+
+                      let rollMod = totalBonus;
+                      let rollSuffix = '';
+
+                      if (armOriginBoost && originObj) {
+                        const isEligible =
+                          (originId === 'academico' && skill.attribute === 'int') ||
+                          (originId === 'atleta' &&
+                            (skill.attribute === 'for' || skill.attribute === 'agi') &&
+                            skill.id !== 'luta' &&
+                            skill.id !== 'pontaria') ||
+                          originId === 'executivo' ||
+                          (originId === 'investigador' && !faroPistasUsedInScene) ||
+                          (originId === 'trabalhador_rural' &&
+                            (skill.id === 'adestramento' || skill.id === 'sobrevivencia'));
+
+                        if (isEligible) {
+                          const extraSceneEffect: SceneEffect | undefined =
+                            originId === 'investigador'
+                              ? {
+                                  id: 'orig-scene-faro-pistas',
+                                  name: 'Faro para Pistas (Poder de Investigador)',
+                                  source: '1x/Cena',
+                                  description: '+5 usado em teste para procurar pistas nesta cena',
+                                }
+                              : undefined;
+
+                          if (
+                            onSpendResource &&
+                            !onSpendResource(originObj.powerCost, extraSceneEffect)
+                          ) {
+                            setArmOriginBoost(false);
+                            return;
+                          }
+                          const originAbActive = abilities.some(
+                            (a) => a.id === `orig-${originId}` && a.isActive !== false
+                          );
+                          if (!originAbActive) {
+                            rollMod += 5;
+                          }
+                          rollSuffix = ` [${originObj.powerName} (Poder de ${originObj.name}) +5]`;
+                          setArmOriginBoost(false);
+                        }
+                      }
+
+                      onRoll(`Perícia: ${skill.name}${rollSuffix}`, rawDiceCount, 20, rollMod);
                     }}
                     className={`px-2.5 py-1 border rounded text-xs font-mono font-bold transition cursor-pointer shrink-0 ${
                       isUntrainedLocked
