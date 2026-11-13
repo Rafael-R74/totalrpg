@@ -66,6 +66,14 @@ io.on('connection', (socket) => {
     socket.to(campaignId).emit('postit:received', { postIt, action });
   });
 
+  socket.on('postit:dismiss', ({ campaignId, postItId, characterId }) => {
+    socket.to(campaignId).emit('postit:dismissed', { postItId, characterId });
+  });
+
+  socket.on('item:giveNotify', ({ campaignId, targetCharacterId, item, attack }) => {
+    socket.to(campaignId).emit('item:received', { targetCharacterId, item, attack });
+  });
+
   // Motor de rolagem de dados (Com isolamento de autor e gatilho automático de Iniciativa)
   socket.on(
     'dice:roll',

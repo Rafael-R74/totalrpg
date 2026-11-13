@@ -21,7 +21,7 @@ model User {
   receivedInvites CampaignInvite[]
 }
 
-// 2. Tabela de Aventuras (Com Travas do Mestre)
+// 2. Tabela de Aventuras 
 model Campaign {
   id          String   @id @default(uuid())
   name        String
@@ -36,6 +36,14 @@ model Campaign {
   allowEditInventory  Boolean @default(true)
   allowEditAbilities  Boolean @default(true)
   allowEditAttributes Boolean @default(false)
+
+  // Dados Persistentes do Escudo do Mestre (Etapa 4D - Usando Json? compatível com SQLite)
+  dmNotes       String @default("")
+  combatState   Json?
+  threats       Json?
+  campaignItems Json?
+  merchants     Json?
+  postIts       Json?
 
   dmId String
   dm   User   @relation(fields: [dmId], references: [id])

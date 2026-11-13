@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
+import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
 
 export const campaignsRouter = Router();
@@ -376,5 +377,58 @@ campaignsRouter.put('/:campaignId/permissions', async (req: AuthenticatedRequest
   } catch (error) {
     console.error('Erro ao atualizar travas da campanha:', error);
     return res.status(500).json({ error: 'Erro ao atualizar permissões da mesa.' });
+  }
+});
+
+// Salvar dados dos blocos do Escudo do Mestre no banco SQLite (Etapa 4D)
+campaignsRouter.put('/:campaignId/dm-data', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { campaignId } = req.params;
+
+    if (!campaignId || typeof campaignId !== 'string') {
+      return res.status(400).json({ error: 'ID da campanha inválido.' });
+    }
+
+    const existing = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!existing || existing.dmId !== req.userId) {
+      return res.status(403).json({ error: 'Apenas o Mestre pode salvar dados desta campanha.' });
+    }
+
+    const { dmNotes, combatState, threats, campaignItems, merchants, postIts } = req.body;
+
+    const updated = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        dmNotes: dmNotes !== undefined ? String(dmNotes) : existing.dmNotes,
+        combatState:
+          combatState !== undefined
+            ? (combatState as Prisma.InputJsonValue)
+            : (existing.combatState as Prisma.InputJsonValue),
+        threats:
+          threats !== undefined
+            ? (threats as Prisma.InputJsonValue)
+            : (existing.threats as Prisma.InputJsonValue),
+        campaignItems:
+          campaignItems !== undefined
+            ? (campaignItems as Prisma.InputJsonValue)
+            : (existing.campaignItems as Prisma.InputJsonValue),
+        merchants:
+          merchants !== undefined
+            ? (merchants as Prisma.InputJsonValue)
+            : (existing.merchants as Prisma.InputJsonValue),
+        postIts:
+          postIts !== undefined
+            ? (postIts as Prisma.InputJsonValue)
+            : (existing.postIts as Prisma.InputJsonValue),
+      },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Erro ao salvar dados do Escudo do Mestre:', error);
+    return res.status(500).json({ error: 'Erro ao salvar dados da campanha no banco.' });
   }
 });

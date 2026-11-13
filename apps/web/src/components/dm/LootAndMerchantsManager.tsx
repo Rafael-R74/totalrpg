@@ -26,7 +26,8 @@ interface LootAndMerchantsManagerProps {
   onDeliverItemToCharacter: (
     character: DMScreenCharacter,
     item: RPGItem,
-    attack?: PreparedAttack
+    attack?: PreparedAttack,
+    fromMerchant?: boolean
   ) => Promise<void>;
 }
 
@@ -40,6 +41,8 @@ export function LootAndMerchantsManager({
   onUpdateMerchants,
   onDeliverItemToCharacter,
 }: LootAndMerchantsManagerProps) {
+  const defaultCurrency = system === 'ordem-paranormal' ? 'Cat.' : 'T$';
+
   // Estados de Criação / Edição de Item da Aventura
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [editingStoredItemId, setEditingStoredItemId] = useState<string | null>(null);
@@ -53,8 +56,11 @@ export function LootAndMerchantsManager({
   const [isCompendiumVaultModalOpen, setIsCompendiumVaultModalOpen] = useState(false);
   const [vaultSearchQuery, setVaultSearchQuery] = useState('');
 
-  // Modal para Entregar Item a um Jogador
-  const [itemToGiveModal, setItemToGiveModal] = useState<CampaignStoredItem | null>(null);
+  // Modal para Entregar Item a um Jogador (Guarda se veio de um Mercador ou do Cofre da Aventura)
+  const [itemToGiveModal, setItemToGiveModal] = useState<{
+    stored: CampaignStoredItem;
+    fromMerchant: boolean;
+  } | null>(null);
   const [selectedRecipientCharId, setSelectedRecipientCharId] = useState('');
 
   // Estados de Criação / Edição de Mercador
@@ -63,23 +69,22 @@ export function LootAndMerchantsManager({
   const [merchantName, setMerchantName] = useState('');
   const [merchantDesc, setMerchantDesc] = useState('');
 
-  // Modal com 2 Abas para Adicionar Item ao Estoque de um Mercador
+  // Modal com 2 Abas para Adicionar Item ao Estoque de um Mercador + Preço e Moeda Customizável
   const [stockModalMerchantId, setStockModalMerchantId] = useState<string | null>(null);
   const [stockModalTab, setStockModalTab] = useState<'adventure' | 'compendium'>('adventure');
   const [stockSearchQuery, setStockSearchQuery] = useState('');
   const [stockPriceInput, setStockPriceInput] = useState<number>(50);
+  const [stockCurrencyInput, setStockCurrencyInput] = useState<string>(defaultCurrency);
 
-  // Estado para Editar um Item Específico dentro do Estoque do Mercador
+  // Estado para Editar um Item Específico dentro do Estoque do Mercador (Nome, Preço e Moeda)
   const [editingStockItem, setEditingStockItem] = useState<{
     merchantId: string;
     stockItem: MerchantStockItem;
   } | null>(null);
   const [editStockName, setEditStockName] = useState('');
   const [editStockPrice, setEditStockPrice] = useState(0);
+  const [editStockCurrency, setEditStockCurrency] = useState(defaultCurrency);
 
-  const currencyLabel = system === 'ordem-paranormal' ? 'Cat/Prestígio' : 'T$';
-
-  // Abre formulário limpo para novo item da aventura
   function handleOpenNewItemForm() {
     setEditingStoredItemId(null);
     setItemName('');
@@ -90,7 +95,6 @@ export function LootAndMerchantsManager({
     setIsItemFormOpen(true);
   }
 
-  // Abre formulário preenchido para editar um item da aventura
   function handleStartEditStoredItem(stored: CampaignStoredItem) {
     setEditingStoredItemId(stored.id);
     setItemName(stored.item.name);
@@ -180,19 +184,23 @@ export function LootAndMerchantsManager({
     if (!targetChar) return;
 
     const clonedItem: RPGItem = {
-      ...itemToGiveModal.item,
+      ...itemToGiveModal.stored.item,
       id: Math.random().toString(36).substring(2, 9),
     };
-    const clonedAttack = itemToGiveModal.attack
-      ? { ...itemToGiveModal.attack, id: Math.random().toString(36).substring(2, 9) }
+    const clonedAttack = itemToGiveModal.stored.attack
+      ? { ...itemToGiveModal.stored.attack, id: Math.random().toString(36).substring(2, 9) }
       : undefined;
 
-    await onDeliverItemToCharacter(targetChar, clonedItem, clonedAttack);
+    await onDeliverItemToCharacter(
+      targetChar,
+      clonedItem,
+      clonedAttack,
+      itemToGiveModal.fromMerchant
+    );
     setItemToGiveModal(null);
     setSelectedRecipientCharId('');
   }
 
-  // Criação e Edição de Mercadores
   function handleOpenNewMerchantForm() {
     setEditingMerchantId(null);
     setMerchantName('');
@@ -233,9 +241,10 @@ export function LootAndMerchantsManager({
     setIsMerchantFormOpen(false);
   }
 
-  // Adiciona item ao estoque do mercador a partir do Modal (da Aventura ou do Compêndio)
   function handleAddToMerchantStock(item: RPGItem, attack?: PreparedAttack) {
     if (!stockModalMerchantId) return;
+
+    const cleanCurrency = stockCurrencyInput.trim() || defaultCurrency;
 
     const updatedMerchants = merchants.map((m) => {
       if (m.id !== stockModalMerchantId) return m;
@@ -248,6 +257,7 @@ export function LootAndMerchantsManager({
             item: { ...item, id: Math.random().toString(36).substring(2, 9) },
             attack: attack ? { ...attack, id: Math.random().toString(36).substring(2, 9) } : undefined,
             price: Math.max(0, Number(stockPriceInput)),
+            currency: cleanCurrency,
             stockQty: 1,
           },
         ],
@@ -257,10 +267,11 @@ export function LootAndMerchantsManager({
     onUpdateMerchants(updatedMerchants);
   }
 
-  // Salva a edição de um item específico dentro do estoque de um mercador
   function handleSaveStockItemEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingStockItem) return;
+
+    const cleanCurrency = editStockCurrency.trim() || defaultCurrency;
 
     const updatedMerchants = merchants.map((m) => {
       if (m.id !== editingStockItem.merchantId) return m;
@@ -271,6 +282,7 @@ export function LootAndMerchantsManager({
             ? {
                 ...st,
                 price: Math.max(0, Number(editStockPrice)),
+                currency: cleanCurrency,
                 item: { ...st.item, name: editStockName.trim() || st.item.name },
               }
             : st
@@ -376,7 +388,7 @@ export function LootAndMerchantsManager({
         </div>
       )}
 
-      {/* MODAL 2: ADICIONAR ITEM AO ESTOQUE DO MERCADOR (COM 2 ABAS E PREÇO) */}
+      {/* MODAL 2: ADICIONAR ITEM AO ESTOQUE DO MERCADOR (COM 2 ABAS + PREÇO + MOEDA PERSONALIZÁVEL) */}
       {activeMerchantForModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-blue-500/70 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[88vh]">
@@ -398,7 +410,6 @@ export function LootAndMerchantsManager({
               </button>
             </div>
 
-            {/* Seletor das 2 Abas (Itens da Aventura vs Compêndio) */}
             <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800">
               <button
                 type="button"
@@ -424,8 +435,8 @@ export function LootAndMerchantsManager({
               </button>
             </div>
 
-            {/* Barra de Pesquisa + Campo de Preço na Loja */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+            {/* Barra de Pesquisa + Valor Numérico + Moeda Personalizável */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
               <div className="sm:col-span-2">
                 <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
                   Pesquisar Item
@@ -440,7 +451,7 @@ export function LootAndMerchantsManager({
               </div>
               <div>
                 <label className="block text-[10px] uppercase text-amber-400 font-bold mb-1">
-                  Valor na Loja ({currencyLabel})
+                  Valor / Preço
                 </label>
                 <input
                   type="number"
@@ -450,14 +461,25 @@ export function LootAndMerchantsManager({
                   className="w-full bg-zinc-900 border border-amber-600/80 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-amber-400"
                 />
               </div>
+              <div>
+                <label className="block text-[10px] uppercase text-amber-400 font-bold mb-1">
+                  Moeda (Ex: T$, PO, Almas)
+                </label>
+                <input
+                  type="text"
+                  value={stockCurrencyInput}
+                  onChange={(e) => setStockCurrencyInput(e.target.value)}
+                  placeholder="T$, PO, Cat..."
+                  className="w-full bg-zinc-900 border border-amber-600/80 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-white"
+                />
+              </div>
             </div>
 
-            {/* Lista de Itens conforme a Aba Selecionada */}
             <div className="flex flex-col gap-2 overflow-y-auto pr-1 max-h-[360px]">
               {stockModalTab === 'adventure' ? (
                 filteredAdventureForStock.length === 0 ? (
                   <p className="text-xs text-zinc-500 text-center py-8">
-                    Nenhum item encontrado no Bloco de Itens da Aventura. Use a aba &quot;📚 Itens do Compêndio&quot; ao lado ou crie um item na aventura!
+                    Nenhum item encontrado no Bloco de Itens da Aventura.
                   </p>
                 ) : (
                   filteredAdventureForStock.map((stored) => (
@@ -479,7 +501,7 @@ export function LootAndMerchantsManager({
                         onClick={() => handleAddToMerchantStock(stored.item, stored.attack)}
                         className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap"
                       >
-                        + Adicionar por {stockPriceInput} {currencyLabel}
+                        + Adicionar ({stockPriceInput} {stockCurrencyInput || defaultCurrency})
                       </button>
                     </div>
                   ))
@@ -531,7 +553,7 @@ export function LootAndMerchantsManager({
                       }}
                       className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap"
                     >
-                      + Adicionar por {stockPriceInput} {currencyLabel}
+                      + Adicionar ({stockPriceInput} {stockCurrencyInput || defaultCurrency})
                     </button>
                   </div>
                 ))
@@ -541,7 +563,7 @@ export function LootAndMerchantsManager({
         </div>
       )}
 
-      {/* MODAL 3: EDITAR ITEM DO ESTOQUE DO MERCADOR */}
+      {/* MODAL 3: EDITAR ITEM DO ESTOQUE DO MERCADOR (INCLUINDO MOEDA PERSONALIZADA) */}
       {editingStockItem && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <form
@@ -561,17 +583,28 @@ export function LootAndMerchantsManager({
                 className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white"
               />
             </div>
-            <div>
-              <label className="block text-xs text-zinc-400 mb-1">
-                Valor / Preço ({currencyLabel})
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={editStockPrice}
-                onChange={(e) => setEditStockPrice(Number(e.target.value))}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-400"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Valor / Preço</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={editStockPrice}
+                  onChange={(e) => setEditStockPrice(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Moeda</label>
+                <input
+                  type="text"
+                  required
+                  value={editStockCurrency}
+                  onChange={(e) => setEditStockCurrency(e.target.value)}
+                  placeholder="Ex: T$, PO, Almas..."
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-white"
+                />
+              </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -602,13 +635,17 @@ export function LootAndMerchantsManager({
             <div className="flex justify-between items-start">
               <div>
                 <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
-                  🎁 Entregar Item da Aventura
+                  {itemToGiveModal.fromMerchant
+                    ? '🪙 Venda / Entrega de Mercador (Silenciosa)'
+                    : '🎁 Entregar Recompensa da Aventura (Com Modal de Loot)'}
                 </span>
                 <h3 className="text-lg font-extrabold text-white mt-0.5">
-                  {itemToGiveModal.item.name}
+                  {itemToGiveModal.stored.item.name}
                 </h3>
-                {itemToGiveModal.item.description && (
-                  <p className="text-xs text-zinc-400 mt-1">{itemToGiveModal.item.description}</p>
+                {itemToGiveModal.stored.item.description && (
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {itemToGiveModal.stored.item.description}
+                  </p>
                 )}
               </div>
               <button
@@ -804,7 +841,7 @@ export function LootAndMerchantsManager({
                     type="button"
                     onClick={() => {
                       setSelectedRecipientCharId('');
-                      setItemToGiveModal(stored);
+                      setItemToGiveModal({ stored, fromMerchant: false });
                     }}
                     className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition cursor-pointer"
                   >
@@ -842,7 +879,7 @@ export function LootAndMerchantsManager({
               🪙 Bloco de Mercadores & Lojas ({merchants.length})
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Monte e edite NPCs mercadores e abasteça suas lojas com itens da aventura ou do Compêndio.
+              Monte e edite NPCs mercadores e abasteça suas lojas com qualquer moeda personalizada.
             </p>
           </div>
 
@@ -948,71 +985,79 @@ export function LootAndMerchantsManager({
                         Estoque vazio. Clique no botão abaixo para adicionar itens à loja!
                       </p>
                     ) : (
-                      merchant.stock.map((st) => (
-                        <div
-                          key={st.id}
-                          className="bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl flex justify-between items-center gap-2"
-                        >
-                          <div className="truncate">
-                            <span className="text-xs font-bold text-white">{st.item.name}</span>
-                            <span className="text-[11px] font-mono text-amber-400 ml-2">
-                              [{currencyLabel}: {st.price}]
-                            </span>
+                      merchant.stock.map((st) => {
+                        const displayCurrency = st.currency || defaultCurrency;
+
+                        return (
+                          <div
+                            key={st.id}
+                            className="bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl flex justify-between items-center gap-2"
+                          >
+                            <div className="truncate">
+                              <span className="text-xs font-bold text-white">{st.item.name}</span>
+                              <span className="text-[11px] font-mono text-amber-400 ml-2">
+                                [{st.price} {displayCurrency}]
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedRecipientCharId('');
+                                  setItemToGiveModal({
+                                    stored: {
+                                      id: st.id,
+                                      item: st.item,
+                                      attack: st.attack,
+                                    },
+                                    fromMerchant: true, // Silencioso: Não dispara modal de Loot!
+                                  });
+                                }}
+                                className="px-2 py-1 bg-blue-800 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                              >
+                                Vender / Entregar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingStockItem({ merchantId: merchant.id, stockItem: st });
+                                  setEditStockName(st.item.name);
+                                  setEditStockPrice(st.price);
+                                  setEditStockCurrency(st.currency || defaultCurrency);
+                                }}
+                                className="px-1.5 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded text-[10px] cursor-pointer"
+                                title="Editar preço, moeda ou nome"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = merchants.map((m) =>
+                                    m.id === merchant.id
+                                      ? { ...m, stock: m.stock.filter((s) => s.id !== st.id) }
+                                      : m
+                                  );
+                                  onUpdateMerchants(updated);
+                                }}
+                                className="text-xs text-zinc-500 hover:text-red-400 px-1 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedRecipientCharId('');
-                                setItemToGiveModal({
-                                  id: st.id,
-                                  item: st.item,
-                                  attack: st.attack,
-                                });
-                              }}
-                              className="px-2 py-1 bg-emerald-800 hover:bg-emerald-700 text-white rounded text-[10px] font-bold cursor-pointer"
-                            >
-                              Entregar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingStockItem({ merchantId: merchant.id, stockItem: st });
-                                setEditStockName(st.item.name);
-                                setEditStockPrice(st.price);
-                              }}
-                              className="px-1.5 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded text-[10px] cursor-pointer"
-                              title="Editar preço/nome no estoque"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = merchants.map((m) =>
-                                  m.id === merchant.id
-                                    ? { ...m, stock: m.stock.filter((s) => s.id !== st.id) }
-                                    : m
-                                );
-                                onUpdateMerchants(updated);
-                              }}
-                              className="text-xs text-zinc-500 hover:text-red-400 px-1 cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
 
-                {/* Botão Limpo que abre o Modal de Estoque com as 2 Abas */}
                 <button
                   type="button"
                   onClick={() => {
                     setStockSearchQuery('');
                     setStockPriceInput(50);
+                    setStockCurrencyInput(defaultCurrency);
                     setStockModalTab('adventure');
                     setStockModalMerchantId(merchant.id);
                   }}

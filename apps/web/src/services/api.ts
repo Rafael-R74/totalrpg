@@ -302,6 +302,12 @@ export interface DMScreenCampaignData extends SheetPermissions {
   system: SystemId;
   inviteCode: string;
   dmId: string;
+  dmNotes?: string;
+  combatState?: any;
+  threats?: any[];
+  campaignItems?: any[];
+  merchants?: any[];
+  postIts?: any[];
   characters: DMScreenCharacter[];
   invites: Array<{
     id: string;
@@ -331,4 +337,26 @@ export async function updateCampaignPermissions(
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao atualizar travas da campanha.');
   return data;
+}
+
+export async function updateCampaignDMData(
+  campaignId: string,
+  payload: {
+    dmNotes?: string;
+    combatState?: any;
+    threats?: any[];
+    campaignItems?: any[];
+    merchants?: any[];
+    postIts?: any[];
+  }
+): Promise<void> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/dm-data`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Erro ao salvar dados do Escudo no banco.');
+  }
 }

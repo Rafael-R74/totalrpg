@@ -53,7 +53,6 @@ export function NotesAndPostItsManager({
   const [brushColor, setBrushColor] = useState('#f59e0b');
   const [brushSize, setBrushSize] = useState(3);
 
-  // Opções integradas para transformar a anotação/desenho atual em um Post-it
   const [postItTitle, setPostItTitle] = useState('');
   const [postItColor, setPostItColor] = useState<StickyPostIt['color']>('amber');
 
@@ -115,7 +114,6 @@ export function NotesAndPostItsManager({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  // Transforma o texto ou o desenho atual diretamente em um Post-it Flutuante
   function handleTransformCurrentIntoPostIt() {
     let drawingDataUrl: string | undefined = undefined;
     let textContent = '';
@@ -139,10 +137,10 @@ export function NotesAndPostItsManager({
       color: postItColor,
       x: 120 + offsetCount * 35,
       y: 120 + offsetCount * 35,
-      width: 290,
-      height: noteMode === 'draw' ? 320 : 220,
+      width: 310,
+      height: noteMode === 'draw' ? 340 : 250,
       isPinned: true,
-      sharedWithCharacterId: null,
+      sharedWithCharacterIds: [],
     };
 
     onUpdatePostIts([...postIts, newPost]);
@@ -151,7 +149,6 @@ export function NotesAndPostItsManager({
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-5 shadow-lg">
-      {/* Cabeçalho Unificado do Caderno */}
       <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
         <div>
           <h3 className="text-sm font-extrabold uppercase tracking-wider text-amber-500">
@@ -184,7 +181,6 @@ export function NotesAndPostItsManager({
         </div>
       </div>
 
-      {/* Área Principal: Texto ou Quadro de Desenho */}
       {noteMode === 'text' ? (
         <textarea
           rows={10}
@@ -294,59 +290,70 @@ export function NotesAndPostItsManager({
         </button>
       </div>
 
-      {/* Lista Compacta de Post-its já criados (para reabrir caso o Mestre tenha minimizado algum) */}
+      {/* Lista Compacta de Post-its Salvos */}
       {postIts.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800">
           <span className="text-[11px] font-bold uppercase text-zinc-400">
             Post-its Salvos ({postIts.length}):
           </span>
-          {postIts.map((post) => (
-            <div
-              key={post.id}
-              className="bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-lg flex items-center gap-2 text-xs"
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  onUpdatePostIts(
-                    postIts.map((p) => (p.id === post.id ? { ...p, isPinned: !p.isPinned } : p))
-                  )
-                }
-                className={`font-bold cursor-pointer ${
-                  post.isPinned ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
+          {postIts.map((post) => {
+            const sharedCount = Array.isArray(post.sharedWithCharacterIds)
+              ? post.sharedWithCharacterIds.length
+              : 0;
+
+            return (
+              <div
+                key={post.id}
+                className="bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-lg flex items-center gap-2 text-xs"
               >
-                {post.isPinned ? '📌 ' : '👁️‍🗨️ '}
-                {post.title}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (post.sharedWithCharacterId) {
-                    onBroadcastPostIt(post, 'hide');
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdatePostIts(
+                      postIts.map((p) => (p.id === post.id ? { ...p, isPinned: !p.isPinned } : p))
+                    )
                   }
-                  onUpdatePostIts(postIts.filter((p) => p.id !== post.id));
-                }}
-                className="text-zinc-600 hover:text-red-400 cursor-pointer"
-                title="Excluir Post-it"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+                  className={`font-bold cursor-pointer ${
+                    post.isPinned ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {post.isPinned ? '📌 ' : '👁️‍🗨️ '}
+                  {post.title}
+                  {sharedCount > 0 && (
+                    <span className="ml-1 text-[10px] text-emerald-400">
+                      ({sharedCount} vendo)
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (sharedCount > 0) {
+                      onBroadcastPostIt({ ...post, sharedWithCharacterIds: [] }, 'hide');
+                    }
+                    onUpdatePostIts(postIts.filter((p) => p.id !== post.id));
+                  }}
+                  className="text-zinc-600 hover:text-red-400 cursor-pointer"
+                  title="Excluir Post-it"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-// CAMADA GLOBAL DE POST-ITS FLUTUANTES
+// CAMADA GLOBAL DE POST-ITS FLUTUANTES (Para o Mestre e para os Jogadores!)
 interface FloatingPostItsLayerProps {
   postIts: StickyPostIt[];
   characters?: DMScreenCharacter[];
   isDMView: boolean;
   onUpdatePostIt?: (updated: StickyPostIt) => void;
-  onSharePostItWithPlayer?: (postIt: StickyPostIt, targetCharId: string | 'all' | null) => void;
+  onUpdatePostItSharing?: (postIt: StickyPostIt, nextCharacterIds: string[]) => void;
   onClosePlayerPostIt?: (id: string) => void;
 }
 
@@ -355,7 +362,7 @@ export function FloatingPostItsLayer({
   characters = [],
   isDMView,
   onUpdatePostIt,
-  onSharePostItWithPlayer,
+  onUpdatePostItSharing,
   onClosePlayerPostIt,
 }: FloatingPostItsLayerProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -393,6 +400,13 @@ export function FloatingPostItsLayer({
     <>
       {visiblePostIts.map((post) => {
         const theme = POSTIT_COLORS[post.color] || POSTIT_COLORS.amber;
+        const sharedIds = Array.isArray(post.sharedWithCharacterIds)
+          ? post.sharedWithCharacterIds
+          : [];
+
+        const allCharIds = characters.map((c) => c.id);
+        const isSharedWithAll =
+          allCharIds.length > 0 && allCharIds.every((id) => sharedIds.includes(id));
 
         return (
           <div
@@ -403,20 +417,24 @@ export function FloatingPostItsLayer({
               width: `${post.width}px`,
               height: `${post.height}px`,
               resize: 'both',
-              overflow: 'auto',
+              overflowX: 'hidden',
+              overflowY: 'auto',
             }}
             className={`fixed z-40 ${theme.bg} border-2 ${theme.border} rounded-2xl shadow-2xl flex flex-col justify-between backdrop-blur-md`}
           >
+            {/* Cabeçalho Arrastável (Funciona tanto para o Mestre quanto para o Jogador!) */}
             <div
               onMouseDown={(e) => {
                 setDraggingId(post.id);
                 setDragOffset({ x: e.clientX - post.x, y: e.clientY - post.y });
               }}
               className={`${theme.header} px-3 py-2 cursor-move flex justify-between items-center select-none`}
+              title="Arraste para mover o Post-it pela sua tela"
             >
               <span className="text-xs font-extrabold truncate">📌 {post.title}</span>
               <button
                 type="button"
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   if (isDMView && onUpdatePostIt) {
                     onUpdatePostIt({ ...post, isPinned: false });
@@ -425,54 +443,97 @@ export function FloatingPostItsLayer({
                   }
                 }}
                 className="text-xs font-bold opacity-80 hover:opacity-100 px-1.5 cursor-pointer"
-                title="Minimizar / Fechar Post-it"
+                title="Fechar Post-it"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-3 flex-1 flex flex-col gap-2 overflow-y-auto">
+            {/* Conteúdo do Post-it */}
+            <div className="p-3 flex-1 flex flex-col gap-2 overflow-y-auto overflow-x-hidden w-full min-w-0">
               {isDMView && onUpdatePostIt ? (
                 <textarea
                   value={post.textContent}
                   onChange={(e) => onUpdatePostIt({ ...post, textContent: e.target.value })}
                   placeholder="Título/Notas..."
-                  className="w-full flex-1 bg-transparent text-xs text-white resize-none focus:outline-none"
+                  className="w-full flex-1 bg-transparent text-xs text-white resize-none focus:outline-none break-words [overflow-wrap:anywhere]"
                 />
               ) : (
-                <p className="text-xs text-white whitespace-pre-wrap">{post.textContent}</p>
+                <p className="w-full text-xs text-white whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                  {post.textContent}
+                </p>
               )}
 
               {post.drawingDataUrl && (
                 <img
                   src={post.drawingDataUrl}
                   alt={post.title}
-                  className="w-full rounded-lg border border-white/10 bg-zinc-950/70"
+                  className="w-full rounded-lg border border-white/10 bg-zinc-950/70 object-contain"
                 />
               )}
             </div>
 
-            {isDMView && onSharePostItWithPlayer && (
-              <div className="px-3 py-2 border-t border-white/10 bg-black/30 flex items-center justify-between gap-2">
-                <span className="text-[10px] text-zinc-300 font-semibold whitespace-nowrap">
-                  👁️ Mostrar para:
-                </span>
-                <select
-                  value={post.sharedWithCharacterId || ''}
-                  onChange={(e) => {
-                    const val = e.target.value || null;
-                    onSharePostItWithPlayer(post, val as any);
-                  }}
-                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-amber-300"
-                >
-                  <option value="">🔒 Apenas Mestre</option>
-                  <option value="all">📢 Todos os Jogadores</option>
-                  {characters.map((ch) => (
-                    <option key={ch.id} value={ch.id}>
-                      🎯 {ch.name} (@{ch.owner.username})
-                    </option>
-                  ))}
-                </select>
+            {/* Rodapé Exclusivo do Mestre: Seleção Múltipla de Jogadores (Ex: Jogador 1 e Jogador 3) */}
+            {isDMView && onUpdatePostItSharing && (
+              <div className="px-3 py-2 border-t border-white/10 bg-black/40 flex flex-col gap-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-zinc-300 font-bold">
+                    👁️ Exibir na tela de ({sharedIds.length}):
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onUpdatePostItSharing(post, allCharIds)}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer ${
+                        isSharedWithAll
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    {sharedIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdatePostItSharing(post, [])}
+                        className="px-1.5 py-0.5 bg-zinc-800 hover:bg-red-900 text-zinc-400 hover:text-white rounded text-[9px] font-bold cursor-pointer"
+                      >
+                        Ocultar de Todos
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Botões Individuais de Seleção de Personagem (Permite combinar Jogador 1 + Jogador 3!) */}
+                <div className="flex flex-wrap gap-1">
+                  {characters.length === 0 ? (
+                    <span className="text-[10px] text-zinc-500">Sem jogadores na mesa</span>
+                  ) : (
+                    characters.map((ch) => {
+                      const isSelected = sharedIds.includes(ch.id);
+                      return (
+                        <button
+                          key={ch.id}
+                          type="button"
+                          onClick={() => {
+                            const nextIds = isSelected
+                              ? sharedIds.filter((id) => id !== ch.id)
+                              : [...sharedIds, ch.id];
+                            onUpdatePostItSharing(post, nextIds);
+                          }}
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-600 border-amber-400 text-white shadow'
+                              : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {isSelected ? '✓ ' : '+ '}
+                          {ch.name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ import { Dashboard } from './components/Dashboard';
 import { SheetContainer } from './components/sheets/SheetContainer';
 import { DMScreen } from './components/DMScreen';
 import { DiceRollModal } from './components/DiceRollModal';
+import { LootReceivedModal } from './components/LootReceivedModal';
 import { FloatingPostItsLayer } from './components/dm/NotesAndPostItsManager';
 import { AuthResponse } from './services/api';
 import { io, Socket } from 'socket.io-client';
@@ -12,6 +13,8 @@ import {
   DiceRollResult,
   SheetPermissions,
   StickyPostIt,
+  RPGItem,
+  PreparedAttack,
   ServerToClientEvents,
   ClientToServerEvents,
 } from '@totalrpg/shared';
@@ -37,8 +40,17 @@ export default function App() {
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
   const [activeRollModal, setActiveRollModal] = useState<DiceRollResult | null>(null);
 
-  // Post-its compartilhados pelo Mestre na tela deste Jogador
+  const [receivedLootModal, setReceivedLootModal] = useState<{
+    item: RPGItem;
+    attack?: PreparedAttack;
+  } | null>(null);
+
   const [receivedPlayerPostIts, setReceivedPlayerPostIts] = useState<StickyPostIt[]>([]);
+  const [dismissedPostItSignal, setDismissedPostItSignal] = useState<{
+    postItId: string;
+    characterId: string;
+    timestamp: number;
+  } | null>(null);
 
   const [livePermissions, setLivePermissions] = useState<SheetPermissions | null>(null);
   const [lastUpdatedCharSignal, setLastUpdatedCharSignal] = useState<{
@@ -90,26 +102,58 @@ export default function App() {
       setLastInitiativeSubmission({ ...payload, timestamp: Date.now() });
     });
 
-    // Recebe Post-its enviados pelo Mestre para este personagem específico ou para toda a mesa
+    // Recebe Post-its compartilhados pelo Mestre, filtra por múltiplos personagens e centraliza na tela do jogador!
     socket.on('postit:received', ({ postIt, action }) => {
       if (action === 'hide') {
         setReceivedPlayerPostIts((prev) => prev.filter((p) => p.id !== postIt.id));
         return;
       }
 
+      const targetIds = Array.isArray(postIt.sharedWithCharacterIds)
+        ? postIt.sharedWithCharacterIds
+        : [];
       const isTargetedToMe =
-        postIt.sharedWithCharacterId === 'all' ||
-        (openedCharacter && postIt.sharedWithCharacterId === openedCharacter.characterId);
+        openedCharacter && targetIds.includes(openedCharacter.characterId);
 
       if (isTargetedToMe) {
         setReceivedPlayerPostIts((prev) => {
-          const exists = prev.some((p) => p.id === postIt.id);
-          return exists
-            ? prev.map((p) => (p.id === postIt.id ? { ...postIt, isPinned: true } : p))
-            : [...prev, { ...postIt, isPinned: true }];
+          const existing = prev.find((p) => p.id === postIt.id);
+
+          // Se já estava aberto na tela do jogador, preserva a posição X/Y onde o jogador o arrastou!
+          if (existing) {
+            return prev.map((p) =>
+              p.id === postIt.id
+                ? { ...postIt, x: existing.x, y: existing.y, isPinned: true }
+                : p
+            );
+          }
+
+          // Se é novo na tela do jogador, calcula o centro exato da janela dele!
+          const centeredX = Math.max(20, Math.floor((window.innerWidth - postIt.width) / 2));
+          const centeredY = Math.max(20, Math.floor((window.innerHeight - postIt.height) / 2));
+
+          return [
+            ...prev,
+            {
+              ...postIt,
+              x: centeredX,
+              y: centeredY,
+              isPinned: true,
+            },
+          ];
         });
       } else {
         setReceivedPlayerPostIts((prev) => prev.filter((p) => p.id !== postIt.id));
+      }
+    });
+
+    socket.on('postit:dismissed', ({ postItId, characterId }) => {
+      setDismissedPostItSignal({ postItId, characterId, timestamp: Date.now() });
+    });
+
+    socket.on('item:received', ({ targetCharacterId, item, attack }) => {
+      if (openedCharacter && openedCharacter.characterId === targetCharacterId) {
+        setReceivedLootModal({ item, attack });
       }
     });
 
@@ -120,6 +164,8 @@ export default function App() {
       socket.off('combat:initiativeRequested');
       socket.off('combat:initiativeSubmitted');
       socket.off('postit:received');
+      socket.off('postit:dismissed');
+      socket.off('item:received');
     };
   }, [currentUser, activeRoomId, currentCampaignSession, openedCharacter]);
 
@@ -169,14 +215,31 @@ export default function App() {
         onClose={() => setActiveRollModal(null)}
       />
 
-      {/* Se for um Jogador com a Ficha aberta, exibe os Post-its que o Mestre compartilhou com ele! */}
+      <LootReceivedModal
+        loot={receivedLootModal}
+        onClose={() => setReceivedLootModal(null)}
+      />
+
+      {/* Camada de Post-its do Jogador: Agora com onUpdatePostIt para o jogador conseguir arrastar! */}
       {openedCharacter && !currentCampaignSession && (
         <FloatingPostItsLayer
           postIts={receivedPlayerPostIts}
           isDMView={false}
-          onClosePlayerPostIt={(id) =>
-            setReceivedPlayerPostIts((prev) => prev.filter((p) => p.id !== id))
-          }
+          onUpdatePostIt={(updated) => {
+            setReceivedPlayerPostIts((prev) =>
+              prev.map((p) => (p.id === updated.id ? updated : p))
+            );
+          }}
+          onClosePlayerPostIt={(id) => {
+            setReceivedPlayerPostIts((prev) => prev.filter((p) => p.id !== id));
+            if (activeRoomId && openedCharacter) {
+              socket.emit('postit:dismiss', {
+                campaignId: activeRoomId,
+                postItId: id,
+                characterId: openedCharacter.characterId,
+              });
+            }
+          }}
         />
       )}
 
@@ -265,8 +328,17 @@ export default function App() {
               action,
             })
           }
+          onNotifyItemGiven={(targetCharacterId, item, attack) =>
+            socket.emit('item:giveNotify', {
+              campaignId: currentCampaignSession.campaignId,
+              targetCharacterId,
+              item,
+              attack,
+            })
+          }
           lastUpdatedCharSignal={lastUpdatedCharSignal}
           lastInitiativeSubmission={lastInitiativeSubmission}
+          dismissedPostItSignal={dismissedPostItSignal}
         />
       ) : (
         /* VISÃO 3: Dashboard Principal */
