@@ -6,6 +6,7 @@ import {
   CompendiumEntryData,
   CampaignMerchant,
   MerchantStockItem,
+  MonitorProjection,
 } from '@totalrpg/shared';
 import { DMScreenCharacter } from '../../services/api';
 
@@ -21,8 +22,12 @@ interface LootAndMerchantsManagerProps {
   compendiumEntries: CompendiumEntryData[];
   campaignItems: CampaignStoredItem[];
   merchants: CampaignMerchant[];
+  activeProjectionId?: string | null;
+  activeMerchantOnMonitorId?: string | null;
   onUpdateCampaignItems: (next: CampaignStoredItem[]) => void;
   onUpdateMerchants: (next: CampaignMerchant[]) => void;
+  onToggleProjection: (projection: MonitorProjection) => void;
+  onToggleMerchantOnMonitor: (merchantId: string) => void;
   onDeliverItemToCharacter: (
     character: DMScreenCharacter,
     item: RPGItem,
@@ -37,26 +42,28 @@ export function LootAndMerchantsManager({
   compendiumEntries,
   campaignItems,
   merchants,
+  activeProjectionId,
+  activeMerchantOnMonitorId,
   onUpdateCampaignItems,
   onUpdateMerchants,
+  onToggleProjection,
+  onToggleMerchantOnMonitor,
   onDeliverItemToCharacter,
 }: LootAndMerchantsManagerProps) {
   const defaultCurrency = system === 'ordem-paranormal' ? 'Cat.' : 'T$';
 
-  // Estados de Criação / Edição de Item da Aventura
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [editingStoredItemId, setEditingStoredItemId] = useState<string | null>(null);
   const [itemName, setItemName] = useState('');
   const [itemSlots, setItemSlots] = useState(1);
+  const [itemImageUrl, setItemImageUrl] = useState('');
   const [itemDesc, setItemDesc] = useState('');
   const [weaponDmg, setWeaponDmg] = useState('');
   const [weaponCrit, setWeaponCrit] = useState('20/x2');
 
-  // Modal de Busca no Compêndio para o Bloco de Itens da Aventura
   const [isCompendiumVaultModalOpen, setIsCompendiumVaultModalOpen] = useState(false);
   const [vaultSearchQuery, setVaultSearchQuery] = useState('');
 
-  // Modal para Entregar Item a um Jogador (Guarda se veio de um Mercador ou do Cofre da Aventura)
   const [itemToGiveModal, setItemToGiveModal] = useState<{
     stored: CampaignStoredItem;
     fromMerchant: boolean;
@@ -64,20 +71,17 @@ export function LootAndMerchantsManager({
   const [selectedRecipientCharId, setSelectedRecipientCharId] = useState('');
   const [giveQuantity, setGiveQuantity] = useState<number>(1);
 
-  // Estados de Criação / Edição de Mercador
   const [isMerchantFormOpen, setIsMerchantFormOpen] = useState(false);
   const [editingMerchantId, setEditingMerchantId] = useState<string | null>(null);
   const [merchantName, setMerchantName] = useState('');
   const [merchantDesc, setMerchantDesc] = useState('');
 
-  // Modal com 2 Abas para Adicionar Item ao Estoque de um Mercador + Preço e Moeda Customizável
   const [stockModalMerchantId, setStockModalMerchantId] = useState<string | null>(null);
   const [stockModalTab, setStockModalTab] = useState<'adventure' | 'compendium'>('adventure');
   const [stockSearchQuery, setStockSearchQuery] = useState('');
   const [stockPriceInput, setStockPriceInput] = useState<number>(50);
   const [stockCurrencyInput, setStockCurrencyInput] = useState<string>(defaultCurrency);
 
-  // Estado para Editar um Item Específico dentro do Estoque do Mercador (Nome, Preço e Moeda)
   const [editingStockItem, setEditingStockItem] = useState<{
     merchantId: string;
     stockItem: MerchantStockItem;
@@ -90,6 +94,7 @@ export function LootAndMerchantsManager({
     setEditingStoredItemId(null);
     setItemName('');
     setItemSlots(1);
+    setItemImageUrl('');
     setItemDesc('');
     setWeaponDmg('');
     setWeaponCrit('20/x2');
@@ -100,6 +105,7 @@ export function LootAndMerchantsManager({
     setEditingStoredItemId(stored.id);
     setItemName(stored.item.name);
     setItemSlots(stored.item.slots);
+    setItemImageUrl(stored.item.imageUrl || '');
     setItemDesc(stored.item.description || '');
     setWeaponDmg(stored.attack?.damageFormula || '');
     setWeaponCrit(stored.attack?.critRange || '20/x2');
@@ -116,6 +122,7 @@ export function LootAndMerchantsManager({
       name: itemName.trim(),
       slots: Math.max(0, Number(itemSlots)),
       quantity: 1,
+      imageUrl: itemImageUrl.trim() || undefined,
       isEquipped: false,
       description: itemDesc.trim(),
       modifiers: [],
@@ -321,7 +328,7 @@ export function LootAndMerchantsManager({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* MODAL 1: PUXAR ITEM DO COMPÊNDIO PARA O BLOCO DE ITENS DA AVENTURA */}
+      {/* MODAL 1: PUXAR ITEM DO COMPÊNDIO */}
       {isCompendiumVaultModalOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-amber-500/70 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[85vh]">
@@ -393,7 +400,7 @@ export function LootAndMerchantsManager({
         </div>
       )}
 
-      {/* MODAL 2: ADICIONAR ITEM AO ESTOQUE DO MERCADOR (COM 2 ABAS + PREÇO + MOEDA PERSONALIZÁVEL) */}
+      {/* MODAL 2: ADICIONAR ITEM AO ESTOQUE DO MERCADOR */}
       {activeMerchantForModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-blue-500/70 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[88vh]">
@@ -440,7 +447,6 @@ export function LootAndMerchantsManager({
               </button>
             </div>
 
-            {/* Barra de Pesquisa + Valor Numérico + Moeda Personalizável */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
               <div className="sm:col-span-2">
                 <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
@@ -568,7 +574,7 @@ export function LootAndMerchantsManager({
         </div>
       )}
 
-      {/* MODAL 3: EDITAR ITEM DO ESTOQUE DO MERCADOR (INCLUINDO MOEDA PERSONALIZADA) */}
+      {/* MODAL 3: EDITAR ITEM DO ESTOQUE DO MERCADOR */}
       {editingStockItem && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <form
@@ -630,7 +636,7 @@ export function LootAndMerchantsManager({
         </div>
       )}
 
-{/* MODAL 4: ESCOLHER QUAL JOGADOR RECEBE O ITEM E A QUANTIDADE */}
+      {/* MODAL 4: ESCOLHER QUAL JOGADOR RECEBE O ITEM E QUANTIDADE */}
       {itemToGiveModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <form
@@ -647,11 +653,6 @@ export function LootAndMerchantsManager({
                 <h3 className="text-lg font-extrabold text-white mt-0.5">
                   {itemToGiveModal.stored.item.name}
                 </h3>
-                {itemToGiveModal.stored.item.description && (
-                  <p className="text-xs text-zinc-400 mt-1">
-                    {itemToGiveModal.stored.item.description}
-                  </p>
-                )}
               </div>
               <button
                 type="button"
@@ -685,14 +686,13 @@ export function LootAndMerchantsManager({
               )}
             </div>
 
-            {/* Quantidade a ser vendida */}
             <div className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex items-center justify-between gap-3">
               <div>
                 <label className="block text-xs font-bold text-zinc-200">
                   2. Quantidade a {itemToGiveModal.fromMerchant ? 'Vender' : 'Entregar'}:
                 </label>
                 <span className="text-[11px] font-mono text-zinc-500">
-                  Peso total: {(itemToGiveModal.stored.item.slots * Math.max(1, giveQuantity)).toFixed(1).replace('.0', '')} esp. ({itemToGiveModal.stored.item.slots} esp. cada)
+                  Peso total: {(itemToGiveModal.stored.item.slots * Math.max(1, giveQuantity)).toFixed(1).replace('.0', '')} esp.
                 </span>
               </div>
 
@@ -758,7 +758,7 @@ export function LootAndMerchantsManager({
               🎒 Bloco de Itens & Pistas da Aventura ({campaignItems.length})
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Crie ou edite os itens desta mesa, puxe do Compêndio e entregue aos jogadores quando encontrarem!
+              Crie itens com imagem opcional, projete-os no 2º Monitor ou entregue aos jogadores!
             </p>
           </div>
 
@@ -799,7 +799,7 @@ export function LootAndMerchantsManager({
             <h4 className="text-xs font-bold uppercase text-amber-400">
               {editingStoredItemId ? `✏️ Editando Item: ${itemName}` : '🛠️ Novo Item da Aventura'}
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
                   Nome do Item / Arma / Pista
@@ -809,13 +809,25 @@ export function LootAndMerchantsManager({
                   required
                   value={itemName}
                   onChange={(e) => setItemName(e.target.value)}
-                  placeholder="Ex: Relíquia de Sangue, Espada Rúnica, Chave..."
+                  placeholder="Ex: Relíquia de Sangue, Chave..."
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
                 />
               </div>
               <div>
                 <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                  Espaços na Mochila
+                  URL de Imagem (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={itemImageUrl}
+                  onChange={(e) => setItemImageUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
+                  Espaços
                 </label>
                 <input
                   type="number"
@@ -864,59 +876,99 @@ export function LootAndMerchantsManager({
           </p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {campaignItems.map((stored) => (
-              <div
-                key={stored.id}
-                className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-3"
-              >
-                <div>
-                  <div className="flex justify-between items-start gap-2">
-                    <h4 className="font-bold text-sm text-white">{stored.item.name}</h4>
-                    <span className="text-[10px] font-mono bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap">
-                      {stored.item.slots} esp.
-                    </span>
-                  </div>
-                  {stored.attack && (
-                    <span className="inline-block text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded mt-1">
-                      ⚔️ Dano: {stored.attack.damageFormula}
-                    </span>
-                  )}
-                  {stored.item.description && (
-                    <p className="text-xs text-zinc-400 mt-1.5">{stored.item.description}</p>
-                  )}
-                </div>
+            {campaignItems.map((stored) => {
+              const isProjected = activeProjectionId === stored.id;
 
-                <div className="flex gap-1.5 pt-2 border-t border-zinc-900">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedRecipientCharId('');
-                      setItemToGiveModal({ stored, fromMerchant: false });
-                    }}
-                    className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition cursor-pointer"
-                  >
-                    🎁 Entregar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleStartEditStoredItem(stored)}
-                    className="px-2.5 py-1.5 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded-lg text-xs font-bold cursor-pointer"
-                    title="Editar Item"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onUpdateCampaignItems(campaignItems.filter((ci) => ci.id !== stored.id))
-                    }
-                    className="px-2.5 py-1.5 bg-zinc-900 hover:bg-red-950 text-zinc-500 hover:text-red-400 rounded-lg text-xs cursor-pointer"
-                  >
-                    ✕
-                  </button>
+              return (
+                <div
+                  key={stored.id}
+                  className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-3"
+                >
+                  <div>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-center gap-2">
+                        {stored.item.imageUrl && (
+                          <img
+                            src={stored.item.imageUrl}
+                            alt={stored.item.name}
+                            className="w-9 h-9 rounded-lg object-cover border border-zinc-700"
+                          />
+                        )}
+                        <h4 className="font-bold text-sm text-white">{stored.item.name}</h4>
+                      </div>
+                      <span className="text-[10px] font-mono bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap">
+                        {stored.item.slots} esp.
+                      </span>
+                    </div>
+                    {stored.attack && (
+                      <span className="inline-block text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded mt-1">
+                        ⚔️ Dano: {stored.attack.damageFormula}
+                      </span>
+                    )}
+                    {stored.item.description && (
+                      <p className="text-xs text-zinc-400 mt-1.5">{stored.item.description}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 pt-2 border-t border-zinc-900">
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedRecipientCharId('');
+                          setGiveQuantity(1);
+                          setItemToGiveModal({ stored, fromMerchant: false });
+                        }}
+                        className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                      >
+                        🎁 Entregar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onToggleProjection({
+                            type: 'item',
+                            id: stored.id,
+                            title: stored.item.name,
+                            subtitle: stored.attack
+                              ? `Arma • Dano ${stored.attack.damageFormula}`
+                              : `Item da Aventura • ${stored.item.slots} esp.`,
+                            description: stored.item.description,
+                            imageUrl: stored.item.imageUrl,
+                          })
+                        }
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          isProjected
+                            ? 'bg-amber-500 text-zinc-950 shadow'
+                            : 'bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700'
+                        }`}
+                        title="Exibir este item em destaque no 2º Monitor"
+                      >
+                        {isProjected ? '🖥️ Sair' : '🖥️ TV'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditStoredItem(stored)}
+                        className="px-2 py-1.5 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateCampaignItems(campaignItems.filter((ci) => ci.id !== stored.id))
+                        }
+                        className="px-2 py-1.5 bg-zinc-900 hover:bg-red-950 text-zinc-500 hover:text-red-400 rounded-lg text-xs cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -929,7 +981,7 @@ export function LootAndMerchantsManager({
               🪙 Bloco de Mercadores & Lojas ({merchants.length})
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Monte e edite NPCs mercadores e abasteça suas lojas com qualquer moeda personalizada.
+              Clique em "🖥️ Abrir no 2º Monitor" em qualquer Mercador para exibi-lo no lado direito da TV!
             </p>
           </div>
 
@@ -994,129 +1046,143 @@ export function LootAndMerchantsManager({
           </p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {merchants.map((merchant) => (
-              <div
-                key={merchant.id}
-                className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-between gap-4"
-              >
-                <div className="flex flex-col gap-3">
-                  <div className="flex justify-between items-start border-b border-zinc-800 pb-2.5 gap-2">
-                    <div>
-                      <h4 className="font-extrabold text-base text-white">🪙 {merchant.name}</h4>
-                      {merchant.description && (
-                        <p className="text-xs text-zinc-400">{merchant.description}</p>
+            {merchants.map((merchant) => {
+              const isShowingOnMonitor = activeMerchantOnMonitorId === merchant.id;
+
+              return (
+                <div
+                  key={merchant.id}
+                  className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-between gap-4"
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="flex justify-between items-start border-b border-zinc-800 pb-2.5 gap-2">
+                      <div>
+                        <h4 className="font-extrabold text-base text-white">🪙 {merchant.name}</h4>
+                        {merchant.description && (
+                          <p className="text-xs text-zinc-400">{merchant.description}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onToggleMerchantOnMonitor(merchant.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                            isShowingOnMonitor
+                              ? 'bg-blue-500 text-zinc-950 shadow'
+                              : 'bg-zinc-900 hover:bg-blue-600 text-blue-400 hover:text-white border border-zinc-700'
+                          }`}
+                          title="Exibir esta loja no lado direito do 2º Monitor"
+                        >
+                          {isShowingOnMonitor ? '🖥️ Na TV (Fechar)' : '🖥️ Abrir no 2º Monitor'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditMerchant(merchant)}
+                          className="px-2 py-1 bg-zinc-800 hover:bg-blue-600 text-zinc-300 hover:text-white rounded text-xs font-bold cursor-pointer"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateMerchants(merchants.filter((m) => m.id !== merchant.id))
+                          }
+                          className="px-2 py-1 bg-zinc-900 hover:bg-red-950 text-zinc-500 hover:text-red-400 rounded text-xs cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      {merchant.stock.length === 0 ? (
+                        <p className="text-xs text-zinc-500 italic py-2">
+                          Estoque vazio. Clique no botão abaixo para adicionar itens à loja!
+                        </p>
+                      ) : (
+                        merchant.stock.map((st) => {
+                          const displayCurrency = st.currency || defaultCurrency;
+
+                          return (
+                            <div
+                              key={st.id}
+                              className="bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl flex justify-between items-center gap-2"
+                            >
+                              <div className="truncate">
+                                <span className="text-xs font-bold text-white">{st.item.name}</span>
+                                <span className="text-[11px] font-mono text-amber-400 ml-2">
+                                  [{st.price} {displayCurrency}]
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRecipientCharId('');
+                                    setGiveQuantity(1);
+                                    setItemToGiveModal({
+                                      stored: {
+                                        id: st.id,
+                                        item: st.item,
+                                        attack: st.attack,
+                                      },
+                                      fromMerchant: true,
+                                    });
+                                  }}
+                                  className="px-2 py-1 bg-blue-800 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                >
+                                  Vender / Entregar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingStockItem({ merchantId: merchant.id, stockItem: st });
+                                    setEditStockName(st.item.name);
+                                    setEditStockPrice(st.price);
+                                    setEditStockCurrency(st.currency || defaultCurrency);
+                                  }}
+                                  className="px-1.5 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded text-[10px] cursor-pointer"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = merchants.map((m) =>
+                                      m.id === merchant.id
+                                        ? { ...m, stock: m.stock.filter((s) => s.id !== st.id) }
+                                        : m
+                                    );
+                                    onUpdateMerchants(updated);
+                                  }}
+                                  className="text-xs text-zinc-500 hover:text-red-400 px-1 cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditMerchant(merchant)}
-                        className="px-2 py-1 bg-zinc-800 hover:bg-blue-600 text-zinc-300 hover:text-white rounded text-xs font-bold cursor-pointer"
-                        title="Editar Mercador"
-                      >
-                        ✏️ Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onUpdateMerchants(merchants.filter((m) => m.id !== merchant.id))
-                        }
-                        className="px-2 py-1 bg-zinc-900 hover:bg-red-950 text-zinc-500 hover:text-red-400 rounded text-xs cursor-pointer"
-                      >
-                        ✕
-                      </button>
-                    </div>
                   </div>
 
-                  {/* Lista de Estoque da Loja */}
-                  <div className="flex flex-col gap-1.5">
-                    {merchant.stock.length === 0 ? (
-                      <p className="text-xs text-zinc-500 italic py-2">
-                        Estoque vazio. Clique no botão abaixo para adicionar itens à loja!
-                      </p>
-                    ) : (
-                      merchant.stock.map((st) => {
-                        const displayCurrency = st.currency || defaultCurrency;
-
-                        return (
-                          <div
-                            key={st.id}
-                            className="bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl flex justify-between items-center gap-2"
-                          >
-                            <div className="truncate">
-                              <span className="text-xs font-bold text-white">{st.item.name}</span>
-                              <span className="text-[11px] font-mono text-amber-400 ml-2">
-                                [{st.price} {displayCurrency}]
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedRecipientCharId('');
-                                  setItemToGiveModal({
-                                    stored: {
-                                      id: st.id,
-                                      item: st.item,
-                                      attack: st.attack,
-                                    },
-                                    fromMerchant: true, // Silencioso: Não dispara modal de Loot!
-                                  });
-                                }}
-                                className="px-2 py-1 bg-blue-800 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer"
-                              >
-                                Vender / Entregar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingStockItem({ merchantId: merchant.id, stockItem: st });
-                                  setEditStockName(st.item.name);
-                                  setEditStockPrice(st.price);
-                                  setEditStockCurrency(st.currency || defaultCurrency);
-                                }}
-                                className="px-1.5 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded text-[10px] cursor-pointer"
-                                title="Editar preço, moeda ou nome"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = merchants.map((m) =>
-                                    m.id === merchant.id
-                                      ? { ...m, stock: m.stock.filter((s) => s.id !== st.id) }
-                                      : m
-                                  );
-                                  onUpdateMerchants(updated);
-                                }}
-                                className="text-xs text-zinc-500 hover:text-red-400 px-1 cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStockSearchQuery('');
+                      setStockPriceInput(50);
+                      setStockCurrencyInput(defaultCurrency);
+                      setStockModalTab('adventure');
+                      setStockModalMerchantId(merchant.id);
+                    }}
+                    className="w-full py-2 bg-blue-950/60 hover:bg-blue-700 text-blue-300 hover:text-white border border-blue-800/80 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                  >
+                    + Adicionar Item ao Estoque (Modal)
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStockSearchQuery('');
-                    setStockPriceInput(50);
-                    setStockCurrencyInput(defaultCurrency);
-                    setStockModalTab('adventure');
-                    setStockModalMerchantId(merchant.id);
-                  }}
-                  className="w-full py-2 bg-blue-950/60 hover:bg-blue-700 text-blue-300 hover:text-white border border-blue-800/80 rounded-xl text-xs font-extrabold transition cursor-pointer"
-                >
-                  + Adicionar Item ao Estoque (Modal)
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

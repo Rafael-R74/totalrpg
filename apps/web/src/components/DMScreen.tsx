@@ -11,6 +11,7 @@ import {
   CampaignThreat,
   CampaignMerchant,
   StickyPostIt,
+  MonitorDirectorState,
   calculateActiveBonuses,
 } from '@totalrpg/shared';
 import {
@@ -25,11 +26,13 @@ import {
 import { BestiaryManager } from './dm/BestiaryManager';
 import { LootAndMerchantsManager, CampaignStoredItem } from './dm/LootAndMerchantsManager';
 import { NotesAndPostItsManager, FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
+import { MonitorDirectorPanel } from './dm/MonitorPanel';
 
 export interface CombatantEntry {
   id: string;
   characterId?: string;
   name: string;
+  imageUrl?: string;
   initiative: number;
   isNPC: boolean;
   hpCurrent?: number;
@@ -69,6 +72,12 @@ interface DMScreenProps {
     timestamp: number;
   } | null;
   dismissedPostItSignal: { postItId: string; characterId: string; timestamp: number } | null;
+  onSyncSecondMonitor: (
+    director: MonitorDirectorState,
+    combatState: { combatants: CombatantEntry[]; currentTurnIndex: number; roundNumber: number },
+    merchants: CampaignMerchant[],
+    postIts: StickyPostIt[]
+  ) => void;
 }
 
 function parseFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -96,6 +105,7 @@ export function DMScreen({
   lastUpdatedCharSignal,
   lastInitiativeSubmission,
   dismissedPostItSignal,
+  onSyncSecondMonitor,
 }: DMScreenProps) {
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
@@ -104,7 +114,7 @@ export function DMScreen({
   // Trava que impede sobrescrever o banco SQLite antes do carregamento inicial terminar
   const isHydratedRef = useRef(false);
 
-  const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes'>('table');
+  const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes' | 'monitor'>('table');
   const [conditionPickerCharId, setConditionPickerCharId] = useState<string | null>(null);
   const [initFeedback, setInitFeedback] = useState('');
 
@@ -117,6 +127,18 @@ export function DMScreen({
   const [merchants, setMerchants] = useState<CampaignMerchant[]>([]);
   const [dmNotes, setDmNotes] = useState<string>('');
   const [postIts, setPostIts] = useState<StickyPostIt[]>([]);
+  const [monitorDirector, setMonitorDirector] = useState<MonitorDirectorState>({
+    showCombatTracker: true,
+    enemyHpVisibility: 'narrative',
+    activeMerchantId: null,
+    activeProjection: null,
+    sceneTitle: '',
+    sceneSubtitle: '',
+    backgroundUrl: '',
+    handoutTitle: '',
+    handoutImageUrl: '',
+    handoutText: '',
+  });
 
   const [isSecretRoll, setIsSecretRoll] = useState(false);
   const [dmRollLabel, setDmRollLabel] = useState('Teste de Ameaça / NPC');
@@ -164,6 +186,9 @@ export function DMScreen({
         setCombatants(dbCombat.combatants || []);
         setCurrentTurnIndex(dbCombat.currentTurnIndex || 0);
         setRoundNumber(dbCombat.roundNumber || 1);
+        if (dbCombat.director) {
+          setMonitorDirector((prev) => ({ ...prev, ...dbCombat.director }));
+        }
         setThreats(dbThreats);
         setCampaignItems(dbItems);
         setMerchants(dbMerchants);
@@ -191,13 +216,21 @@ export function DMScreen({
     if (lastUpdatedCharSignal) loadScreenData(true);
   }, [lastUpdatedCharSignal]);
 
-  // Salva automaticamente no SQLite sempre que qualquer bloco do Mestre for modificado após a hidratação
-  useEffect(() => {
+useEffect(() => {
     if (!isHydratedRef.current) return;
+
+    // Transmite tudo imediatamente para o 2º Monitor no 1º clique!
+    onSyncSecondMonitor(
+      monitorDirector,
+      { combatants, currentTurnIndex, roundNumber },
+      merchants,
+      postIts
+    );
+
     const timer = setTimeout(() => {
       updateCampaignDMData(campaignId, {
         dmNotes,
-        combatState: { combatants, currentTurnIndex, roundNumber },
+        combatState: { combatants, currentTurnIndex, roundNumber, director: monitorDirector },
         threats,
         campaignItems,
         merchants,
@@ -206,7 +239,18 @@ export function DMScreen({
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [dmNotes, combatants, currentTurnIndex, roundNumber, threats, campaignItems, merchants, postIts, campaignId]);
+  }, [
+    dmNotes,
+    combatants,
+    currentTurnIndex,
+    roundNumber,
+    monitorDirector,
+    threats,
+    campaignItems,
+    merchants,
+    postIts,
+    campaignId,
+  ]);
 
   useEffect(() => {
     if (!dismissedPostItSignal) return;
@@ -237,6 +281,7 @@ export function DMScreen({
       const newThreatCombatant: CombatantEntry = {
         id: Math.random().toString(36).substring(2, 9),
         name: matchedThreat.name,
+        imageUrl: matchedThreat.imageUrl, 
         initiative: lastInitiativeSubmission.initiative,
         isNPC: true,
         hpCurrent: matchedThreat.hpMax,
@@ -291,11 +336,21 @@ export function DMScreen({
 
   const compendiumConditions = compendiumEntries.filter((e) => e.category === 'condition');
 
+  function handleToggleProjection(projection: MonitorDirectorState['activeProjection']) {
+    if (!projection) return;
+    setMonitorDirector((prev) => ({
+      ...prev,
+      activeProjection:
+        prev.activeProjection?.id === projection.id ? null : projection,
+    }));
+  }
+
   function handleSendThreatToCombatManual(threat: CampaignThreat, manualInitiative: number) {
     const primaryAtk = threat.attacks[0];
     const newEntry: CombatantEntry = {
       id: Math.random().toString(36).substring(2, 9),
       name: threat.name,
+      imageUrl: threat.imageUrl, // <-- Copia a foto da criatura na iniciativa manual!
       initiative: Number(manualInitiative),
       isNPC: true,
       hpCurrent: threat.hpMax,
@@ -721,7 +776,7 @@ async function handleDeliverItemToCharacter(
                 : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
             }`}
           >
-            ⚔️ Mesa, Iniciativa & Jogadores
+            ⚔️ Mesa
           </button>
 
           <button
@@ -733,7 +788,7 @@ async function handleDeliverItemToCharacter(
                 : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
             }`}
           >
-            👹 Bloco de Ameaças ({threats.length})
+            👹 Ameaças ({threats.length})
           </button>
 
           <button
@@ -745,7 +800,7 @@ async function handleDeliverItemToCharacter(
                 : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
             }`}
           >
-            🎒 Itens da Aventura ({campaignItems.length}) & Mercadores ({merchants.length})
+            🎒 Itens ({campaignItems.length}) & Mercadores ({merchants.length})
           </button>
 
           <button
@@ -757,7 +812,19 @@ async function handleDeliverItemToCharacter(
                 : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
             }`}
           >
-            🎨 Caderno de Desenho & Post-its ({postIts.length})
+            🎨 Anotações ({postIts.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveDMTab('monitor')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+              activeDMTab === 'monitor'
+                ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-900/40'
+                : 'bg-zinc-950 text-amber-400 hover:text-white border border-amber-700/60'
+            }`}
+          >
+            🖥️ Diretor do 2º Monitor (TV)
           </button>
         </div>
       </div>
@@ -1183,7 +1250,9 @@ async function handleDeliverItemToCharacter(
               threats={threats}
               compendiumEntries={compendiumEntries}
               isSecretRoll={isSecretRoll}
+              activeProjectionId={monitorDirector.activeProjection?.id}
               onUpdateThreats={setThreats}
+              onToggleProjection={handleToggleProjection}
               onRollDice={onRollDice}
               onSendThreatToCombatManual={handleSendThreatToCombatManual}
             />
@@ -1196,8 +1265,17 @@ async function handleDeliverItemToCharacter(
               compendiumEntries={compendiumEntries}
               campaignItems={campaignItems}
               merchants={merchants}
+              activeProjectionId={monitorDirector.activeProjection?.id}
+              activeMerchantOnMonitorId={monitorDirector.activeMerchantId}
               onUpdateCampaignItems={setCampaignItems}
               onUpdateMerchants={setMerchants}
+              onToggleProjection={handleToggleProjection}
+              onToggleMerchantOnMonitor={(merchantId) =>
+                setMonitorDirector((prev) => ({
+                  ...prev,
+                  activeMerchantId: prev.activeMerchantId === merchantId ? null : merchantId,
+                }))
+              }
               onDeliverItemToCharacter={handleDeliverItemToCharacter}
             />
           )}
@@ -1210,6 +1288,15 @@ async function handleDeliverItemToCharacter(
               characters={campaign.characters}
               onUpdatePostIts={setPostIts}
               onBroadcastPostIt={onSharePostIt}
+            />
+          )}
+
+          {activeDMTab === 'monitor' && (
+            <MonitorDirectorPanel
+              campaignId={campaign.id}
+              director={monitorDirector}
+              merchants={merchants}
+              onChangeDirector={setMonitorDirector}
             />
           )}
         </div>

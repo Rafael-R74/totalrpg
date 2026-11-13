@@ -473,12 +473,12 @@ export function FloatingPostItsLayer({
               )}
             </div>
 
-            {/* Rodapé Exclusivo do Mestre: Seleção Múltipla de Jogadores (Ex: Jogador 1 e Jogador 3) */}
+            {/* Rodapé Exclusivo do Mestre: Seleção Múltipla de Jogadores + Projeção no 2º Monitor */}
             {isDMView && onUpdatePostItSharing && (
               <div className="px-3 py-2 border-t border-white/10 bg-black/40 flex flex-col gap-1.5">
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] text-zinc-300 font-bold">
-                    👁️ Exibir na tela de ({sharedIds.length}):
+                    👁️ Exibir em ({sharedIds.length + (post.sharedOnMonitor ? 1 : 0)}):
                   </span>
                   <div className="flex gap-1">
                     <button
@@ -490,49 +490,73 @@ export function FloatingPostItsLayer({
                           : 'bg-zinc-800 text-zinc-400 hover:text-white'
                       }`}
                     >
-                      Todos
+                      Todos Jogadores
                     </button>
-                    {sharedIds.length > 0 && (
+                    {(sharedIds.length > 0 || post.sharedOnMonitor) && (
                       <button
                         type="button"
-                        onClick={() => onUpdatePostItSharing(post, [])}
+                        onClick={() => {
+                          if (onUpdatePostIt) {
+                            onUpdatePostIt({
+                              ...post,
+                              sharedWithCharacterIds: [],
+                              sharedOnMonitor: false,
+                            });
+                          }
+                          onUpdatePostItSharing(post, []);
+                        }}
                         className="px-1.5 py-0.5 bg-zinc-800 hover:bg-red-900 text-zinc-400 hover:text-white rounded text-[9px] font-bold cursor-pointer"
                       >
-                        Ocultar de Todos
+                        Ocultar Tudo
                       </button>
                     )}
                   </div>
                 </div>
 
-                {/* Botões Individuais de Seleção de Personagem (Permite combinar Jogador 1 + Jogador 3!) */}
                 <div className="flex flex-wrap gap-1">
-                  {characters.length === 0 ? (
-                    <span className="text-[10px] text-zinc-500">Sem jogadores na mesa</span>
-                  ) : (
-                    characters.map((ch) => {
-                      const isSelected = sharedIds.includes(ch.id);
-                      return (
-                        <button
-                          key={ch.id}
-                          type="button"
-                          onClick={() => {
-                            const nextIds = isSelected
-                              ? sharedIds.filter((id) => id !== ch.id)
-                              : [...sharedIds, ch.id];
-                            onUpdatePostItSharing(post, nextIds);
-                          }}
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer ${
-                            isSelected
-                              ? 'bg-amber-600 border-amber-400 text-white shadow'
-                              : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {isSelected ? '✓ ' : '+ '}
-                          {ch.name}
-                        </button>
-                      );
-                    })
+                  {/* Botão dedicado para exibir este Post-it no 2º Monitor! */}
+                  {onUpdatePostIt && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdatePostIt({
+                          ...post,
+                          sharedOnMonitor: !post.sharedOnMonitor,
+                        })
+                      }
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border transition cursor-pointer ${
+                        post.sharedOnMonitor
+                          ? 'bg-purple-600 border-purple-300 text-white shadow'
+                          : 'bg-zinc-900 border-zinc-700 text-purple-300 hover:text-white'
+                      }`}
+                    >
+                      {post.sharedOnMonitor ? '✓ 🖥️ 2º Monitor' : '+ 🖥️ 2º Monitor'}
+                    </button>
                   )}
+
+                  {characters.map((ch) => {
+                    const isSelected = sharedIds.includes(ch.id);
+                    return (
+                      <button
+                        key={ch.id}
+                        type="button"
+                        onClick={() => {
+                          const nextIds = isSelected
+                            ? sharedIds.filter((id) => id !== ch.id)
+                            : [...sharedIds, ch.id];
+                          onUpdatePostItSharing(post, nextIds);
+                        }}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-600 border-amber-400 text-white shadow'
+                            : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}
+                        {ch.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

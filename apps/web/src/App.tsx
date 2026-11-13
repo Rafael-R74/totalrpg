@@ -8,6 +8,7 @@ import { LootReceivedModal } from './components/LootReceivedModal';
 import { FloatingPostItsLayer } from './components/dm/NotesAndPostItsManager';
 import { AuthResponse } from './services/api';
 import { io, Socket } from 'socket.io-client';
+import { SecondMonitorScreen } from './components/SecondMonitorScreen';
 import {
   SystemId,
   DiceRollResult,
@@ -208,6 +209,16 @@ export default function App() {
     return <AuthScreen onLoginSuccess={(authData: AuthResponse) => setCurrentUser(authData.user)} />;
   }
 
+  if (!currentUser) {
+    return <AuthScreen onLoginSuccess={(authData: AuthResponse) => setCurrentUser(authData.user)} />;
+  }
+
+  // Se esta janela foi aberta como Tela do 2º Monitor (?monitorCampaignId=...), renderiza em Tela Cheia Limpa!
+  const monitorCampaignId = new URLSearchParams(window.location.search).get('monitorCampaignId');
+  if (monitorCampaignId) {
+    return <SecondMonitorScreen campaignId={monitorCampaignId} />;
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-7xl mx-auto flex flex-col gap-6">
       <DiceRollModal
@@ -345,6 +356,15 @@ export default function App() {
               targetCharacterId,
               item,
               attack,
+            })
+          }
+          onSyncSecondMonitor={(director, combatState, merchants, postIts) =>
+            socket.emit('monitor:sync', {
+              campaignId: currentCampaignSession.campaignId,
+              director,
+              combatState,
+              merchants,
+              postIts,
             })
           }
           lastUpdatedCharSignal={lastUpdatedCharSignal}

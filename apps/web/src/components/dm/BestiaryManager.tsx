@@ -5,6 +5,7 @@ import {
   ThreatSkill,
   PreparedAttack,
   CompendiumEntryData,
+  MonitorProjection,
 } from '@totalrpg/shared';
 
 interface BestiaryManagerProps {
@@ -12,7 +13,9 @@ interface BestiaryManagerProps {
   threats: CampaignThreat[];
   compendiumEntries: CompendiumEntryData[];
   isSecretRoll: boolean;
+  activeProjectionId?: string | null;
   onUpdateThreats: (next: CampaignThreat[]) => void;
+  onToggleProjection: (projection: MonitorProjection) => void;
   onRollDice: (
     characterName: string,
     system: SystemId,
@@ -43,12 +46,13 @@ export function BestiaryManager({
   threats,
   compendiumEntries,
   isSecretRoll,
+  activeProjectionId,
   onUpdateThreats,
+  onToggleProjection,
   onRollDice,
   onSendThreatToCombatManual,
 }: BestiaryManagerProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
-  // Se editingThreatId tiver um ID, o formulário está em Modo Edição; se for null, está criando uma nova
   const [editingThreatId, setEditingThreatId] = useState<string | null>(null);
 
   const defaultAttrs: Record<string, number> =
@@ -57,6 +61,7 @@ export function BestiaryManager({
       : { forca: 3, destreza: 2, constituicao: 3, inteligencia: 0, sabedoria: 1, carisma: 0 };
 
   const [name, setName] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [hpMax, setHpMax] = useState(45);
   const [defense, setDefense] = useState(18);
   const [initDice, setInitDice] = useState(system === 'ordem-paranormal' ? 2 : 1);
@@ -66,8 +71,6 @@ export function BestiaryManager({
   const [skills, setSkills] = useState<ThreatSkill[]>([
     { id: 's1', name: 'Percepção', diceCount: 2, bonus: 5 },
     { id: 's2', name: 'Fortitude', diceCount: 2, bonus: 8 },
-    { id: 's3', name: 'Reflexos', diceCount: 2, bonus: 6 },
-    { id: 's4', name: 'Vontade', diceCount: 1, bonus: 4 },
   ]);
   const [attacks, setAttacks] = useState<PreparedAttack[]>([
     {
@@ -92,10 +95,10 @@ export function BestiaryManager({
 
   const [manualInitInputs, setManualInitInputs] = useState<Record<string, number>>({});
 
-  // Limpa o formulário para criar uma nova criatura do zero
   function handleOpenCreateNew() {
     setEditingThreatId(null);
     setName('');
+    setImageUrl('');
     setHpMax(45);
     setDefense(18);
     setInitDice(system === 'ordem-paranormal' ? 2 : 1);
@@ -120,10 +123,10 @@ export function BestiaryManager({
     setIsFormOpen(true);
   }
 
-  // Hidrata o formulário com os dados de uma criatura existente para editá-la
   function handleStartEditThreat(threat: CampaignThreat) {
     setEditingThreatId(threat.id);
     setName(threat.name);
+    setImageUrl(threat.imageUrl || '');
     setHpMax(threat.hpMax);
     setDefense(threat.defense);
     setInitDice(threat.initiativeDice);
@@ -174,6 +177,7 @@ export function BestiaryManager({
       id: editingThreatId || `threat-${Math.random().toString(36).substring(2, 9)}`,
       name: name.trim(),
       system,
+      imageUrl: imageUrl.trim() || undefined,
       hpMax: Math.max(1, Number(hpMax)),
       defense: Number(defense),
       initiativeDice: Math.max(1, Number(initDice)),
@@ -218,7 +222,7 @@ export function BestiaryManager({
             👹 Bestiário & Ameaças da Mesa ({threats.length})
           </h3>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Crie ou edite fichas completas de criaturas desta campanha e envie-as para o Rastreador de Iniciativa.
+            Crie criaturas completas, envie-as para a luta (aparecem no lado direito do 2º Monitor!) ou projete sua imagem.
           </p>
         </div>
 
@@ -238,22 +242,19 @@ export function BestiaryManager({
         </button>
       </div>
 
-      {/* FORMULÁRIO COMPLETO DE CRIAÇÃO / EDIÇÃO DE AMEAÇA */}
       {isFormOpen && (
         <form
           onSubmit={handleSaveThreat}
           className="bg-zinc-950 border border-red-900/60 p-5 rounded-2xl flex flex-col gap-5"
         >
-          <div className="flex justify-between items-center">
-            <h4 className="text-sm font-bold text-red-400 uppercase">
-              {editingThreatId
-                ? `✏️ Editando Criatura: ${name}`
-                : `🛠️ Construtor Completo de Criatura / NPC (${system})`}
-            </h4>
-          </div>
+          <h4 className="text-sm font-bold text-red-400 uppercase">
+            {editingThreatId
+              ? `✏️ Editando Criatura: ${name}`
+              : `🛠️ Construtor Completo de Criatura / NPC (${system})`}
+          </h4>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+            <div className="sm:col-span-2">
               <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
                 Nome da Criatura / NPC
               </label>
@@ -262,8 +263,21 @@ export function BestiaryManager({
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Enpap-X, Zumbi de Sangue, Dragão..."
+                placeholder="Ex: Enpap-X, Zumbi de Sangue..."
                 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white"
+              />
+            </div>
+
+            <div className="sm:col-span-1">
+              <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
+                URL da Imagem (Opcional)
+              </label>
+              <input
+                type="text"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-2 text-xs text-white"
               />
             </div>
 
@@ -294,7 +308,7 @@ export function BestiaryManager({
 
             <div>
               <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                Iniciativa (Dados / +Bônus)
+                Iniciativa (d20 / +Bônus)
               </label>
               <div className="flex gap-1">
                 <input
@@ -303,14 +317,12 @@ export function BestiaryManager({
                   max={10}
                   value={initDice}
                   onChange={(e) => setInitDice(Number(e.target.value))}
-                  title="Quantidade de d20 na Iniciativa"
                   className="w-1/2 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-xs font-mono text-center text-white"
                 />
                 <input
                   type="number"
                   value={initBonus}
                   onChange={(e) => setInitBonus(Number(e.target.value))}
-                  title="Bônus somado na Iniciativa"
                   className="w-1/2 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-xs font-mono text-center text-amber-400"
                 />
               </div>
@@ -511,7 +523,7 @@ export function BestiaryManager({
 
           <div>
             <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-              Habilidades Passivas, Resistências (RD) e Anotações
+              Habilidades Passivas, Resistências (RD) e Descrição
             </label>
             <textarea
               rows={2}
@@ -533,17 +545,17 @@ export function BestiaryManager({
         </form>
       )}
 
-      {/* LISTA DE CRIATURAS GUARDADAS */}
       {threats.length === 0 ? (
         <div className="bg-zinc-950/60 border border-dashed border-zinc-800 rounded-xl p-8 text-center">
           <p className="text-xs text-zinc-400">
-            Nenhuma criatura guardada nesta mesa ainda. Clique em &quot;+ Criar Nova Ameaça&quot; acima!
+            Nenhuma criatura guardada nesta mesa ainda. Clique em "+ Criar Nova Ameaça" acima!
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {threats.map((threat) => {
             const manualInitVal = manualInitInputs[threat.id] ?? 15;
+            const isProjected = activeProjectionId === threat.id;
 
             return (
               <div
@@ -552,30 +564,60 @@ export function BestiaryManager({
               >
                 <div className="flex flex-col gap-3">
                   <div className="flex justify-between items-start gap-2 border-b border-zinc-800/80 pb-2.5">
-                    <div>
-                      <h4 className="text-base font-extrabold text-white">{threat.name}</h4>
-                      <div className="flex items-center gap-3 mt-1 text-xs font-mono">
-                        <span className="text-red-400 font-bold">❤️ PV Base: {threat.hpMax}</span>
-                        <span className="text-amber-400 font-bold">🛡️ DEF: {threat.defense}</span>
-                        <span className="text-zinc-400">
-                          ⚡ INI: {threat.initiativeDice}d20+{threat.initiativeBonus}
-                        </span>
+                    <div className="flex items-center gap-3">
+                      {threat.imageUrl && (
+                        <img
+                          src={threat.imageUrl}
+                          alt={threat.name}
+                          className="w-12 h-12 rounded-xl object-cover border border-red-700/60"
+                        />
+                      )}
+                      <div>
+                        <h4 className="text-base font-extrabold text-white">{threat.name}</h4>
+                        <div className="flex items-center gap-3 mt-1 text-xs font-mono">
+                          <span className="text-red-400 font-bold">❤️ PV: {threat.hpMax}</span>
+                          <span className="text-amber-400 font-bold">🛡️ DEF: {threat.defense}</span>
+                          <span className="text-zinc-400">
+                            ⚡ INI: {threat.initiativeDice}d20+{threat.initiativeBonus}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => handleStartEditThreat(threat)}
-                        className="px-2.5 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                        onClick={() =>
+                          onToggleProjection({
+                            type: 'threat',
+                            id: threat.id,
+                            title: threat.name,
+                            subtitle: 'Ameaça / Criatura',
+                            description: threat.description,
+                            imageUrl: threat.imageUrl,
+                          })
+                        }
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                          isProjected
+                            ? 'bg-amber-500 text-zinc-950 shadow'
+                            : 'bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700'
+                        }`}
+                        title="Exibir ou ocultar destaque desta Ameaça no 2º Monitor"
                       >
-                        ✏️ Editar
+                        {isProjected ? '🖥️ Na TV (Sair)' : '🖥️ 2º Monitor'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditThreat(threat)}
+                        className="px-2 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                      >
+                        ✏️
                       </button>
                       <button
                         type="button"
                         onClick={() => onUpdateThreats(threats.filter((t) => t.id !== threat.id))}
                         className="px-2 py-1 bg-zinc-900 hover:bg-red-950 text-zinc-500 hover:text-red-400 rounded-lg text-xs cursor-pointer"
-                        title="Excluir do Bestiário"
                       >
                         ✕
                       </button>
