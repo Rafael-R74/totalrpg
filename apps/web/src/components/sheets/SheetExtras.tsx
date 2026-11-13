@@ -6,11 +6,15 @@ import {
   RPGItem,
   CompendiumEntryData,
   ComputedBonuses,
+  OrdemSheetData,
+  ORDEM_PATENTS,
+  checkOrdemPowerRequirements,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 
 interface SheetExtrasProps {
   system: SystemId;
+  ordemSheetData?: OrdemSheetData;
   bonuses: ComputedBonuses;
   compendiumEntries: CompendiumEntryData[];
   isEditMode: boolean;
@@ -46,6 +50,7 @@ function parseDiceFormula(formula: string): { count: number; sides: number; modi
 
 export function SheetExtras({
   system,
+  ordemSheetData,
   bonuses,
   compendiumEntries,
   isEditMode,
@@ -127,11 +132,13 @@ export function SheetExtras({
       onUpdateAbilities([...abilities, newAb]);
       setIsAddModalOpen(false);
     } else if (entry.category === 'item') {
+      const catLevel = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
       const newItem: RPGItem = {
         id: newId,
         name: entry.name,
         slots: entry.metadata?.slots ?? 1,
         quantity: 1,
+        category: catLevel,
         isEquipped: true,
         description: entry.description,
         modifiers: entry.modifiers || [],
@@ -139,14 +146,30 @@ export function SheetExtras({
 
       let newAtk: PreparedAttack | undefined = undefined;
       if (entry.metadata?.damageFormula) {
+        const isRanged =
+          entry.description.toLowerCase().includes('disparo') ||
+          entry.description.toLowerCase().includes('fogo') ||
+          (entry.metadata?.range && entry.metadata.range !== 'Corpo a Corpo');
+        const skillId = isRanged ? 'pontaria' : 'luta';
+        const attrVal =
+          system === 'ordem-paranormal' && ordemSheetData
+            ? isRanged
+              ? ordemSheetData.attributes.agi
+              : ordemSheetData.attributes.for
+            : 1;
+        const skillObj =
+          system === 'ordem-paranormal' && ordemSheetData
+            ? ordemSheetData.skills.find((s) => s.id === skillId)
+            : undefined;
+
         newAtk = {
           id: Math.random().toString(36).substring(2, 9),
           name: entry.name,
-          diceCount: 1,
-          attackBonus: 5,
+          diceCount: Math.max(1, attrVal),
+          attackBonus: skillObj ? skillObj.trainingDegree + skillObj.otherModifier : 5,
           damageFormula: entry.metadata.damageFormula,
           critRange: entry.metadata.critRange || '20/x2',
-          damageType: 'Arma',
+          damageType: entry.metadata.element || 'Arma',
         };
       }
 
@@ -345,42 +368,64 @@ export function SheetExtras({
                       Nenhum registro encontrado no Compêndio para esta categoria.
                     </div>
                   ) : (
-                    modalCompendiumList.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="bg-zinc-950 border border-zinc-800 hover:border-zinc-700 p-3.5 rounded-xl flex justify-between items-center gap-4 transition"
-                      >
-                        <div className="flex flex-col gap-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-bold text-white">{entry.name}</span>
-                            {entry.cost > 0 && (
-                              <span className="text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">
-                                {entry.cost} {resourceLabel}
-                              </span>
-                            )}
-                            {entry.metadata?.damageFormula && (
-                              <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded">
-                                🎲 {entry.metadata.damageFormula}
-                              </span>
-                            )}
-                            {entry.category === 'item' && (
-                              <span className="text-[10px] font-mono text-zinc-500">
-                                ({entry.metadata?.slots ?? 1} esp.)
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-zinc-400">{entry.description}</p>
-                        </div>
+                    modalCompendiumList.map((entry) => {
+                      const reqCheck =
+                        system === 'ordem-paranormal' &&
+                        ordemSheetData &&
+                        entry.category === 'power'
+                          ? checkOrdemPowerRequirements(entry, ordemSheetData, abilities)
+                          : { met: true, missing: [] };
 
-                        <button
-                          type="button"
-                          onClick={() => handleSelectFromCompendium(entry)}
-                          className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap shadow"
+                      return (
+                        <div
+                          key={entry.id}
+                          className="bg-zinc-950 border border-zinc-800 hover:border-zinc-700 p-3.5 rounded-xl flex justify-between items-center gap-4 transition"
                         >
-                          + Adicionar
-                        </button>
-                      </div>
-                    ))
+                          <div className="flex flex-col gap-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-bold text-white">{entry.name}</span>
+                              {entry.cost > 0 && entry.category !== 'item' && (
+                                <span className="text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">
+                                  {entry.cost} {resourceLabel}
+                                </span>
+                              )}
+                              {entry.metadata?.damageFormula && (
+                                <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded">
+                                  🎲 {entry.metadata.damageFormula}
+                                </span>
+                              )}
+                              {entry.category === 'item' && (
+                                <span className="text-[10px] font-mono text-amber-400">
+                                  Cat. {entry.metadata?.categoryLevel ?? entry.cost ?? 0} • {entry.metadata?.slots ?? 1} esp.
+                                </span>
+                              )}
+                              {entry.metadata?.requirements && (
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                    reqCheck.met
+                                      ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                                      : 'bg-amber-950/60 text-amber-300 border-amber-800'
+                                  }`}
+                                >
+                                  {reqCheck.met
+                                    ? `✓ Req: ${entry.metadata.requirements}`
+                                    : `🔒 Faltam: ${reqCheck.missing.join(', ')}`}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-zinc-400">{entry.description}</p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSelectFromCompendium(entry)}
+                            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap shadow"
+                          >
+                            + Adicionar
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -803,16 +848,49 @@ export function SheetExtras({
       {activeSubTab === 'inventory' && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap justify-between items-center bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-zinc-400">Capacidade de Carga:</span>
               {canTrade && (
                 <span className="text-[10px] font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-700 px-2 py-0.5 rounded-full">
                   🤝 Trocas entre Jogadores Liberadas
                 </span>
               )}
+              {system === 'ordem-paranormal' && ordemSheetData && (() => {
+                const patentObj =
+                  ORDEM_PATENTS.find((p) => p.name === ordemSheetData.patent) ||
+                  ORDEM_PATENTS[0];
+                const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+                for (const it of inventory) {
+                  const cat = it.category || 0;
+                  if (cat >= 1 && cat <= 4) {
+                    counts[cat as 1 | 2 | 3 | 4] += it.quantity || 1;
+                  }
+                }
+                return (
+                  <div className="flex flex-wrap items-center gap-1.5 ml-2">
+                    {([1, 2, 3, 4] as const).map((cat) => {
+                      const lim = patentObj.categoryLimits[cat];
+                      const used = counts[cat];
+                      const over = used > lim;
+                      return (
+                        <span
+                          key={cat}
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                            over
+                              ? 'bg-red-950 text-red-300 border-red-700 font-bold'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                          }`}
+                        >
+                          Cat. {cat === 1 ? 'I' : cat === 2 ? 'II' : cat === 3 ? 'III' : 'IV'}: {used}/{lim}
+                        </span>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
             <span className={`text-xs font-mono font-bold ${isOverloaded ? 'text-red-400' : 'text-emerald-400'}`}>
-              {currentLoad} / {effectiveMaxSlots} Espaços {isOverloaded && '⚠️ SOBRECARGA!'}
+              {currentLoad} / {effectiveMaxSlots} Espaços {isOverloaded && '⚠️ SOBRECARGA (-5 Defesa, -3m Desl.)!'}
             </span>
           </div>
 
@@ -853,6 +931,34 @@ export function SheetExtras({
                         <span className="text-[11px] font-mono text-zinc-500">
                           ({item.slots * (item.quantity || 1)} esp.)
                         </span>
+                        {system === 'ordem-paranormal' && (
+                          allowInv ? (
+                            <select
+                              value={item.category ?? 0}
+                              onChange={(e) =>
+                                onUpdateInventory(
+                                  inventory.map((i) =>
+                                    i.id === item.id
+                                      ? { ...i, category: Number(e.target.value) }
+                                      : i
+                                  )
+                                )
+                              }
+                              className="bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] font-mono text-amber-300"
+                              title="Categoria do Item (Patente)"
+                            >
+                              <option value={0}>Cat. 0</option>
+                              <option value={1}>Cat. I</option>
+                              <option value={2}>Cat. II</option>
+                              <option value={3}>Cat. III</option>
+                              <option value={4}>Cat. IV</option>
+                            </select>
+                          ) : (
+                            <span className="text-[10px] font-mono bg-zinc-900 text-amber-300 border border-zinc-800 px-1.5 py-0.5 rounded">
+                              Cat. {item.category ? ['0', 'I', 'II', 'III', 'IV'][item.category] || item.category : '0'}
+                            </span>
+                          )
+                        )}
                       </div>
 
                       {item.description && (

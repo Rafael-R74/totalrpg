@@ -181,11 +181,32 @@ export async function fetchCharacters(): Promise<CharacterData[]> {
   return data;
 }
 
-export async function createCharacter(name: string, system: SystemId, portraitUrl?: string): Promise<CharacterData> {
+export interface CreateCharacterCustomOptions {
+  portraitUrl?: string;
+  customVitals?: any[];
+  customSheetData?: Record<string, any>;
+  initialInventory?: any[];
+  initialAttacks?: any[];
+}
+
+export async function createCharacter(
+  name: string,
+  system: SystemId,
+  portraitUrlOrOptions?: string | CreateCharacterCustomOptions
+): Promise<CharacterData> {
+  const extraBody: CreateCharacterCustomOptions =
+    typeof portraitUrlOrOptions === 'string'
+      ? { portraitUrl: portraitUrlOrOptions }
+      : portraitUrlOrOptions || {};
+
   const response = await fetch(`${API_URL}/characters`, {
     method: 'POST',
     headers: getAuthHeader(),
-    body: JSON.stringify({ name, system, portraitUrl }),
+    body: JSON.stringify({
+      name,
+      system,
+      ...extraBody,
+    }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao criar personagem.');

@@ -46,6 +46,20 @@ charactersRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Personagem não encontrado.' });
     }
 
+    const isOwner = character.ownerId === req.userId;
+    const isDM = character.campaign?.dmId === req.userId;
+    let isCampaignMember = false;
+    if (!isOwner && !isDM && character.campaignId) {
+      const teammateCount = await prisma.character.count({
+        where: { campaignId: character.campaignId, ownerId: req.userId },
+      });
+      isCampaignMember = teammateCount > 0;
+    }
+
+    if (!isOwner && !isDM && !isCampaignMember) {
+      return res.status(403).json({ error: 'Sem permissão para visualizar esta ficha.' });
+    }
+
     return res.json(character);
   } catch (error) {
     console.error('Erro ao buscar personagem:', error);
@@ -53,10 +67,18 @@ charactersRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// Criar um novo personagem com a ficha inicial do sistema
+// Criar um novo personagem com a ficha inicial do sistema (ou vinda do Wizard)
 charactersRouter.post('/', async (req: AuthenticatedRequest, res) => {
   try {
-    const { name, system, portraitUrl, campaignId } = req.body;
+    const {
+      name,
+      system,
+      portraitUrl,
+      customVitals,
+      customSheetData,
+      initialInventory,
+      initialAttacks,
+    } = req.body;
 
     if (!name || !system) {
       return res.status(400).json({ error: 'Nome e sistema são obrigatórios.' });
@@ -78,17 +100,24 @@ charactersRouter.post('/', async (req: AuthenticatedRequest, res) => {
       sheetData = {};
     }
 
+    if (Array.isArray(customVitals) && customVitals.length > 0) {
+      vitals = customVitals;
+    }
+    if (customSheetData && typeof customSheetData === 'object') {
+      sheetData = { ...sheetData, ...customSheetData };
+    }
+
     const newCharacter = await prisma.character.create({
       data: {
         name,
         system,
         portraitUrl: portraitUrl || '',
         ownerId: req.userId!,
-        campaignId: campaignId || null,
+        campaignId: null,
         vitals: vitals as unknown as Prisma.InputJsonValue,
         sheetData: sheetData as unknown as Prisma.InputJsonValue,
-        inventory: [],
-        attacks: [],
+        inventory: (Array.isArray(initialInventory) ? initialInventory : []) as unknown as Prisma.InputJsonValue,
+        attacks: (Array.isArray(initialAttacks) ? initialAttacks : []) as unknown as Prisma.InputJsonValue,
       },
     });
 

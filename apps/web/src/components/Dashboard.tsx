@@ -20,6 +20,7 @@ import {
 } from '../services/api';
 import { AdminPanel } from './AdminPanel';
 import { ImageUploadField } from './ImageUploadField';
+import { CharacterWizardModal } from './CharacterWizardModal';
 
 interface DashboardProps {
   currentUser: { id: string; username: string; email: string };
@@ -46,6 +47,7 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   const [newCharSystem, setNewCharSystem] = useState<SystemId>('ordem-paranormal');
   const [newCharPortrait, setNewCharPortrait] = useState('');
   const [isCreatingChar, setIsCreatingChar] = useState(false);
+  const [wizardLockedSystem, setWizardLockedSystem] = useState<SystemId | undefined>(undefined);
 
   // Estados para enviar convite (Mestre)
   const [invitingCampaignId, setInvitingCampaignId] = useState<string | null>(null);
@@ -199,6 +201,24 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
 
   return (
     <div className="flex flex-col gap-6">
+      {/* ASSISTENTE GUIADO DE CRIAÇÃO DE PERSONAGEM */}
+      {isCreatingChar && (
+        <CharacterWizardModal
+          lockedSystem={wizardLockedSystem}
+          onClose={() => {
+            setIsCreatingChar(false);
+            setWizardLockedSystem(undefined);
+          }}
+          onCreated={async (created) => {
+            setIsCreatingChar(false);
+            setWizardLockedSystem(undefined);
+            await loadDashboardData();
+            setSelectedCharIdForJoin(created.id);
+            setQuickCharName('');
+          }}
+        />
+      )}
+
       {/* MODAL 1: ACEITAR CONVITE E VINCULAR FICHA */}
       {selectedInviteToAccept && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -256,6 +276,16 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                   ? 'Opção B: Ou criar um novo personagem agora'
                   : 'Crie seu personagem para esta aventura:'}
               </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setWizardLockedSystem(selectedInviteToAccept.campaign.system);
+                  setIsCreatingChar(true);
+                }}
+                className="w-full py-2.5 mb-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/50 rounded-lg text-xs font-black text-amber-300 transition cursor-pointer"
+              >
+                ✨ Criar Personagem Completo no Assistente Guiado ({selectedInviteToAccept.campaign.system.toUpperCase()})
+              </button>
               <input
                 type="text"
                 value={quickCharName}
@@ -263,7 +293,7 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                   setQuickCharName(e.target.value);
                   if (e.target.value) setSelectedCharIdForJoin('');
                 }}
-                placeholder="Nome do novo personagem..."
+                placeholder="Ou digite apenas o nome para criação rápida..."
                 className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
               />
             </div>
@@ -320,23 +350,47 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Personagem do seu Cofre</label>
               {availableVaultCharacters.length === 0 ? (
-                <p className="text-xs text-red-400 bg-red-950/30 border border-red-800/50 p-2.5 rounded-lg">
-                  Você não tem personagens livres no Cofre. Crie um personagem na aba &quot;Meus Personagens&quot; primeiro!
-                </p>
+                <div className="space-y-2">
+                  <p className="text-xs text-red-400 bg-red-950/30 border border-red-800/50 p-2.5 rounded-lg">
+                    Você ainda não tem personagens livres no Cofre.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWizardLockedSystem(undefined);
+                      setIsCreatingChar(true);
+                    }}
+                    className="w-full py-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/50 rounded-lg text-xs font-black text-amber-300 transition cursor-pointer"
+                  >
+                    ✨ Criar Novo Personagem no Assistente Guiado
+                  </button>
+                </div>
               ) : (
-                <select
-                  required
-                  value={selectedCharIdForJoin}
-                  onChange={(e) => setSelectedCharIdForJoin(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
-                >
-                  <option value="">-- Escolha qual ficha levar para a mesa --</option>
-                  {availableVaultCharacters.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.system.toUpperCase()})
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-2">
+                  <select
+                    required
+                    value={selectedCharIdForJoin}
+                    onChange={(e) => setSelectedCharIdForJoin(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">-- Escolha qual ficha levar para a mesa --</option>
+                    {availableVaultCharacters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.system.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWizardLockedSystem(undefined);
+                      setIsCreatingChar(true);
+                    }}
+                    className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-bold text-amber-300 transition cursor-pointer"
+                  >
+                    + Ou criar novo personagem no Assistente Guiado
+                  </button>
+                </div>
               )}
             </div>
 
@@ -551,58 +605,15 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
               </p>
             </div>
             <button
-              onClick={() => setIsCreatingChar(!isCreatingChar)}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+              onClick={() => {
+                setWizardLockedSystem(undefined);
+                setIsCreatingChar(true);
+              }}
+              className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-black transition cursor-pointer shadow-lg"
             >
-              {isCreatingChar ? 'Cancelar' : '+ Novo Personagem'}
+              ✨ + Novo Personagem (Assistente Guiado)
             </button>
           </div>
-
-          {isCreatingChar && (
-            <form
-              onSubmit={handleCreateCharacter}
-              className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4"
-            >
-              <h3 className="font-bold text-amber-500 text-sm">Criar Ficha no Cofre</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Nome do Personagem</label>
-                  <input
-                    type="text"
-                    required
-                    value={newCharName}
-                    onChange={(e) => setNewCharName(e.target.value)}
-                    placeholder="Ex: Arthur Cervero, Klunc..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Sistema de RPG</label>
-                  <select
-                    value={newCharSystem}
-                    onChange={(e) => setNewCharSystem(e.target.value as SystemId)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="ordem-paranormal">Ordem Paranormal</option>
-                    <option value="tormenta20">Tormenta 20</option>
-                  </select>
-                </div>
-                <div>
-                  <ImageUploadField
-                    label="Retrato do Personagem (Opcional)"
-                    value={newCharPortrait}
-                    onChange={setNewCharPortrait}
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="self-end px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition cursor-pointer"
-              >
-                Salvar no Cofre
-              </button>
-            </form>
-          )}
 
           {characters.length === 0 ? (
             <div className="bg-zinc-900/50 border border-dashed border-zinc-800 p-8 rounded-xl text-center">
