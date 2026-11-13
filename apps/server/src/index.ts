@@ -11,18 +11,23 @@ import { authRouter } from './routes/auth';
 import { campaignsRouter } from './routes/campaigns';
 import { charactersRouter } from './routes/characters';
 import { compendiumRouter } from './routes/compendium'; 
+import path from 'path';
+import uploadsRouter from './routes/uploads';
 
 const app = express();
 
+app.use(cors());
+app.use(express.json({ limit: '25mb' }));
 
-app.use(cors({ origin: '*' }));
-app.use(express.json());
+// Serve os arquivos de imagem enviados pelos usuários
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Registramos as rotas de autenticação sob o prefixo /api/auth
 app.use('/api/auth', authRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/characters', charactersRouter);
 app.use('/api/compendium', compendiumRouter);
+app.use('/api/uploads', uploadsRouter);
 // Rota de teste básica da API
 app.get('/api/health', (req, res) => {
   res.json({ status: 'TotalRPG Backend & Database 100% Operacionais!' });

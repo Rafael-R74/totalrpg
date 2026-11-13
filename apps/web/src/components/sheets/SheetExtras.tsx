@@ -7,6 +7,7 @@ import {
   CompendiumEntryData,
   ComputedBonuses,
 } from '@totalrpg/shared';
+import { ImageUploadField } from '../ImageUploadField';
 
 interface SheetExtrasProps {
   system: SystemId;
@@ -84,6 +85,9 @@ export function SheetExtras({
   const [itemName, setItemName] = useState('');
   const [itemSlots, setItemSlots] = useState(1);
   const [itemQty, setItemQty] = useState(1);
+  const [itemImageUrl, setItemImageUrl] = useState('');
+  const [itemDesc, setItemDesc] = useState('');
+  const [zoomedItemImage, setZoomedItemImage] = useState<{ name: string; url: string } | null>(null);
 
   const resourceLabel = system === 'ordem-paranormal' ? 'PE' : 'PM';
   const spellLabel = system === 'ordem-paranormal' ? 'Ritual' : 'Magia';
@@ -204,6 +208,8 @@ export function SheetExtras({
         name: itemName.trim(),
         slots: Math.max(0, itemSlots),
         quantity: Math.max(1, itemQty),
+        imageUrl: itemImageUrl.trim() || undefined,
+        description: itemDesc.trim() || undefined,
         isEquipped: true,
         modifiers: [],
       },
@@ -211,6 +217,8 @@ export function SheetExtras({
     setItemName('');
     setItemSlots(1);
     setItemQty(1);
+    setItemImageUrl('');
+    setItemDesc('');
     setIsAddModalOpen(false);
   }
 
@@ -496,8 +504,8 @@ export function SheetExtras({
 
                 {activeSubTab === 'inventory' && (
                   <form onSubmit={handleAddCustomItem} className="flex flex-col gap-3">
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="col-span-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div className="sm:col-span-2">
                         <label className="block text-xs text-zinc-400 mb-1">Nome do Item</label>
                         <input
                           type="text"
@@ -516,6 +524,35 @@ export function SheetExtras({
                           value={itemSlots}
                           onChange={(e) => setItemSlots(Number(e.target.value))}
                           className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Quantidade</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={itemQty}
+                          onChange={(e) => setItemQty(Number(e.target.value))}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <ImageUploadField
+                        label="Imagem do Item (Opcional)"
+                        value={itemImageUrl}
+                        onChange={setItemImageUrl}
+                      />
+                      <div>
+                        <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
+                          Descrição (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          value={itemDesc}
+                          onChange={(e) => setItemDesc(e.target.value)}
+                          placeholder="Detalhes ou efeito do item..."
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white"
                         />
                       </div>
                     </div>
@@ -733,7 +770,36 @@ export function SheetExtras({
         </div>
       )}
 
-      {/* CONTEÚDO DA ABA 4: INVENTÁRIO (Com Quantidades xN e Troca entre Aliados) */}
+      {/* MODAL DE ZOOM DE IMAGEM DE ITEM */}
+      {zoomedItemImage && (
+        <div
+          onClick={() => setZoomedItemImage(null)}
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 backdrop-blur-md cursor-zoom-out"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-zinc-900 border-2 border-amber-500/80 rounded-3xl p-4 max-w-xl w-full flex flex-col items-center gap-3 shadow-2xl"
+          >
+            <img
+              src={zoomedItemImage.url}
+              alt={zoomedItemImage.name}
+              className="max-h-[70vh] w-auto object-contain rounded-2xl"
+            />
+            <div className="flex justify-between items-center w-full px-2">
+              <span className="text-base font-extrabold text-white">{zoomedItemImage.name}</span>
+              <button
+                type="button"
+                onClick={() => setZoomedItemImage(null)}
+                className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONTEÚDO DA ABA 4: INVENTÁRIO (Com Imagens em Destaque, Quantidades xN e Troca entre Aliados) */}
       {activeSubTab === 'inventory' && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap justify-between items-center bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl gap-2">
@@ -753,38 +819,79 @@ export function SheetExtras({
           {inventory.length === 0 ? (
             <p className="text-xs text-zinc-500 text-center py-4">Mochila vazia.</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {inventory.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 rounded-lg flex justify-between items-center gap-2"
+                  className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex justify-between items-center gap-4"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-extrabold bg-amber-950/70 text-amber-400 border border-amber-800/60 px-1.5 py-0.5 rounded">
-                        {item.quantity || 1}x
-                      </span>
-                      <p className="text-sm font-semibold text-white">{item.name}</p>
-                      <span className="text-[11px] font-mono text-zinc-500">
-                        ({item.slots * (item.quantity || 1)} esp.)
-                      </span>
+                  <div className="flex items-center gap-4 min-w-0 flex-1">
+                    {item.imageUrl ? (
+                      <div
+                        onClick={() => setZoomedItemImage({ name: item.name, url: item.imageUrl! })}
+                        title="Clique para ampliar a imagem do item"
+                        className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-amber-500/60 shadow-lg shrink-0 bg-zinc-900 cursor-zoom-in group relative"
+                      >
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-3xl shrink-0">
+                        🎒
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-mono font-extrabold bg-amber-950/70 text-amber-400 border border-amber-800/60 px-1.5 py-0.5 rounded">
+                          {item.quantity || 1}x
+                        </span>
+                        <p className="text-base font-bold text-white truncate">{item.name}</p>
+                        <span className="text-[11px] font-mono text-zinc-500">
+                          ({item.slots * (item.quantity || 1)} esp.)
+                        </span>
+                      </div>
+
+                      {item.description && (
+                        <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{item.description}</p>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-3 mt-2">
+                        <label className="flex items-center gap-1.5 text-[11px] text-emerald-400 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(item.isEquipped)}
+                            onChange={() => toggleItemEquipped(item.id)}
+                          />
+                          Equipado / Em mãos
+                        </label>
+
+                        {allowInv && (
+                          <ImageUploadField
+                            compact
+                            value={item.imageUrl || ''}
+                            onChange={(newUrl) =>
+                              onUpdateInventory(
+                                inventory.map((i) =>
+                                  i.id === item.id ? { ...i, imageUrl: newUrl || undefined } : i
+                                )
+                              )
+                            }
+                          />
+                        )}
+                      </div>
                     </div>
-                    <label className="flex items-center gap-1.5 text-[11px] text-emerald-400 mt-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(item.isEquipped)}
-                        onChange={() => toggleItemEquipped(item.id)}
-                      />
-                      Equipado / Em mãos
-                    </label>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
                     {canTrade && onInitiateTradeItem && (
                       <button
                         type="button"
                         onClick={() => onInitiateTradeItem(item)}
-                        className="px-2.5 py-1 bg-blue-900/60 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700/60 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                        className="px-2.5 py-1.5 bg-blue-900/60 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700/60 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                         title="Entregar este item para outro jogador da mesa"
                       >
                         🤝 Passar p/ Aliado

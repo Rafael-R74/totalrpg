@@ -24,6 +24,7 @@ import {
 import { OrdemSheet } from './OrdemSheet';
 import { TormentaSheet } from './TormentaSheet';
 import { SheetExtras } from './SheetExtras';
+import { ImageUploadField } from '../ImageUploadField';
 
 interface SheetContainerProps {
   characterId: string;
@@ -71,6 +72,7 @@ export function SheetContainer({
   const [selectedConditionModal, setSelectedConditionModal] = useState<ActiveCondition | null>(null);
   const [showMasterConditionPicker, setShowMasterConditionPicker] = useState(false);
   const [showInitiativePrompt, setShowInitiativePrompt] = useState(false);
+  const [isPortraitZoomOpen, setIsPortraitZoomOpen] = useState(false);
 
   // Estados do Modal de Passar Item para Aliado (Etapa 4E)
   const [itemToTradeModal, setItemToTradeModal] = useState<RPGItem | null>(null);
@@ -205,6 +207,7 @@ export function SheetContainer({
     try {
       const updated = await updateCharacter(target.id, {
         name: target.name,
+        portraitUrl: target.portraitUrl,
         vitals: target.vitals,
         sheetData: target.sheetData,
         inventory: target.inventory,
@@ -445,17 +448,26 @@ export function SheetContainer({
             onSubmit={handleConfirmTransfer}
             className="bg-zinc-900 border-2 border-blue-500 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
           >
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">
-                  🤝 Passar Item para Aliado
-                </span>
-                <h3 className="text-lg font-extrabold text-white mt-0.5">
-                  {itemToTradeModal.name}
-                </h3>
-                <span className="text-xs text-zinc-400">
-                  Disponível na sua mochila: <strong>{maxTradeQty}x</strong> ({itemToTradeModal.slots} esp. cada)
-                </span>
+            <div className="flex justify-between items-start gap-3">
+              <div className="flex items-center gap-3.5">
+                {itemToTradeModal.imageUrl && (
+                  <img
+                    src={itemToTradeModal.imageUrl}
+                    alt={itemToTradeModal.name}
+                    className="w-20 h-20 rounded-2xl object-cover border-2 border-blue-500/70 shadow-lg shrink-0 bg-zinc-950"
+                  />
+                )}
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">
+                    🤝 Passar Item para Aliado
+                  </span>
+                  <h3 className="text-lg font-extrabold text-white mt-0.5">
+                    {itemToTradeModal.name}
+                  </h3>
+                  <span className="text-xs text-zinc-400">
+                    Disponível na sua mochila: <strong>{maxTradeQty}x</strong> ({itemToTradeModal.slots} esp. cada)
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
@@ -627,221 +639,302 @@ export function SheetContainer({
         </div>
       )}
 
-      {/* Cabeçalho da Ficha com Condições Expostas */}
-      <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-3">
-        <div className="flex flex-wrap justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBack}
-              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-semibold transition cursor-pointer"
-            >
-              ← Voltar
-            </button>
-
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                {isEditMode && canEditAttributes ? (
-                  <input
-                    type="text"
-                    value={character.name}
-                    onChange={(e) =>
-                      setCharacter((prev) => (prev ? { ...prev, name: e.target.value } : null))
-                    }
-                    className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-lg font-bold text-white"
-                  />
-                ) : (
-                  <h2 className="text-2xl font-extrabold text-white">{character.name}</h2>
-                )}
-
-                {activeConditions.map((cond) => (
-                  <button
-                    key={cond.id}
-                    type="button"
-                    onClick={() => setSelectedConditionModal(cond)}
-                    title="Clique para ver os detalhes desta condição"
-                    className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-700 rounded-full text-xs font-bold flex items-center gap-1 transition cursor-pointer shadow"
-                  >
-                    <span>🩸 {cond.name}</span>
-                    <span className="text-[10px] text-red-400 ml-0.5">ⓘ</span>
-                  </button>
-                ))}
-
-                {canMasterControl && (
-                  <button
-                    type="button"
-                    onClick={() => setShowMasterConditionPicker(!showMasterConditionPicker)}
-                    className="px-2.5 py-1 bg-zinc-800 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-700 rounded-full text-[11px] font-bold transition cursor-pointer"
-                    title="Controle do Mestre: Aplicar condição ao personagem"
-                  >
-                    + Condição (Mestre)
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] font-mono uppercase bg-amber-950/60 text-amber-400 border border-amber-800/60 px-2 py-0.5 rounded">
-                  {character.system}
-                </span>
-                <span className="text-xs text-zinc-400">
-                  {campaign ? `Mesa: ${campaign.name}` : 'Ficha Livre no Cofre'}
-                </span>
-                {isLockedByMaster && (
-                  <span className="text-[10px] font-mono uppercase bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold">
-                    🔒 Travada pelo Mestre
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {feedbackMsg && (
-              <span className="text-xs font-bold text-emerald-400 animate-pulse">
-                ✓ {feedbackMsg}
-              </span>
-            )}
-
-            <button
-              type="button"
-              disabled={isLockedByMaster}
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                isLockedByMaster
-                  ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
-                  : isEditMode
-                  ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
-              }`}
-            >
-              {isEditMode ? '🎲 Voltar ao Modo Jogo' : '✏️ Entrar no Modo Edição'}
-            </button>
-
-            {isEditMode && (
+      {/* MODAL DE ZOOM DO RETRATO DO PERSONAGEM */}
+      {isPortraitZoomOpen && character.portraitUrl && (
+        <div
+          onClick={() => setIsPortraitZoomOpen(false)}
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 backdrop-blur-md cursor-zoom-out"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative bg-zinc-900 border-2 border-amber-500/80 rounded-3xl p-4 max-w-2xl w-full flex flex-col items-center gap-3 shadow-2xl"
+          >
+            <img
+              src={character.portraitUrl}
+              alt={character.name}
+              className="max-h-[75vh] w-auto object-contain rounded-2xl"
+            />
+            <div className="flex justify-between items-center w-full px-2">
+              <span className="text-base font-extrabold text-white">{character.name}</span>
               <button
                 type="button"
-                disabled={isSaving}
-                onClick={() => handleSaveSheet()}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
-              >
-                {isSaving ? 'Salvando...' : '💾 Salvar Ficha'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {canMasterControl && showMasterConditionPicker && (
-          <div className="bg-zinc-950 border border-red-900/60 p-3.5 rounded-xl flex flex-col gap-2 mt-1">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-red-400">
-                👑 Controle do Mestre: Escolha uma condição para aplicar ao personagem
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowMasterConditionPicker(false)}
-                className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                onClick={() => setIsPortraitZoomOpen(false)}
+                className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-bold cursor-pointer"
               >
                 Fechar
               </button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {availableConditions.length === 0 ? (
-                <span className="text-xs text-zinc-500">
-                  Nenhuma condição cadastrada para este sistema no Painel Admin.
-                </span>
-              ) : (
-                availableConditions.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => handleApplyConditionFromCompendium(c)}
-                    className="px-3 py-1.5 bg-red-950/50 hover:bg-red-900 text-red-200 border border-red-800 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  >
-                    + Aplicar {c.name}
-                  </button>
-                ))
-              )}
-            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Barras Vitais */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {character.vitals.map((bar) => {
-          const bonusMax = bonuses.vitalMax[bar.id] || 0;
-          const effectiveMax = Math.max(1, bar.max + bonusMax);
-          const percent = Math.max(0, Math.min(100, (bar.current / effectiveMax) * 100));
-
-          return (
+      {/* PAINEL HERO DA FICHA: RETRATO EM GRANDE DESTAQUE + CABEÇALHO + BARRAS VITAIS */}
+      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl flex flex-col lg:flex-row gap-6 items-center lg:items-stretch shadow-xl">
+        {/* Coluna Esquerda: Retrato Grande do Personagem */}
+        <div className="flex flex-col items-center gap-3 shrink-0">
+          {character.portraitUrl ? (
             <div
-              key={bar.id}
-              className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col gap-2"
+              onClick={() => setIsPortraitZoomOpen(true)}
+              title="Clique para ampliar o retrato do personagem"
+              className="w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-2xl overflow-hidden border-2 border-amber-500/80 shadow-2xl shadow-black/70 bg-zinc-950 cursor-zoom-in group relative"
             >
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
-                  {bar.label}
-                </span>
-                {isEditMode && canEditVitals ? (
-                  <div className="flex items-center gap-1 font-mono text-xs">
-                    <input
-                      type="number"
-                      value={bar.current}
-                      onChange={(e) => handleVitalChange(bar.id, 'current', Number(e.target.value))}
-                      className="w-12 bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-center text-white"
-                    />
-                    <span>/</span>
-                    <input
-                      type="number"
-                      value={bar.max}
-                      onChange={(e) => handleVitalChange(bar.id, 'max', Number(e.target.value))}
-                      className="w-12 bg-zinc-950 border border-zinc-700 rounded px-1 py-0.5 text-center text-white"
-                    />
-                    {bonusMax !== 0 && (
-                      <span className="text-emerald-400">({bonusMax > 0 ? `+${bonusMax}` : bonusMax})</span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-baseline gap-1">
-                    <span className="font-mono text-sm font-bold text-white">
-                      {bar.current} / {effectiveMax}
+              <img
+                src={character.portraitUrl}
+                alt={character.name}
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+              <span className="absolute bottom-2 right-2 bg-black/75 text-amber-400 border border-amber-500/50 px-2 py-0.5 rounded-lg text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                🔍 Ampliar
+              </span>
+            </div>
+          ) : (
+            <div className="w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-2xl bg-zinc-950 border-2 border-dashed border-amber-500/40 flex flex-col items-center justify-center gap-2 text-amber-400 shadow-inner">
+              <span className="text-5xl font-extrabold">
+                {character.name.substring(0, 2).toUpperCase()}
+              </span>
+              <span className="text-[11px] text-zinc-500 font-medium px-4 text-center">
+                {isEditMode
+                  ? 'Envie uma arte para o seu personagem abaixo'
+                  : 'Sem retrato cadastrado'}
+              </span>
+            </div>
+          )}
+
+          {isEditMode && (
+            <div className="w-full">
+              <ImageUploadField
+                compact
+                label="Retrato do Personagem"
+                value={character.portraitUrl || ''}
+                onChange={(newUrl) =>
+                  setCharacter((prev) =>
+                    prev ? { ...prev, portraitUrl: newUrl } : null
+                  )
+                }
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Coluna Direita: Identificação, Condições, Ações e Barras Vitais */}
+        <div className="flex-1 flex flex-col justify-between gap-5 w-full">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap justify-between items-start gap-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    onClick={onBack}
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    ← Voltar
+                  </button>
+
+                  <span className="text-[10px] font-mono uppercase bg-amber-950/60 text-amber-400 border border-amber-800/60 px-2.5 py-1 rounded-md font-bold">
+                    {character.system}
+                  </span>
+                  <span className="text-xs text-zinc-400 font-medium">
+                    {campaign ? `Mesa: ${campaign.name}` : 'Ficha Livre no Cofre'}
+                  </span>
+                  {isLockedByMaster && (
+                    <span className="text-[10px] font-mono uppercase bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold">
+                      🔒 Travada pelo Mestre
                     </span>
-                    {bonusMax !== 0 && (
-                      <span className="text-[10px] font-mono text-emerald-400">
-                        ({bonusMax > 0 ? `+${bonusMax}` : bonusMax} poder)
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              <div className="w-full h-3.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
-                <div
-                  className="h-full transition-all duration-300"
-                  style={{ width: `${percent}%`, backgroundColor: bar.color }}
-                />
-              </div>
+                <div className="flex flex-wrap items-center gap-2.5 mt-1">
+                  {isEditMode && canEditAttributes ? (
+                    <input
+                      type="text"
+                      value={character.name}
+                      onChange={(e) =>
+                        setCharacter((prev) => (prev ? { ...prev, name: e.target.value } : null))
+                      }
+                      placeholder="Nome do Personagem"
+                      className="bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-xl font-extrabold text-white"
+                    />
+                  ) : (
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                      {character.name}
+                    </h2>
+                  )}
 
-              {canEditVitals && (
-                <div className="flex justify-between gap-1 mt-1">
-                  {[-5, -1, +1, +5].map((delta) => (
+                  {activeConditions.map((cond) => (
                     <button
-                      key={delta}
+                      key={cond.id}
                       type="button"
-                      onClick={() => handleVitalChange(bar.id, 'current', bar.current + delta)}
-                      className={`flex-1 py-1 rounded text-xs font-mono font-bold transition cursor-pointer ${
-                        delta < 0
-                          ? 'bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-900/50'
-                          : 'bg-emerald-950/50 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-900/50'
-                      }`}
+                      onClick={() => setSelectedConditionModal(cond)}
+                      title="Clique para ver os detalhes desta condição"
+                      className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-700 rounded-full text-xs font-bold flex items-center gap-1 transition cursor-pointer shadow"
                     >
-                      {delta > 0 ? `+${delta}` : delta}
+                      <span>🩸 {cond.name}</span>
+                      <span className="text-[10px] text-red-400 ml-0.5">ⓘ</span>
                     </button>
                   ))}
+
+                  {canMasterControl && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMasterConditionPicker(!showMasterConditionPicker)}
+                      className="px-2.5 py-1 bg-zinc-800 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-700 rounded-full text-[11px] font-bold transition cursor-pointer"
+                      title="Controle do Mestre: Aplicar condição ao personagem"
+                    >
+                      + Condição (Mestre)
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {feedbackMsg && (
+                  <span className="text-xs font-bold text-emerald-400 animate-pulse">
+                    ✓ {feedbackMsg}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  disabled={isLockedByMaster}
+                  onClick={() => setIsEditMode(!isEditMode)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    isLockedByMaster
+                      ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
+                      : isEditMode
+                      ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                  }`}
+                >
+                  {isEditMode ? '🎲 Voltar ao Modo Jogo' : '✏️ Entrar no Modo Edição'}
+                </button>
+
+                {isEditMode && (
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleSaveSheet()}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                  >
+                    {isSaving ? 'Salvando...' : '💾 Salvar Ficha'}
+                  </button>
+                )}
+              </div>
             </div>
-          );
-        })}
+
+            {canMasterControl && showMasterConditionPicker && (
+              <div className="bg-zinc-950 border border-red-900/60 p-3.5 rounded-xl flex flex-col gap-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-red-400">
+                    👑 Controle do Mestre: Escolha uma condição para aplicar ao personagem
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowMasterConditionPicker(false)}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {availableConditions.length === 0 ? (
+                    <span className="text-xs text-zinc-500">
+                      Nenhuma condição cadastrada para este sistema no Painel Admin.
+                    </span>
+                  ) : (
+                    availableConditions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleApplyConditionFromCompendium(c)}
+                        className="px-3 py-1.5 bg-red-950/50 hover:bg-red-900 text-red-200 border border-red-800 rounded-lg text-xs font-semibold transition cursor-pointer"
+                      >
+                        + Aplicar {c.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Barras Vitais integradas ao lado do Retrato Grande */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {character.vitals.map((bar) => {
+              const bonusMax = bonuses.vitalMax[bar.id] || 0;
+              const effectiveMax = Math.max(1, bar.max + bonusMax);
+              const percent = Math.max(0, Math.min(100, (bar.current / effectiveMax) * 100));
+
+              return (
+                <div
+                  key={bar.id}
+                  className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-2.5"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                      {bar.label}
+                    </span>
+                    {isEditMode && canEditVitals ? (
+                      <div className="flex items-center gap-1 font-mono text-xs">
+                        <input
+                          type="number"
+                          value={bar.current}
+                          onChange={(e) => handleVitalChange(bar.id, 'current', Number(e.target.value))}
+                          className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-center text-white"
+                        />
+                        <span>/</span>
+                        <input
+                          type="number"
+                          value={bar.max}
+                          onChange={(e) => handleVitalChange(bar.id, 'max', Number(e.target.value))}
+                          className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-center text-white"
+                        />
+                        {bonusMax !== 0 && (
+                          <span className="text-emerald-400">({bonusMax > 0 ? `+${bonusMax}` : bonusMax})</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-mono text-sm font-bold text-white">
+                          {bar.current} / {effectiveMax}
+                        </span>
+                        {bonusMax !== 0 && (
+                          <span className="text-[10px] font-mono text-emerald-400">
+                            ({bonusMax > 0 ? `+${bonusMax}` : bonusMax} poder)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="w-full h-3.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                    <div
+                      className="h-full transition-all duration-300"
+                      style={{ width: `${percent}%`, backgroundColor: bar.color }}
+                    />
+                  </div>
+
+                  {canEditVitals && (
+                    <div className="flex justify-between gap-1 mt-0.5">
+                      {[-5, -1, +1, +5].map((delta) => (
+                        <button
+                          key={delta}
+                          type="button"
+                          onClick={() => handleVitalChange(bar.id, 'current', bar.current + delta)}
+                          className={`flex-1 py-1 rounded text-xs font-mono font-bold transition cursor-pointer ${
+                            delta < 0
+                              ? 'bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-900/50'
+                              : 'bg-emerald-950/50 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-900/50'
+                          }`}
+                        >
+                          {delta > 0 ? `+${delta}` : delta}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Módulos dos Sistemas */}

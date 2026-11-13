@@ -642,3 +642,86 @@ campaignsRouter.post('/:campaignId/transfer-item', async (req: AuthenticatedRequ
     return res.status(500).json({ error: 'Erro interno ao transferir item.' });
   }
 });
+
+// 1. Remover ou desvincular um personagem da campanha (Devolve a ficha intacta para o Cofre do jogador)
+campaignsRouter.put('/:campaignId/remove-character/:characterId', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { campaignId, characterId } = req.params;
+
+    if (
+      !campaignId ||
+      typeof campaignId !== 'string' ||
+      !characterId ||
+      typeof characterId !== 'string'
+    ) {
+      return res.status(400).json({ error: 'Parâmetros inválidos.' });
+    }
+
+    const [campaign, character] = await Promise.all([
+      prisma.campaign.findUnique({ where: { id: campaignId } }),
+      prisma.character.findUnique({ where: { id: characterId } }),
+    ]);
+
+    if (!campaign || !character) {
+      return res.status(404).json({ error: 'Campanha ou personagem não encontrado.' });
+    }
+
+    const isDM = campaign.dmId === req.userId;
+    const isOwner = character.ownerId === req.userId;
+
+    if (!isDM && !isOwner) {
+      return res.status(403).json({ error: 'Sem permissão para remover este personagem da mesa.' });
+    }
+
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { campaignId: null },
+    });
+
+    return res.json({ message: 'Personagem devolvido ao Cofre com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao remover personagem da campanha:', error);
+    return res.status(500).json({ error: 'Erro ao desvincular personagem da mesa.' });
+  }
+});
+
+// 2. Excluir uma campanha inteira (Desvinculando os personagens antes para preservá-los no Cofre!)
+campaignsRouter.delete('/:campaignId', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { campaignId } = req.params;
+
+    if (!campaignId || typeof campaignId !== 'string') {
+      return res.status(400).json({ error: 'ID da campanha inválido.' });
+    }
+
+    const existing = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Campanha não encontrada.' });
+    }
+
+    if (existing.dmId !== req.userId) {
+      return res.status(403).json({ error: 'Apenas o Mestre pode excluir esta campanha.' });
+    }
+
+    await prisma.$transaction([
+      prisma.character.updateMany({
+        where: { campaignId },
+        data: { campaignId: null },
+      }),
+      prisma.campaignInvite.deleteMany({
+        where: { campaignId },
+      }),
+      prisma.campaign.delete({
+        where: { id: campaignId },
+      }),
+    ]);
+
+    return res.json({ message: 'Campanha encerrada e excluída com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao excluir campanha:', error);
+    return res.status(500).json({ error: 'Erro interno ao excluir campanha.' });
+  }
+});

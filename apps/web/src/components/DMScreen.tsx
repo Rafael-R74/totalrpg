@@ -22,6 +22,7 @@ import {
   updateCampaignDMData,
   updateCharacter,
   fetchCompendium,
+  removeCharacterFromCampaign
 } from '../services/api';
 import { BestiaryManager } from './dm/BestiaryManager';
 import { LootAndMerchantsManager, CampaignStoredItem } from './dm/LootAndMerchantsManager';
@@ -917,6 +918,10 @@ async function handleDeliverItemToCharacter(
                     {combatants.map((c, index) => {
                       const isCurrentTurn = index === currentTurnIndex;
                       const dmgParsed = c.damageFormula ? parseFormula(c.damageFormula) : null;
+                      const matchedPlayer = !c.isNPC
+                        ? campaign.characters.find((ch) => ch.id === c.characterId)
+                        : undefined;
+                      const combatantImg = c.imageUrl || matchedPlayer?.portraitUrl;
 
                       return (
                         <div
@@ -936,6 +941,18 @@ async function handleDeliverItemToCharacter(
                               }
                               className="w-14 bg-zinc-900 border border-zinc-700 rounded-lg py-1 text-center font-mono text-sm font-extrabold text-amber-400"
                             />
+
+                            {combatantImg ? (
+                              <img
+                                src={combatantImg}
+                                alt={c.name}
+                                className="w-12 h-12 rounded-xl object-cover border border-amber-500/60 shrink-0"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-lg font-bold text-amber-400 shrink-0">
+                                {c.isNPC ? '👹' : c.name.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
 
                             <div>
                               <div className="flex items-center gap-2">
@@ -1089,23 +1106,37 @@ async function handleDeliverItemToCharacter(
                       key={char.id}
                       className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between gap-4 shadow-lg"
                     >
-                      <div className="flex flex-col gap-2">
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <span className="text-[10px] font-mono uppercase text-zinc-400">
-                              Jogador: <strong className="text-amber-400">@{char.owner.username}</strong>
-                            </span>
-                            <h4 className="text-lg font-extrabold text-white leading-tight">
-                              {char.name}
-                            </h4>
-                            <span className="text-xs text-zinc-400">
-                              {char.system === 'ordem-paranormal'
-                                ? `${raw.characterClass || 'Combatente'} • NEX ${levelOrNex}%`
-                                : `${raw.race || 'Humano'} ${raw.characterClass || 'Guerreiro'} • Nv ${levelOrNex}`}
-                            </span>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            {char.portraitUrl ? (
+                              <img
+                                src={char.portraitUrl}
+                                alt={char.name}
+                                className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0 bg-zinc-950"
+                              />
+                            ) : (
+                              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-zinc-950 border-2 border-amber-500/40 flex items-center justify-center text-2xl font-extrabold text-amber-400 shrink-0">
+                                {char.name.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+
+                            <div className="min-w-0">
+                              <span className="text-[10px] font-mono uppercase text-zinc-400 block truncate">
+                                Jogador: <strong className="text-amber-400">@{char.owner.username}</strong>
+                              </span>
+                              <h4 className="text-lg font-extrabold text-white leading-tight truncate">
+                                {char.name}
+                              </h4>
+                              <span className="text-xs text-zinc-400 block truncate">
+                                {char.system === 'ordem-paranormal'
+                                  ? `${raw.characterClass || 'Combatente'} • NEX ${levelOrNex}%`
+                                  : `${raw.race || 'Humano'} ${raw.characterClass || 'Guerreiro'} • Nv ${levelOrNex}`}
+                              </span>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 shrink-0">
                             <div className="bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-lg text-center">
                               <span className="block text-[9px] uppercase text-zinc-500 font-bold">
                                 Defesa
@@ -1230,13 +1261,37 @@ async function handleDeliverItemToCharacter(
                         })}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => onInspectCharacter(char.id)}
-                        className="w-full py-2 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
-                      >
-                        🔍 Inspecionar / Editar Ficha Completa
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onInspectCharacter(char.id)}
+                          className="flex-1 py-2 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                        >
+                          🔍 Inspecionar / Editar Ficha Completa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                `Remover "${char.name}" desta campanha? A ficha voltará intacta para o Cofre de @${char.owner.username}.`
+                              )
+                            )
+                              return;
+                            try {
+                              await removeCharacterFromCampaign(campaign.id, char.id);
+                              onBroadcastCharacterSync(char.id);
+                              loadScreenData(true);
+                            } catch (err: any) {
+                              alert(err.message);
+                            }
+                          }}
+                          className="px-3 py-2 bg-zinc-950 hover:bg-red-950 text-zinc-500 hover:text-red-300 border border-zinc-800 rounded-xl text-xs font-bold transition cursor-pointer"
+                          title="Remover personagem desta campanha (Devolve ao Cofre)"
+                        >
+                          🚪 Remover
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

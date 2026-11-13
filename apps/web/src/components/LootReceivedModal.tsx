@@ -22,10 +22,20 @@ export function LootReceivedModal({ loot, onClose }: LootReceivedModalProps) {
         onClick={(e) => e.stopPropagation()}
         className="bg-zinc-900 border-2 border-emerald-500 rounded-2xl max-w-md w-full p-6 shadow-2xl shadow-emerald-950/50 flex flex-col items-center text-center gap-4"
       >
-        {/* Ícone com Animação de Celebração */}
-        <div className="w-20 h-20 rounded-2xl bg-emerald-950/60 border border-emerald-500/60 flex items-center justify-center text-5xl animate-bounce shadow-inner">
-          {attack ? '⚔️' : '🎁'}
-        </div>
+        {/* Imagem em Destaque ou Ícone com Animação de Celebração */}
+        {item.imageUrl ? (
+          <div className="w-48 h-48 rounded-2xl bg-zinc-950 border-2 border-emerald-500/80 p-1.5 shadow-2xl shadow-emerald-950/80 overflow-hidden">
+            <img
+              src={item.imageUrl}
+              alt={item.name}
+              className="w-full h-full rounded-xl object-cover"
+            />
+          </div>
+        ) : (
+          <div className="w-24 h-24 rounded-2xl bg-emerald-950/60 border border-emerald-500/60 flex items-center justify-center text-6xl animate-bounce shadow-inner">
+            {attack ? '⚔️' : '🎁'}
+          </div>
+        )}
 
         <div>
           <span className="text-[11px] font-mono uppercase tracking-widest text-emerald-400 font-extrabold">

@@ -1,4 +1,5 @@
 import { MonitorDirectorState, CampaignMerchant } from '@totalrpg/shared';
+import { ImageUploadField } from '../ImageUploadField';
 
 interface MonitorDirectorPanelProps {
   campaignId: string;
@@ -43,7 +44,6 @@ export function MonitorDirectorPanel({
         </button>
       </div>
 
-      {/* AVISO DE PROJEÇÃO EM DESTAQUE ATIVA */}
       {director.activeProjection && (
         <div className="bg-amber-950/50 border-2 border-amber-500 p-4 rounded-xl flex justify-between items-center gap-4">
           <div>
@@ -162,7 +162,7 @@ export function MonitorDirectorPanel({
         )}
       </div>
 
-      {/* 3. AMBIENTAÇÃO DA CENA E PROJEÇÃO DE IMAGEM LIVRE */}
+      {/* 3. AMBIENTAÇÃO DA CENA E PROJEÇÃO DE IMAGEM COM UPLOAD DIRETO */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col gap-3">
           <span className="text-xs font-bold text-amber-400 uppercase">
@@ -182,18 +182,16 @@ export function MonitorDirectorPanel({
             placeholder="Subtítulo / Clima (Ex: Meia-noite • Chuva Forte)"
             className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
           />
-          <input
-            type="text"
+          <ImageUploadField
+            label="Imagem de Ambiente / Fundo do 2º Monitor"
             value={director.backgroundUrl || ''}
-            onChange={(e) => onChangeDirector({ ...director, backgroundUrl: e.target.value })}
-            placeholder="URL de Imagem de Fundo (https://...)"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
+            onChange={(newUrl) => onChangeDirector({ ...director, backgroundUrl: newUrl })}
           />
         </div>
 
         <div className="bg-zinc-950 border border-purple-900/50 p-4 rounded-xl flex flex-col justify-between gap-3">
           <span className="text-xs font-bold text-purple-400 uppercase">
-            🖼️ Projetar Imagem / Pista Livre
+            🖼️ Projetar Imagem / Mapa / Pista Livre
           </span>
           <input
             type="text"
@@ -202,12 +200,10 @@ export function MonitorDirectorPanel({
             placeholder="Título da Pista / Mapa"
             className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
           />
-          <input
-            type="text"
+          <ImageUploadField
+            label="Arquivo de Imagem da Pista / Mapa"
             value={director.handoutImageUrl || ''}
-            onChange={(e) => onChangeDirector({ ...director, handoutImageUrl: e.target.value })}
-            placeholder="URL da Imagem (https://...)"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
+            onChange={(newUrl) => onChangeDirector({ ...director, handoutImageUrl: newUrl })}
           />
           <button
             type="button"

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ImageUploadField } from '../ImageUploadField';
 import {
   SystemId,
   CampaignThreat,
@@ -253,8 +254,8 @@ export function BestiaryManager({
               : `🛠️ Construtor Completo de Criatura / NPC (${system})`}
           </h4>
 
-          <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
-            <div className="sm:col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            <div className="sm:col-span-4">
               <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
                 Nome da Criatura / NPC
               </label>
@@ -268,20 +269,15 @@ export function BestiaryManager({
               />
             </div>
 
-            <div className="sm:col-span-1">
-              <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                URL da Imagem (Opcional)
-              </label>
-              <input
-                type="text"
+            <div className="sm:col-span-3">
+              <ImageUploadField
+                label="Imagem / Token"
                 value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-2 text-xs text-white"
+                onChange={setImageUrl}
               />
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
                 Pontos de Vida (PV)
               </label>
@@ -294,7 +290,7 @@ export function BestiaryManager({
               />
             </div>
 
-            <div>
+            <div className="sm:col-span-1">
               <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
                 Defesa
               </label>
@@ -306,7 +302,7 @@ export function BestiaryManager({
               />
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
                 Iniciativa (d20 / +Bônus)
               </label>
@@ -563,18 +559,22 @@ export function BestiaryManager({
                 className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-between gap-4"
               >
                 <div className="flex flex-col gap-3">
-                  <div className="flex justify-between items-start gap-2 border-b border-zinc-800/80 pb-2.5">
-                    <div className="flex items-center gap-3">
-                      {threat.imageUrl && (
+                  <div className="flex justify-between items-start gap-3 border-b border-zinc-800/80 pb-3">
+                    <div className="flex items-center gap-4 min-w-0">
+                      {threat.imageUrl ? (
                         <img
                           src={threat.imageUrl}
                           alt={threat.name}
-                          className="w-12 h-12 rounded-xl object-cover border border-red-700/60"
+                          className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-red-700/80 shadow-xl shrink-0 bg-zinc-900"
                         />
+                      ) : (
+                        <div className="w-20 h-20 rounded-2xl bg-red-950/50 border border-red-800/70 flex items-center justify-center text-3xl shrink-0">
+                          👹
+                        </div>
                       )}
-                      <div>
-                        <h4 className="text-base font-extrabold text-white">{threat.name}</h4>
-                        <div className="flex items-center gap-3 mt-1 text-xs font-mono">
+                      <div className="min-w-0">
+                        <h4 className="text-lg font-extrabold text-white truncate">{threat.name}</h4>
+                        <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs font-mono">
                           <span className="text-red-400 font-bold">❤️ PV: {threat.hpMax}</span>
                           <span className="text-amber-400 font-bold">🛡️ DEF: {threat.defense}</span>
                           <span className="text-zinc-400">

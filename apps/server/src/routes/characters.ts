@@ -103,7 +103,7 @@ charactersRouter.post('/', async (req: AuthenticatedRequest, res) => {
 charactersRouter.put('/:id', async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { name, vitals, sheetData, inventory, attacks } = req.body;
+    const { name, portraitUrl, vitals, sheetData, inventory, attacks } = req.body;
 
     if (!id || typeof id !== 'string') {
       return res.status(400).json({ error: 'ID do personagem inválido.' });
@@ -134,10 +134,11 @@ charactersRouter.put('/:id', async (req: AuthenticatedRequest, res) => {
       where: { id },
       data: {
         name: name ?? existingChar.name,
-        vitals: (vitals ?? existingChar.vitals) as unknown as Prisma.InputJsonValue,
-        sheetData: (sheetData ?? existingChar.sheetData) as unknown as Prisma.InputJsonValue,
-        inventory: (inventory ?? existingChar.inventory) as unknown as Prisma.InputJsonValue,
-        attacks: (attacks ?? existingChar.attacks) as unknown as Prisma.InputJsonValue,
+        portraitUrl: portraitUrl !== undefined ? String(portraitUrl) : existingChar.portraitUrl,
+        vitals: (vitals ?? existingChar.vitals) as Prisma.InputJsonValue,
+        sheetData: (sheetData ?? existingChar.sheetData) as Prisma.InputJsonValue,
+        inventory: (inventory ?? existingChar.inventory) as Prisma.InputJsonValue,
+        attacks: (attacks ?? existingChar.attacks) as Prisma.InputJsonValue,
       },
     });
 
@@ -145,5 +146,36 @@ charactersRouter.put('/:id', async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     console.error('Erro ao atualizar personagem:', error);
     return res.status(500).json({ error: 'Erro ao salvar alterações da ficha.' });
+  }
+});
+
+// Excluir permanentemente um personagem (Apenas pelo próprio dono)
+charactersRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {
+  try {
+    const characterId = req.params.id;
+    if (!characterId || typeof characterId !== 'string') {
+      return res.status(400).json({ error: 'ID do personagem inválido.' });
+    }
+
+    const existing = await prisma.character.findUnique({
+      where: { id: characterId },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Personagem não encontrado.' });
+    }
+
+    if (existing.ownerId !== req.userId) {
+      return res.status(403).json({ error: 'Apenas o dono pode excluir este personagem.' });
+    }
+
+    await prisma.character.delete({
+      where: { id: characterId },
+    });
+
+    return res.json({ message: 'Personagem excluído com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao excluir personagem:', error);
+    return res.status(500).json({ error: 'Erro ao excluir personagem.' });
   }
 });

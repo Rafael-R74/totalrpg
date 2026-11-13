@@ -439,11 +439,24 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                         : 'bg-zinc-950/80 border-zinc-800 opacity-75'
                     }`}
                   >
-                    <div>
-                      <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
-                        @{char.owner.username}
-                      </span>
-                      <h3 className="text-lg font-extrabold text-white">{char.name}</h3>
+                    <div className="flex flex-col items-center gap-2">
+                      {char.portraitUrl ? (
+                        <img
+                          src={char.portraitUrl}
+                          alt={char.name}
+                          className="w-20 h-20 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 rounded-2xl bg-zinc-900 border-2 border-amber-500/50 flex items-center justify-center text-2xl font-extrabold text-amber-400">
+                          {char.name.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
+                          @{char.owner.username}
+                        </span>
+                        <h3 className="text-lg font-extrabold text-white">{char.name}</h3>
+                      </div>
                     </div>
 
                     {!entry ? (
@@ -485,8 +498,8 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
 
       {/* MODAL ESPECIAL 2: PROJEÇÃO UNIVERSAL EM DESTAQUE */}
       {director.activeProjection && !isInitiativeModalOpen && (
-        <div className="fixed inset-0 bg-black/85 z-40 flex items-center justify-center p-8 backdrop-blur-md">
-          <div className="bg-zinc-900 border-2 border-amber-500 rounded-3xl max-w-4xl w-full p-8 shadow-2xl flex flex-col items-center text-center gap-6">
+        <div className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-6 backdrop-blur-md">
+          <div className="bg-zinc-900 border-2 border-amber-500 rounded-3xl max-w-5xl w-full p-8 shadow-2xl flex flex-col items-center text-center gap-6">
             <div>
               <span className="text-xs font-mono uppercase tracking-widest text-amber-400 font-extrabold">
                 {director.activeProjection.subtitle || '🔍 Em Exibição pelo Mestre'}
@@ -497,11 +510,11 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
             </div>
 
             {director.activeProjection.imageUrl && (
-              <div className="w-full max-h-[55vh] flex justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+              <div className="w-full max-h-[68vh] flex justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-inner">
                 <img
                   src={director.activeProjection.imageUrl}
                   alt={director.activeProjection.title}
-                  className="max-h-[50vh] object-contain rounded-xl"
+                  className="max-h-[64vh] w-auto object-contain rounded-xl shadow-2xl"
                 />
               </div>
             )}
@@ -606,7 +619,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
           </button>
         </div>
 
-        {/* BARRA DE ORDEM DE TURNOS (Tamanho natural quando cabe; encolhe apenas se encher a linha!) */}
+        {/* BARRA DE ORDEM DE TURNOS */}
         {director.showCombatTracker && combatants.length > 0 && (
           <div className="bg-zinc-900/90 border border-amber-500/40 rounded-2xl p-2 flex items-center gap-2.5 overflow-hidden">
             <div className="bg-amber-500 text-zinc-950 px-3.5 py-2 rounded-xl text-center shrink-0">
@@ -620,6 +633,10 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
               {combatants.map((c, index) => {
                 const isTurn = index === currentTurnIndex;
                 const narrativeState = getNarrativeHealthStatus(c.hpCurrent, c.hpMax);
+                const matchedPlayerChar = !c.isNPC
+                  ? campaign.characters.find((ch) => ch.id === c.characterId)
+                  : undefined;
+                const avatarUrl = c.imageUrl || matchedPlayerChar?.portraitUrl;
 
                 return (
                   <div
@@ -633,6 +650,14 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                     <span className="font-mono text-sm font-extrabold text-amber-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 shrink-0">
                       {c.initiative}
                     </span>
+
+                    {avatarUrl && (
+                      <img
+                        src={avatarUrl}
+                        alt={c.name}
+                        className="w-11 h-11 rounded-xl object-cover border border-amber-500/60 shrink-0"
+                      />
+                    )}
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
@@ -674,32 +699,15 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
         )}
       </header>
 
-      {/* 2. PALCO CENTRAL: TAMANHO NATURAL POR PADRÃO, REDUZ APENAS SE PASSAR DA ÁREA VISÍVEL */}
+      {/* 2. PALCO CENTRAL */}
       <main className="flex-1 p-5 min-h-0 overflow-hidden">
         <div
           className={`max-w-[1700px] mx-auto h-full min-h-0 grid grid-cols-1 ${
             hasRightCompanionPanel ? 'lg:grid-cols-2' : 'lg:grid-cols-1'
           } gap-5 items-stretch`}
         >
-          {/* =================================================================
-              PAINEL ESQUERDO DEMARCADO: GRUPO DE PERSONAGENS
-             ================================================================= */}
-          <section className="bg-zinc-900/65 border-2 border-zinc-800/90 rounded-3xl p-4 flex flex-col gap-3.5 h-full min-h-0 overflow-hidden shadow-2xl backdrop-blur-md">
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-2.5 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <span className="w-7 h-7 rounded-xl bg-amber-500/10 border border-amber-500/40 flex items-center justify-center text-sm">
-                  🛡️
-                </span>
-                <div>
-                  <span className="block text-[9px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-                    Grupo Ativo na Mesa
-                  </span>
-                  <h2 className="text-sm font-extrabold text-white">
-                    Personagens dos Jogadores ({campaign.characters.length})
-                  </h2>
-                </div>
-              </div>
-            </div>
+          {/* Grupo de Personagens*/}
+          <section className="bg-zinc-900/65 border-2 border-zinc-800/90 rounded-3xl p-4 flex flex-col gap-3.5 h-full min-h-0 overflow-hidden shadow-2xl">
 
             <div
               ref={playersGridRef}
@@ -767,24 +775,24 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                   >
                     <div className="flex flex-col gap-2 min-h-0">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-3.5 min-w-0">
                           {char.portraitUrl ? (
                             <img
                               src={char.portraitUrl}
                               alt={char.name}
                               className={`${
-                                isUltra ? 'w-9 h-9' : isCompact ? 'w-10 h-10' : 'w-12 h-12'
-                              } rounded-xl object-cover border-2 border-amber-500/60 shrink-0`}
+                                isUltra ? 'w-14 h-14' : isCompact ? 'w-20 h-20' : 'w-28 h-28'
+                              } rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0`}
                             />
                           ) : (
                             <div
                               className={`${
                                 isUltra
-                                  ? 'w-9 h-9 text-xs'
+                                  ? 'w-14 h-14 text-base'
                                   : isCompact
-                                  ? 'w-10 h-10 text-sm'
-                                  : 'w-12 h-12 text-lg'
-                              } rounded-xl bg-zinc-900 border-2 border-amber-500/50 flex items-center justify-center font-extrabold text-amber-400 shrink-0`}
+                                  ? 'w-20 h-20 text-xl'
+                                  : 'w-28 h-28 text-3xl'
+                              } rounded-2xl bg-zinc-900 border-2 border-amber-500/50 flex items-center justify-center font-extrabold text-amber-400 shrink-0`}
                             >
                               {char.name.substring(0, 2).toUpperCase()}
                             </div>
@@ -962,20 +970,24 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                           }`}
                         >
                           <div className="flex justify-between items-center gap-3 min-w-0">
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-3.5 min-w-0">
                               {threat.imageUrl ? (
                                 <img
                                   src={threat.imageUrl}
                                   alt={threat.name}
                                   className={`${
-                                    isUltra ? 'w-9 h-9' : 'w-12 h-12'
-                                  } rounded-xl object-cover border-2 border-red-600/70 shrink-0`}
+                                    isUltra ? 'w-14 h-14' : threatTier === 1 ? 'w-20 h-20' : 'w-28 h-28'
+                                  } rounded-2xl object-cover border-2 border-red-600/80 shadow-lg shrink-0`}
                                 />
                               ) : (
                                 <div
                                   className={`${
-                                    isUltra ? 'w-9 h-9 text-lg' : 'w-12 h-12 text-2xl'
-                                  } rounded-xl bg-red-950/80 border-2 border-red-800 flex items-center justify-center shrink-0`}
+                                    isUltra
+                                      ? 'w-14 h-14 text-xl'
+                                      : threatTier === 1
+                                      ? 'w-20 h-20 text-3xl'
+                                      : 'w-28 h-28 text-4xl'
+                                  } rounded-2xl bg-red-950/80 border-2 border-red-800 flex items-center justify-center shrink-0`}
                                 >
                                   👹
                                 </div>
@@ -1107,20 +1119,24 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                 isUltra ? 'p-2.5 gap-1.5' : isCompact ? 'p-3 gap-2' : 'p-4 gap-2.5'
                               } flex flex-col min-h-0 overflow-hidden`}
                             >
-                              <div className="flex items-start gap-3 min-w-0">
+                              <div className="flex items-start gap-3.5 min-w-0">
                                 {st.item.imageUrl ? (
                                   <img
                                     src={st.item.imageUrl}
                                     alt={st.item.name}
                                     className={`${
-                                      isUltra ? 'w-8 h-8' : 'w-11 h-11'
-                                    } rounded-xl object-cover border border-zinc-700 shrink-0`}
+                                      isUltra ? 'w-12 h-12' : isCompact ? 'w-16 h-16' : 'w-24 h-24'
+                                    } rounded-2xl object-cover border-2 border-amber-500/50 shadow-md shrink-0`}
                                   />
                                 ) : (
                                   <div
                                     className={`${
-                                      isUltra ? 'w-8 h-8 text-base' : 'w-11 h-11 text-xl'
-                                    } rounded-xl border flex items-center justify-center shrink-0 ${
+                                      isUltra
+                                        ? 'w-12 h-12 text-lg'
+                                        : isCompact
+                                        ? 'w-16 h-16 text-2xl'
+                                        : 'w-24 h-24 text-3xl'
+                                    } rounded-2xl border flex items-center justify-center shrink-0 ${
                                       isWeapon
                                         ? 'bg-red-950/50 border-red-800/70 text-red-300'
                                         : 'bg-zinc-900 border-zinc-800 text-amber-400'
