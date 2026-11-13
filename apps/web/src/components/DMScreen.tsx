@@ -120,6 +120,7 @@ export function DMScreen({
   const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes' | 'monitor'>('table');
   const [conditionPickerCharId, setConditionPickerCharId] = useState<string | null>(null);
   const [initFeedback, setInitFeedback] = useState('');
+  const [sceneEndToast, setSceneEndToast] = useState('');
 
   // Estados sincronizados com o Banco de Dados SQLite (Etapa 4D)
   const [combatants, setCombatants] = useState<CombatantEntry[]>([]);
@@ -501,7 +502,9 @@ async function handleDeliverItemToCharacter(
 
     let effectiveDelta = delta;
     let nextTempHp = Number(rawSheet.tempHp || 0);
+    let nextTempPe = Number(rawSheet.tempPe || 0);
     let tempHpChanged = false;
+    let tempPeChanged = false;
 
     if (barId === 'pv' && delta < 0 && nextTempHp > 0) {
       const damage = Math.abs(delta);
@@ -511,6 +514,14 @@ async function handleDeliverItemToCharacter(
       tempHpChanged = true;
     }
 
+    if (barId === 'pe' && delta < 0 && nextTempPe > 0) {
+      const spent = Math.abs(delta);
+      const absorbed = Math.min(nextTempPe, spent);
+      nextTempPe -= absorbed;
+      effectiveDelta = -(spent - absorbed);
+      tempPeChanged = true;
+    }
+
     const updatedVitals = char.vitals.map((bar) => {
       if (bar.id !== barId) return bar;
       const effectiveMax = Math.max(1, bar.max + (bonuses.vitalMax[bar.id] || 0));
@@ -518,7 +529,10 @@ async function handleDeliverItemToCharacter(
       return { ...bar, current: nextCurrent };
     });
 
-    const nextSheetData = tempHpChanged ? { ...rawSheet, tempHp: nextTempHp } : rawSheet;
+    const nextSheetData =
+      tempHpChanged || tempPeChanged
+        ? { ...rawSheet, tempHp: nextTempHp, tempPe: nextTempPe }
+        : rawSheet;
 
     setCampaign((prev) =>
       prev
@@ -536,7 +550,7 @@ async function handleDeliverItemToCharacter(
     try {
       await updateCharacter(
         char.id,
-        tempHpChanged
+        tempHpChanged || tempPeChanged
           ? { vitals: updatedVitals, sheetData: nextSheetData }
           : { vitals: updatedVitals }
       );
@@ -562,8 +576,8 @@ async function handleDeliverItemToCharacter(
     });
 
     setCampaign({ ...campaign, characters: updatedChars });
-    setInitFeedback('🎬 Cena encerrada! Efeitos de cena e PVs temporários foram encerrados.');
-    setTimeout(() => setInitFeedback(''), 4500);
+    setSceneEndToast('🎬 Cena encerrada! Efeitos de cena e quantias temporárias foram encerrados.');
+    setTimeout(() => setSceneEndToast(''), 3500);
 
     try {
       await Promise.all(
@@ -663,6 +677,12 @@ async function handleDeliverItemToCharacter(
 
   return (
     <div className="flex flex-col gap-6">
+      {sceneEndToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-purple-950/95 border border-purple-500 text-purple-100 px-4 py-3 rounded-xl shadow-2xl text-xs font-extrabold flex items-center gap-2 animate-fade-in">
+          <span>{sceneEndToast}</span>
+        </div>
+      )}
+
       {/* CAMADA DE POST-ITS FLUTUANTES (Sem re-disparar quando o Mestre fecha ou arrasta o seu!) */}
       <FloatingPostItsLayer
         postIts={postIts}
@@ -1281,16 +1301,18 @@ async function handleDeliverItemToCharacter(
                           const effectiveMax = Math.max(1, bar.max + (bonuses.vitalMax[bar.id] || 0));
                           const pct = Math.max(0, Math.min(100, (bar.current / effectiveMax) * 100));
 
+                          const tempAmount =
+                            bar.id === 'pv'
+                              ? Number(raw.tempHp || 0)
+                              : bar.id === 'pe'
+                              ? Number(raw.tempPe || 0)
+                              : 0;
+
                           return (
                             <div key={bar.id} className="flex flex-col gap-1">
                               <div className="flex justify-between items-center text-xs">
                                 <span className="font-bold text-zinc-300 flex items-center gap-1.5">
                                   <span>{bar.label}</span>
-                                  {bar.id === 'pv' && Number(raw.tempHp || 0) > 0 && (
-                                    <span className="px-1.5 py-0.5 bg-cyan-950/80 border border-cyan-500/60 text-cyan-300 rounded text-[10px] font-mono font-extrabold">
-                                      🛡️ +{raw.tempHp} Temp
-                                    </span>
-                                  )}
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                   <button
@@ -1333,6 +1355,21 @@ async function handleDeliverItemToCharacter(
                                   style={{ width: `${pct}%`, backgroundColor: bar.color }}
                                 />
                               </div>
+
+                              {tempAmount > 0 && (
+                                <div className="w-full h-4 bg-zinc-900 rounded-full overflow-hidden border border-cyan-500/60 relative flex items-center justify-center">
+                                  <div
+                                    className="h-full transition-all duration-300"
+                                    style={{
+                                      width: '100%',
+                                      backgroundColor: bar.id === 'pv' ? '#0891b2' : '#d97706',
+                                    }}
+                                  />
+                                  <span className="absolute inset-0 flex items-center justify-center text-[9px] font-mono font-extrabold uppercase tracking-wider text-white drop-shadow">
+                                    Temporário ({tempAmount})
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           );
                         })}

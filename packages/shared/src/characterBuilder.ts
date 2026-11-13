@@ -606,7 +606,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
   const abilities: CharacterAbility[] = [
     {
       id: `orig-${origin.id}`,
-      name: `${origin.powerName} (Origem: ${origin.name})`,
+      name: `${origin.powerName} (Poder de ${origin.name})`,
       category: 'origem',
       cost: origin.powerCost,
       description: origin.powerDescription,

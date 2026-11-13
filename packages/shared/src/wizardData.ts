@@ -286,7 +286,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     skills: ['intuicao', 'vontade'],
     powerName: 'Espírito Cívico',
     powerDescription: 'Sempre que faz um teste para ajudar, você pode gastar 1 PE para aumentar o bônus concedido em +2.',
-    powerCost: 1,
+    powerCost: 0,
     modifiers: [],
   },
   {

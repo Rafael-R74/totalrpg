@@ -54,7 +54,8 @@ interface SheetContainerProps {
     isSecret?: boolean,
     isInitiativeRoll?: boolean,
     characterId?: string,
-    fixedRolls?: number[]
+    fixedRolls?: number[],
+    hasAfortunado?: boolean
   ) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
   onNotifyItemGiven?: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
@@ -83,6 +84,19 @@ export function SheetContainer({
   const [isSaving, setIsSaving] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState('');
+  const [hoverToastMsg, setHoverToastMsg] = useState('');
+  const [vislumbresResult, setVislumbresResult] = useState<{
+    keptRoll: number;
+    passed: boolean;
+    peGranted?: number;
+  } | null>(null);
+
+  function showHoverToast(msg: string) {
+    setHoverToastMsg(msg);
+    setTimeout(() => {
+      setHoverToastMsg((prev) => (prev === msg ? '' : prev));
+    }, 3500);
+  }
 
   const [selectedConditionModal, setSelectedConditionModal] = useState<ActiveCondition | null>(null);
   const [showMasterConditionPicker, setShowMasterConditionPicker] = useState(false);
@@ -168,6 +182,7 @@ export function SheetContainer({
                   origDef.powerCost === 0 && !origDef.requiresManualActivation;
                 return {
                   ...ab,
+                  name: `${origDef.powerName} (Poder de ${origDef.name})`,
                   cost: origDef.powerCost,
                   modifiers: origDef.modifiers || [],
                   isActive:
@@ -279,6 +294,37 @@ export function SheetContainer({
     activeConditions,
     activeSceneEffects
   );
+
+  const hasAfortunado = characterAbilities.some(
+    (ab) =>
+      ab.id.toLowerCase().includes('afortunado') ||
+      ab.name.toLowerCase().includes('afortunado')
+  );
+
+  function triggerCharacterRoll(
+    label: string,
+    count: number,
+    sides: number,
+    modifier: number,
+    isSecret?: boolean,
+    isInitiativeRoll?: boolean,
+    fixedRolls?: number[]
+  ) {
+    if (!character) return;
+    onRollDice(
+      character.name,
+      character.system,
+      label,
+      count,
+      sides,
+      modifier,
+      isSecret,
+      isInitiativeRoll,
+      character.id,
+      fixedRolls,
+      hasAfortunado
+    );
+  }
 
   async function handleSaveSheet(overrideChar?: FullCharacterResponse) {
     const target = overrideChar || character;
@@ -459,7 +505,9 @@ export function SheetContainer({
     if (!character) return;
     const peBar = character.vitals.find((b) => b.id === 'pe');
     if (peBar && peBar.current + tempPe < form.totalCost) {
-      alert(`PE insuficiente para conjurar ${ritual.name} (${form.label})! Necessário: ${form.totalCost} PE (Atual: ${peBar.current + tempPe} PE).`);
+      showHoverToast(
+        `⚡ PE insuficiente para conjurar ${ritual.name} (${form.label})! Necessário: ${form.totalCost} PE (Atual: ${peBar.current + tempPe} PE).`
+      );
       return;
     }
 
@@ -489,16 +537,13 @@ export function SheetContainer({
     const permSanLost = failedByFiveOrMore ? 1 : 0;
 
     // Dispara a rolagem oficial de Ocultismo no log da mesa usando EXATAMENTE os mesmos dados (fixedRolls) para que o Modal e a Notificação mostrem o mesmo valor!
-    onRollDice(
-      character.name,
-      character.system,
+    triggerCharacterRoll(
       `O Custo do Paranormal (Ocultismo DT ${dt}) — ${ritual.name} [${form.label}]`,
       ocultismoDice,
       20,
       ocultismoMod,
       false,
       false,
-      character.id,
       ocultismoRolls
     );
 
@@ -633,7 +678,24 @@ export function SheetContainer({
     });
   }
 
-  function handleSpendResource(amount: number): boolean {
+  function handleCheckResource(amount: number, powerLabel?: string): boolean {
+    if (!character) return false;
+    const targetBarId = character.system === 'ordem-paranormal' ? 'pe' : 'pm';
+    const resourceBar = character.vitals.find((b) => b.id === targetBarId);
+    if (!resourceBar) return true;
+    const availableTemp = targetBarId === 'pe' ? tempPe : 0;
+    if (resourceBar.current + availableTemp < amount) {
+      showHoverToast(
+        `⚡ ${resourceBar.label} insuficiente${
+          powerLabel ? ` para usar ${powerLabel}` : ''
+        }! Necessário: ${amount} (Atual: ${resourceBar.current + availableTemp}).`
+      );
+      return false;
+    }
+    return true;
+  }
+
+  function handleSpendResource(amount: number, extraSceneEffect?: SceneEffect): boolean {
     if (!character) return false;
     const targetBarId = character.system === 'ordem-paranormal' ? 'pe' : 'pm';
     const resourceBar = character.vitals.find((b) => b.id === targetBarId);
@@ -641,14 +703,86 @@ export function SheetContainer({
     if (!resourceBar) return true;
     const availableTemp = targetBarId === 'pe' ? tempPe : 0;
     if (resourceBar.current + availableTemp < amount) {
-      alert(
-        `Pontos insuficientes de ${resourceBar.label}! (${resourceBar.current + availableTemp}/${amount})`
+      showHoverToast(
+        `⚡ ${resourceBar.label} insuficiente! Necessário: ${amount} (Atual: ${
+          resourceBar.current + availableTemp
+        }).`
       );
       return false;
     }
 
-    handleVitalChange(targetBarId, 'current', resourceBar.current - amount);
+    let nextTempPe = Number(rawSheet.tempPe || 0);
+    let remainingToSpend = amount;
+    if (targetBarId === 'pe' && nextTempPe > 0 && remainingToSpend > 0) {
+      const absorbed = Math.min(nextTempPe, remainingToSpend);
+      nextTempPe -= absorbed;
+      remainingToSpend -= absorbed;
+    }
+
+    const updatedVitals = character.vitals.map((bar) => {
+      if (bar.id !== targetBarId) return bar;
+      return {
+        ...bar,
+        current: Math.max(0, bar.current - remainingToSpend),
+      };
+    });
+
+    const nextSceneEffects = extraSceneEffect
+      ? [
+          ...activeSceneEffects.filter((e) => e.id !== extraSceneEffect.id),
+          extraSceneEffect,
+        ]
+      : activeSceneEffects;
+
+    const nextChar: FullCharacterResponse = {
+      ...character,
+      vitals: updatedVitals,
+      sheetData: {
+        ...rawSheet,
+        tempPe: nextTempPe,
+        sceneEffects: nextSceneEffects,
+      },
+    };
+
+    setCharacter(nextChar);
+    handleSaveSheet(nextChar);
     return true;
+  }
+
+  function handleRollVislumbresPe() {
+    if (!character || character.system !== 'ordem-paranormal') return;
+    const peRoll = Math.floor(Math.random() * 4) + 1;
+    const nextTempPe = Number(rawSheet.tempPe || 0) + peRoll;
+    const nextEffects: SceneEffect[] = [
+      ...activeSceneEffects.filter((e) => e.id !== 'orig-vislumbres'),
+      {
+        id: 'orig-vislumbres',
+        name: 'Vislumbres do Passado (Poder de Amnésico)',
+        source: 'Cena',
+        description: `+${peRoll} PE Temporários concedidos (Total: +${nextTempPe} PE Temp)`,
+      },
+    ];
+    const nextChar: FullCharacterResponse = {
+      ...character,
+      sheetData: {
+        ...rawSheet,
+        tempPe: nextTempPe,
+        sceneEffects: nextEffects,
+      },
+    };
+    setCharacter(nextChar);
+    setVislumbresResult((prev) => (prev ? { ...prev, peGranted: peRoll } : null));
+    handleSaveSheet(nextChar);
+
+    triggerCharacterRoll(
+      'Vislumbres do Passado (+1d4 PE Temporários)',
+      1,
+      4,
+      0,
+      false,
+      false,
+      [peRoll]
+    );
   }
 
   function handleTriggerOriginSpecial(originId: string) {
@@ -656,7 +790,7 @@ export function SheetContainer({
     const intAttr = Number(rawSheet.attributes?.int ?? 1) + (bonuses.attributes['int'] || 0);
 
     if (originId === 'amnesico') {
-      // Vislumbres do Passado (Livro p. 16): Teste de Intelecto DT 10. Se passar, recebe 1d4 PE temporários!
+      // Vislumbres do Passado (Livro p. 16): Rola Teste de Intelecto DT 10. Se passar, libera o botão para girar 1d4 PE temporários!
       const numD20 = intAttr <= 0 ? Math.abs(intAttr) + 2 : intAttr;
       const rolls: number[] = [];
       for (let i = 0; i < numD20; i++) {
@@ -665,49 +799,17 @@ export function SheetContainer({
       const kept = intAttr <= 0 ? Math.min(...rolls) : Math.max(...rolls);
       const passed = kept >= 10;
 
-      onRollDice(
-        character.name,
-        character.system,
+      setVislumbresResult({ keptRoll: kept, passed });
+
+      triggerCharacterRoll(
         'Vislumbres do Passado (Intelecto DT 10)',
         intAttr,
         20,
         0,
         false,
         false,
-        character.id,
         rolls
       );
-
-      if (passed) {
-        const peRoll = Math.floor(Math.random() * 4) + 1;
-        const nextTempPe = Number(rawSheet.tempPe || 0) + peRoll;
-        const nextEffects: SceneEffect[] = [
-          ...activeSceneEffects.filter((e) => e.id !== 'orig-vislumbres'),
-          {
-            id: 'orig-vislumbres',
-            name: 'Vislumbres do Passado',
-            source: 'Origem Amnésico',
-            description: `+${peRoll} PE Temporários concedidos (Total: +${nextTempPe} PE Temp)`,
-          },
-        ];
-        const nextChar: FullCharacterResponse = {
-          ...character,
-          sheetData: {
-            ...rawSheet,
-            tempPe: nextTempPe,
-            sceneEffects: nextEffects,
-          },
-        };
-        setCharacter(nextChar);
-        handleSaveSheet(nextChar);
-        alert(
-          `✅ Sucesso em Vislumbres do Passado! (Rolagem: ${kept} vs DT 10)\nVocê lembrou de algo familiar e recebeu +${peRoll} PE Temporários!`
-        );
-      } else {
-        alert(
-          `❌ Falha em Vislumbres do Passado (Rolagem: ${kept} vs DT 10). Nenhuma lembrança emergiu desta vez.`
-        );
-      }
       return;
     }
 
@@ -720,9 +822,7 @@ export function SheetContainer({
         Number(skill?.otherModifier ?? 0) +
         bonuses.skillBonusAll +
         (bonuses.skillBonus['tecnologia'] || 0);
-      onRollDice(
-        character.name,
-        character.system,
+      triggerCharacterRoll(
         'Teste de Tecnologia (Motor de Busca -2 PE)',
         dice,
         20,
@@ -733,10 +833,19 @@ export function SheetContainer({
 
     if (originId === 'trambiqueiro') {
       if (activeSceneEffects.some((e) => e.id === 'orig-scene-impostor')) {
-        alert('Impostor só pode ser utilizado 1 vez por cena!');
+        showHoverToast('🎭 Impostor só pode ser utilizado 1 vez por cena!');
         return;
       }
-      if (!handleSpendResource(2)) return;
+      if (
+        !handleSpendResource(2, {
+          id: 'orig-scene-impostor',
+          name: 'Impostor (Poder de Trambiqueiro)',
+          source: '1x/Cena',
+          description: 'Já utilizado nesta cena',
+        })
+      ) {
+        return;
+      }
       const preAttr = Number(rawSheet.attributes?.pre ?? 1) + (bonuses.attributes['pre'] || 0);
       const skill = (rawSheet.skills || []).find((s: any) => s.id === 'enganacao');
       const dice = preAttr + bonuses.skillDiceAll + (bonuses.skillDice['enganacao'] || 0);
@@ -746,32 +855,7 @@ export function SheetContainer({
         bonuses.skillBonusAll +
         (bonuses.skillBonus['enganacao'] || 0);
 
-      const nextEffects: SceneEffect[] = [
-        ...activeSceneEffects,
-        {
-          id: 'orig-scene-impostor',
-          name: 'Impostor (1x/cena)',
-          source: 'Origem Trambiqueiro',
-          description: 'Já utilizado nesta cena',
-        },
-      ];
-      setCharacter((prev) => {
-        if (!prev) return null;
-        const prevRaw = (prev.sheetData || {}) as Record<string, any>;
-        const updated = {
-          ...prev,
-          sheetData: {
-            ...prevRaw,
-            sceneEffects: nextEffects,
-          },
-        };
-        handleSaveSheet(updated);
-        return updated;
-      });
-
-      onRollDice(
-        character.name,
-        character.system,
+      triggerCharacterRoll(
         'Teste de Enganação (Impostor -2 PE • 1x/Cena)',
         dice,
         20,
@@ -1149,6 +1233,12 @@ export function SheetContainer({
 
   return (
     <div className="flex flex-col gap-6">
+      {hoverToastMsg && (
+        <div className="fixed bottom-6 right-6 z-50 bg-red-950/95 border border-red-500 text-red-100 px-4 py-3 rounded-xl shadow-2xl text-xs font-extrabold flex items-center gap-2 animate-fade-in">
+          <span>{hoverToastMsg}</span>
+        </div>
+      )}
+
       {/* MODAL DE CONVOCAÇÃO DE INICIATIVA ENVIADO PELO MESTRE */}
       {showInitiativePrompt && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
@@ -1170,16 +1260,13 @@ export function SheetContainer({
               type="button"
               onClick={() => {
                 setShowInitiativePrompt(false);
-                onRollDice(
-                  character.name,
-                  character.system,
+                triggerCharacterRoll(
                   'Teste de Iniciativa',
                   initDiceCount,
                   20,
                   initTotalBonus,
                   false,
-                  true,
-                  character.id
+                  true
                 );
               }}
               className="w-full py-3.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-sm font-extrabold transition cursor-pointer shadow-lg shadow-amber-900/40"
@@ -1612,6 +1699,8 @@ export function SheetContainer({
               const bonusMax = bonuses.vitalMax[bar.id] || 0;
               const effectiveMax = Math.max(1, bar.max + bonusMax);
               const percent = Math.max(0, Math.min(100, (bar.current / effectiveMax) * 100));
+              const tempAmount =
+                bar.id === 'pv' ? tempHp : bar.id === 'pe' ? tempPe : 0;
 
               return (
                 <div
@@ -1621,22 +1710,6 @@ export function SheetContainer({
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex flex-wrap items-center gap-1.5">
                       {bar.label}
-                      {bar.id === 'pv' && tempHp > 0 && (
-                        <span
-                          className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/70 shadow"
-                          title="Pontos de Vida Temporários da Cena (descontados primeiro ao sofrer dano!)"
-                        >
-                          🛡️ +{tempHp} PV Temp
-                        </span>
-                      )}
-                      {bar.id === 'pe' && tempPe > 0 && (
-                        <span
-                          className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/70 shadow"
-                          title="Pontos de Esforço Temporários da Cena (descontados primeiro ao gastar PE!)"
-                        >
-                          ⚡ +{tempPe} PE Temp
-                        </span>
-                      )}
                       {character.system === 'ordem-paranormal' && bar.id === 'san' && (
                         bar.current <= 0 ? (
                           <span
@@ -1646,20 +1719,29 @@ export function SheetContainer({
                             🔴 ENLOUQUECENDO
                           </span>
                         ) : bar.current <= Math.floor(effectiveMax / 2) ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const effect =
-                                ORDEM_INSANITY_EFFECTS[
-                                  Math.floor(Math.random() * ORDEM_INSANITY_EFFECTS.length)
-                                ];
-                              setInsanityEffectText(effect);
-                            }}
-                            className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 hover:bg-amber-900 cursor-pointer"
-                            title="Clique para sortear um Efeito de Insanidade (Tabela 5.1 - 1d20)"
-                          >
-                            🟡 PERTURBADO (🎲 1d20)
-                          </button>
+                          canMasterControl ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const effect =
+                                  ORDEM_INSANITY_EFFECTS[
+                                    Math.floor(Math.random() * ORDEM_INSANITY_EFFECTS.length)
+                                  ];
+                                setInsanityEffectText(effect);
+                              }}
+                              className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 hover:bg-amber-900 cursor-pointer"
+                              title="Exclusivo do Mestre: Clique para sortear um Efeito de Insanidade (Tabela 5.1 - 1d20)"
+                            >
+                              🟡 PERTURBADO (🎲 1d20)
+                            </button>
+                          ) : (
+                            <span
+                              className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700"
+                              title="Sanidade na metade ou menos (Perturbado)"
+                            >
+                              🟡 PERTURBADO
+                            </span>
+                          )
                         ) : (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
                             🟢 São
@@ -1700,11 +1782,31 @@ export function SheetContainer({
                     )}
                   </div>
 
-                  <div className="w-full h-3.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
-                    <div
-                      className="h-full transition-all duration-300"
-                      style={{ width: `${percent}%`, backgroundColor: bar.color }}
-                    />
+                  <div className="flex flex-col gap-1.5">
+                    <div className="w-full h-3.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                      <div
+                        className="h-full transition-all duration-300"
+                        style={{ width: `${percent}%`, backgroundColor: bar.color }}
+                      />
+                    </div>
+
+                    {tempAmount > 0 && (
+                      <div
+                        className="w-full h-5 bg-zinc-900 rounded-full overflow-hidden border border-cyan-500/70 relative flex items-center justify-center shadow-inner"
+                        title="Quantia temporária (diminuída antes da barra original e some assim que zerar)"
+                      >
+                        <div
+                          className="h-full transition-all duration-300"
+                          style={{
+                            width: '100%',
+                            backgroundColor: bar.id === 'pv' ? '#0891b2' : '#d97706',
+                          }}
+                        />
+                        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-extrabold uppercase tracking-wider text-white drop-shadow">
+                          Temporário ({tempAmount})
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {canEditVitals && (
@@ -1771,6 +1873,48 @@ export function SheetContainer({
             </div>
           )}
 
+          {/* PAINEL DE VISLUMBRES DO PASSADO (AMNÉSICO): TESTE DE INTELECTO DT 10 -> BOTÃO PARA GIRAR 1d4 PE TEMPORÁRIO */}
+          {vislumbresResult && (
+            <div
+              className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+                vislumbresResult.passed
+                  ? 'bg-cyan-950/50 border-cyan-500/70 text-cyan-100'
+                  : 'bg-zinc-950 border-zinc-700 text-zinc-300'
+              }`}
+            >
+              <div className="text-xs space-y-0.5">
+                <p className="font-black uppercase tracking-wider">
+                  🧠 Vislumbres do Passado (Poder de Amnésico) — Resultado: {vislumbresResult.keptRoll} vs DT 10
+                </p>
+                <p className="font-semibold">
+                  {vislumbresResult.passed
+                    ? vislumbresResult.peGranted
+                      ? `✅ Você recebeu +${vislumbresResult.peGranted} PE Temporários na sua barra de PE!`
+                      : '✅ Sucesso no teste de Intelecto! Clique no botão ao lado para girar o seu 1d4 de PE Temporário.'
+                    : '❌ Falha no teste de Intelecto (DT 10).'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {vislumbresResult.passed && !vislumbresResult.peGranted && (
+                  <button
+                    type="button"
+                    onClick={handleRollVislumbresPe}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold shadow-lg cursor-pointer animate-pulse"
+                  >
+                    🎲 Girar 1d4 PE Temporários
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setVislumbresResult(null)}
+                  className="px-2.5 py-1 bg-black/40 hover:bg-black/70 rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* RESUMO DA ÚLTIMA CONJURAÇÃO ("O CUSTO DO PARANORMAL") */}
           {ritualCastSummaryModal && (
             <div
@@ -1814,9 +1958,7 @@ export function SheetContainer({
                         .replace(/\s+/g, '');
                       const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
                       if (match) {
-                        onRollDice(
-                          character.name,
-                          character.system,
+                        triggerCharacterRoll(
                           `Efeito: ${ritualCastSummaryModal.ritualName} (${ritualCastSummaryModal.formLabel})`,
                           parseInt(match[1], 10),
                           parseInt(match[2], 10),
@@ -2715,13 +2857,96 @@ export function SheetContainer({
           onSyncTrailAbilities={handleSyncOrdemTrailAbilities}
           onOpenNexEvolution={handleOpenNexEvolutionModal}
           onOpenInterlude={canMasterControl ? () => setIsInterludeModalOpen(true) : undefined}
+          onCheckResource={handleCheckResource}
           onSpendResource={handleSpendResource}
           onChange={(updatedData) =>
             setCharacter((prev) => {
               if (!prev) return null;
               const prevRaw = (prev.sheetData || {}) as Record<string, any>;
+              const prevNex = Number(prevRaw.nex ?? 5);
+              const nextNexVal = Number(updatedData.nex ?? prevNex);
+              const prevVig = Number(prevRaw.attributes?.vig ?? 1);
+              const nextVig = Number(updatedData.attributes?.vig ?? prevVig);
+              const prevPre = Number(prevRaw.attributes?.pre ?? 1);
+              const nextPre = Number(updatedData.attributes?.pre ?? prevPre);
+
+              let nextVitals = prev.vitals;
+              if (
+                nextNexVal !== prevNex ||
+                nextVig !== prevVig ||
+                nextPre !== prevPre
+              ) {
+                const newBaseVitals = calculateOrdemBaseVitals({
+                  characterClass: updatedData.characterClass || 'combatente',
+                  attributes: updatedData.attributes,
+                  nex: nextNexVal,
+                  originIdOrName: updatedData.origin,
+                  transcendedCount: Number(
+                    updatedData.transcendedCount ?? prevRaw.transcendedCount ?? 0
+                  ),
+                });
+                const prevAbilities: CharacterAbility[] = Array.isArray(prevRaw.abilities)
+                  ? prevRaw.abilities
+                  : [];
+                const prevConds: ActiveCondition[] = Array.isArray(prevRaw.conditions)
+                  ? prevRaw.conditions
+                  : [];
+                const prevEffects: SceneEffect[] = Array.isArray(prevRaw.sceneEffects)
+                  ? prevRaw.sceneEffects
+                  : [];
+                const oldBonuses = calculateActiveBonuses(
+                  'ordem-paranormal',
+                  prevNex,
+                  prevAbilities,
+                  prev.inventory || [],
+                  prevConds,
+                  prevEffects
+                );
+                const newBonuses = calculateActiveBonuses(
+                  'ordem-paranormal',
+                  nextNexVal,
+                  prevAbilities,
+                  prev.inventory || [],
+                  prevConds,
+                  prevEffects
+                );
+
+                nextVitals = prev.vitals.map((bar) => {
+                  const oldEffMax = bar.max + (oldBonuses.vitalMax[bar.id] || 0);
+                  if (bar.id === 'pv') {
+                    const newEffMax = newBaseVitals.pvMax + (newBonuses.vitalMax.pv || 0);
+                    const delta = Math.max(0, newEffMax - oldEffMax);
+                    return {
+                      ...bar,
+                      max: newBaseVitals.pvMax,
+                      current: Math.max(0, Math.min(newEffMax, bar.current + delta)),
+                    };
+                  }
+                  if (bar.id === 'pe') {
+                    const newEffMax = newBaseVitals.peMax + (newBonuses.vitalMax.pe || 0);
+                    const delta = Math.max(0, newEffMax - oldEffMax);
+                    return {
+                      ...bar,
+                      max: newBaseVitals.peMax,
+                      current: Math.max(0, Math.min(newEffMax, bar.current + delta)),
+                    };
+                  }
+                  if (bar.id === 'san') {
+                    const newEffMax = newBaseVitals.sanMax + (newBonuses.vitalMax.san || 0);
+                    const delta = Math.max(0, newEffMax - oldEffMax);
+                    return {
+                      ...bar,
+                      max: newBaseVitals.sanMax,
+                      current: Math.max(0, Math.min(newEffMax, bar.current + delta)),
+                    };
+                  }
+                  return bar;
+                });
+              }
+
               return {
                 ...prev,
+                vitals: nextVitals,
                 sheetData: {
                   ...updatedData,
                   abilities: prevRaw.abilities || [],
@@ -2734,7 +2959,7 @@ export function SheetContainer({
             })
           }
           onRoll={(label, count, sides, mod) =>
-            onRollDice(character.name, character.system, label, count, sides, mod)
+            triggerCharacterRoll(label, count, sides, mod)
           }
         />
       )}
@@ -2765,7 +2990,7 @@ export function SheetContainer({
             })
           }
           onRoll={(label, count, sides, mod) =>
-            onRollDice(character.name, character.system, label, count, sides, mod)
+            triggerCharacterRoll(label, count, sides, mod)
           }
         />
       )}
@@ -2819,8 +3044,12 @@ export function SheetContainer({
         onSpendResource={handleSpendResource}
         onCastOrdemRitual={handleCastOrdemRitual}
         onTriggerOriginSpecial={handleTriggerOriginSpecial}
+        vislumbresSuccessPending={Boolean(
+          vislumbresResult?.passed && !vislumbresResult?.peGranted
+        )}
+        onRollVislumbresPe={handleRollVislumbresPe}
         onRoll={(label, count, sides, mod) =>
-          onRollDice(character.name, character.system, label, count, sides, mod)
+          triggerCharacterRoll(label, count, sides, mod)
         }
       />
     </div>
