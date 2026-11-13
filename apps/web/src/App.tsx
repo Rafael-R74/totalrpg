@@ -196,7 +196,8 @@ export default function App() {
     isSecret?: boolean,
     isInitiativeRoll?: boolean,
     characterId?: string,
-    fixedRolls?: number[]
+    fixedRolls?: number[],
+    hasAfortunado?: boolean
   ) {
     if (!activeRoomId || !currentUser) return;
     socket.emit('dice:roll', {
@@ -212,6 +213,7 @@ export default function App() {
       system,
       isSecret,
       fixedRolls,
+      hasAfortunado,
     });
   }
 

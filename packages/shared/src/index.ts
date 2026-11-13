@@ -67,6 +67,7 @@ export interface DiceRollResult {
   system: SystemId;
   timestamp: string;
   isSecret?: boolean;
+  hasAfortunado?: boolean;
   rerolledAfortunado?: boolean;
 }
 // Eventos enviados pelo servidor para o cliente
@@ -118,6 +119,7 @@ export interface ClientToServerEvents {
     system: SystemId;
     isSecret?: boolean;
     fixedRolls?: number[];
+    hasAfortunado?: boolean;
   }) => void;
   'character:sync': (payload: { campaignId: string; characterId: string }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;

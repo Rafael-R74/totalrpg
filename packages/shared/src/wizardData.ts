@@ -286,7 +286,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     skills: ['intuicao', 'vontade'],
     powerName: 'Espírito Cívico',
     powerDescription: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    powerCost: 1,
+    powerCost: 0,
     modifiers: [],
   },
   {

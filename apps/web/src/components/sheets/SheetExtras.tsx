@@ -40,6 +40,8 @@ interface SheetExtrasProps {
   onRoll: (label: string, count: number, sides: number, modifier: number, isDamage?: boolean) => void;
   onCastOrdemRitual?: (ritual: CharacterAbility, form: OrdemRitualCastForm) => void;
   onTriggerOriginSpecial?: (originId: string) => void;
+  vislumbresSuccessPending?: boolean;
+  onRollVislumbresPe?: () => void;
 }
 
 function parseDiceFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -78,6 +80,8 @@ export function SheetExtras({
   onRoll,
   onCastOrdemRitual,
   onTriggerOriginSpecial,
+  vislumbresSuccessPending,
+  onRollVislumbresPe,
 }: SheetExtrasProps) {
   const [activeSubTab, setActiveSubTab] = useState<'combat' | 'powers' | 'spells' | 'inventory'>('combat');
 
@@ -1094,7 +1098,15 @@ export function SheetExtras({
                             </span>
                           )
                         )}
-                        {ab.modifiers && ab.modifiers.length > 0 && (
+                        {ab.modifiers &&
+                          ab.modifiers.length > 0 &&
+                          ![
+                            'orig-academico',
+                            'orig-atleta',
+                            'orig-executivo',
+                            'orig-investigador',
+                            'orig-trabalhador_rural',
+                          ].includes(ab.id) && (
                           <label className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 cursor-pointer ml-1">
                             <input
                               type="checkbox"
@@ -1155,13 +1167,24 @@ export function SheetExtras({
                       ) : (
                         <>
                           {ab.id === 'orig-amnesico' && onTriggerOriginSpecial && (
-                            <button
-                              type="button"
-                              onClick={() => onTriggerOriginSpecial('amnesico')}
-                              className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                            >
-                              🧠 Vislumbres (INT DT 10 → +1d4 PE Temp)
-                            </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => onTriggerOriginSpecial('amnesico')}
+                                className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                              >
+                                🧠 Testar Vislumbres (Intelecto DT 10)
+                              </button>
+                              {vislumbresSuccessPending && onRollVislumbresPe && (
+                                <button
+                                  type="button"
+                                  onClick={onRollVislumbresPe}
+                                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow-lg animate-pulse"
+                                >
+                                  🎲 Girar 1d4 PE Temporários
+                                </button>
+                              )}
+                            </div>
                           )}
                           {ab.id === 'orig-religioso' && ordemSheetData && (
                             <button

@@ -4,6 +4,7 @@ import {
   OrdemAttributes,
   OrdemSkill,
   CharacterAbility,
+  SceneEffect,
   createDefaultOrdemSheet,
   ComputedBonuses,
   SystemSkillDefinition,
@@ -29,7 +30,8 @@ interface OrdemSheetProps {
   onSyncTrailAbilities?: (trailId: string, nex: number) => void;
   onOpenNexEvolution?: () => void;
   onOpenInterlude?: () => void;
-  onSpendResource?: (amount: number) => boolean;
+  onCheckResource?: (amount: number, powerLabel?: string) => boolean;
+  onSpendResource?: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
   onRoll: (label: string, count: number, sides: number, modifier: number) => void;
 }
 
@@ -54,6 +56,7 @@ export function OrdemSheet({
   onSyncTrailAbilities,
   onOpenNexEvolution,
   onOpenInterlude,
+  onCheckResource,
   onSpendResource,
   onRoll,
 }: OrdemSheetProps) {
@@ -494,7 +497,7 @@ export function OrdemSheet({
           <div className="mb-3 p-3 rounded-xl bg-amber-950/20 border border-amber-700/40 flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs text-amber-200">
               <strong className="text-amber-400">
-                ✨ Poder da Origem ({originObj?.name} — {originObj?.powerName}):
+                ✨ {originObj?.powerName} (Poder de {originObj?.name}):
               </strong>{' '}
               <span className="text-zinc-300">{originObj?.powerDescription}</span>
             </div>
@@ -524,7 +527,17 @@ export function OrdemSheet({
                 disabled={impostorUsedInScene}
                 onClick={() => {
                   if (impostorUsedInScene) return;
-                  if (onSpendResource && !onSpendResource(2)) return;
+                  if (
+                    onSpendResource &&
+                    !onSpendResource(2, {
+                      id: 'orig-scene-impostor',
+                      name: 'Impostor (Poder de Trambiqueiro)',
+                      source: '1x/Cena',
+                      description: 'Teste de perícia substituído por Enganação nesta cena',
+                    })
+                  ) {
+                    return;
+                  }
                   const engSk = safeData.skills.find((s) => s.id === 'enganacao');
                   const engDice =
                     effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['enganacao'] || 0);
@@ -533,18 +546,6 @@ export function OrdemSheet({
                     (engSk?.otherModifier || 0) +
                     bonuses.skillBonusAll +
                     (bonuses.skillBonus['enganacao'] || 0);
-                  onChange({
-                    ...safeData,
-                    sceneEffects: [
-                      ...sceneEffects,
-                      {
-                        id: 'orig-scene-impostor',
-                        name: 'Impostor (Trambiqueiro)',
-                        source: '1x/Cena',
-                        description: 'Teste de perícia substituído por Enganação nesta cena',
-                      },
-                    ],
-                  });
                   onRoll('Impostor (Substituído por Enganação — 1x/Cena)', engDice, 20, engMod);
                 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
@@ -564,7 +565,17 @@ export function OrdemSheet({
             ) : (
               <button
                 type="button"
-                onClick={() => setArmOriginBoost((prev) => !prev)}
+                onClick={() => {
+                  if (!armOriginBoost) {
+                    if (
+                      onCheckResource &&
+                      !onCheckResource(originObj?.powerCost || 0, originObj?.powerName)
+                    ) {
+                      return;
+                    }
+                  }
+                  setArmOriginBoost((prev) => !prev);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
                   armOriginBoost
                     ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow-lg'
@@ -572,8 +583,8 @@ export function OrdemSheet({
                 }`}
               >
                 {armOriginBoost
-                  ? `⚡ ${originObj?.powerName} ARMADO (+5 no próximo teste compatível, -${originObj?.powerCost} PE)`
-                  : `✨ Armar ${originObj?.powerName} (+5 no próximo teste, -${originObj?.powerCost} PE)`}
+                  ? `⚡ ${originObj?.powerName} (Poder de ${originObj?.name}) ARMADO (+5 no próximo teste, -${originObj?.powerCost} PE)`
+                  : `✨ Armar ${originObj?.powerName} (Poder de ${originObj?.name}) (+5 no próximo teste, -${originObj?.powerCost} PE)`}
               </button>
             )}
           </div>
@@ -633,7 +644,21 @@ export function OrdemSheet({
                             (skill.id === 'adestramento' || skill.id === 'sobrevivencia'));
 
                         if (isEligible) {
-                          if (onSpendResource && !onSpendResource(originObj.powerCost)) {
+                          const extraSceneEffect: SceneEffect | undefined =
+                            originId === 'investigador'
+                              ? {
+                                  id: 'orig-scene-faro-pistas',
+                                  name: 'Faro para Pistas (Poder de Investigador)',
+                                  source: '1x/Cena',
+                                  description: '+5 usado em teste para procurar pistas nesta cena',
+                                }
+                              : undefined;
+
+                          if (
+                            onSpendResource &&
+                            !onSpendResource(originObj.powerCost, extraSceneEffect)
+                          ) {
+                            setArmOriginBoost(false);
                             return;
                           }
                           const originAbActive = abilities.some(
@@ -642,23 +667,8 @@ export function OrdemSheet({
                           if (!originAbActive) {
                             rollMod += 5;
                           }
-                          rollSuffix = ` [${originObj.powerName} +5]`;
+                          rollSuffix = ` [${originObj.powerName} (Poder de ${originObj.name}) +5]`;
                           setArmOriginBoost(false);
-
-                          if (originId === 'investigador') {
-                            onChange({
-                              ...safeData,
-                              sceneEffects: [
-                                ...sceneEffects,
-                                {
-                                  id: 'orig-scene-faro-pistas',
-                                  name: 'Faro para Pistas (Investigador)',
-                                  source: '1x/Cena',
-                                  description: '+5 usado em teste para procurar pistas nesta cena',
-                                },
-                              ],
-                            });
-                          }
                         }
                       }
 
