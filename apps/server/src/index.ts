@@ -105,7 +105,11 @@ io.on('connection', (socket) => {
       system,
       isSecret,
     }) => {
-      const safeCount = Math.max(1, Math.min(50, count));
+      const isOrdemZeroDicePenalty =
+        system === 'ordem-paranormal' && sides === 20 && count <= 0;
+      const safeCount = isOrdemZeroDicePenalty
+        ? 2
+        : Math.max(1, Math.min(50, count));
       const rolls: number[] = [];
 
       for (let i = 0; i < safeCount; i++) {
@@ -113,7 +117,9 @@ io.on('connection', (socket) => {
       }
 
       let diceTotal = 0;
-      if (system === 'ordem-paranormal' && sides === 20) {
+      if (isOrdemZeroDicePenalty) {
+        diceTotal = Math.min(...rolls);
+      } else if (system === 'ordem-paranormal' && sides === 20) {
         diceTotal = Math.max(...rolls);
       } else {
         diceTotal = rolls.reduce((acc, curr) => acc + curr, 0);
@@ -121,6 +127,9 @@ io.on('connection', (socket) => {
 
       const total = diceTotal + modifier;
       const modString = modifier !== 0 ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : '';
+      const baseFormula = isOrdemZeroDicePenalty
+        ? '2d20 (menor)'
+        : `${safeCount}d${sides}`;
 
       const result: DiceRollResult = {
         id: Math.random().toString(36).substring(2, 9),
@@ -129,7 +138,7 @@ io.on('connection', (socket) => {
         isInitiativeRoll: Boolean(isInitiativeRoll),
         characterName,
         label,
-        formula: `${safeCount}d${sides}${modString}`,
+        formula: `${baseFormula}${modString}`,
         rolls,
         modifier,
         total,

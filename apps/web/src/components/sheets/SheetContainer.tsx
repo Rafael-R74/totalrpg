@@ -11,6 +11,15 @@ import {
   RPGItem,
   PreparedAttack,
   calculateActiveBonuses,
+  ORDEM_NEX_PROGRESSION,
+  ORDEM_TRAILS,
+  ORDEM_COMPENDIUM_ENTRIES,
+  ORDEM_INSANITY_EFFECTS,
+  ORDEM_INTERLUDE_DISHES,
+  calculateOrdemBaseVitals,
+  getOrdemPeLimit,
+  getOrdemMaxLoad,
+  checkOrdemPowerRequirements,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -80,6 +89,23 @@ export function SheetContainer({
   const [selectedAllyId, setSelectedAllyId] = useState('');
   const [tradeQuantity, setTradeQuantity] = useState<number>(1);
   const [isTransferring, setIsTransferring] = useState(false);
+
+  // Estados de Ordem Paranormal v1.3: Insanidade, Interlúdio e Evolução Guiada de NEX
+  const [insanityEffectText, setInsanityEffectText] = useState<string | null>(null);
+  const [isInterludeModalOpen, setIsInterludeModalOpen] = useState(false);
+  const [interludeComfort, setInterludeComfort] = useState<0.5 | 1 | 2 | 3>(1);
+  const [interludeSleep, setInterludeSleep] = useState(true);
+  const [interludeRelax, setInterludeRelax] = useState(true);
+  const [interludeDish, setInterludeDish] = useState<string>('');
+
+  const [isNexEvolutionOpen, setIsNexEvolutionOpen] = useState(false);
+  const [evoTrailId, setEvoTrailId] = useState<string>('');
+  const [evoChoiceMode, setEvoChoiceMode] = useState<'class_power' | 'transcend'>('class_power');
+  const [evoSelectedPowerId, setEvoSelectedPowerId] = useState<string>('');
+  const [evoAttrKey, setEvoAttrKey] = useState<'agi' | 'for' | 'int' | 'pre' | 'vig'>('agi');
+  const [evoAffinity, setEvoAffinity] = useState<string>('Sangue');
+  const [evoUpgradeSkills, setEvoUpgradeSkills] = useState<string[]>([]);
+  const [evoNewRitualId, setEvoNewRitualId] = useState<string>('');
 
   useEffect(() => {
     if (initiativeRequestSignal && character && character.ownerId === currentUserId) {
@@ -358,10 +384,268 @@ export function SheetContainer({
       ? Number(rawSheet.attributes?.for ?? 1) + (bonuses.attributes['for'] || 0)
       : Number(rawSheet.attributes?.forca ?? 1) + (bonuses.attributes['forca'] || 0);
 
+  const intellectVal =
+    character.system === 'ordem-paranormal'
+      ? Number(rawSheet.attributes?.int ?? 1) + (bonuses.attributes['int'] || 0)
+      : 0;
+
   const maxLoadSlots =
     character.system === 'ordem-paranormal'
-      ? Math.max(2, strengthVal * 5)
+      ? getOrdemMaxLoad(strengthVal, intellectVal, rawSheet.trail, levelOrNex, 0)
       : 10 + Math.max(0, strengthVal * 2);
+
+  const currentLoadSlots = (character.inventory || []).reduce(
+    (acc, item) => acc + item.slots * (item.quantity || 1),
+    0
+  );
+  const isCharacterOverloaded =
+    currentLoadSlots > maxLoadSlots + bonuses.loadLimit;
+
+  function handleSyncOrdemTrailAbilities(trailId: string, targetNex: number) {
+    if (!character) return;
+    const trail = ORDEM_TRAILS.find((t) => t.id === trailId);
+    if (!trail) return;
+
+    const filteredExisting = characterAbilities.filter(
+      (ab) => !ab.id.startsWith('trail-') && !ab.name.startsWith('Trilha ')
+    );
+    const trailPowersToAdd: CharacterAbility[] = trail.powers
+      .filter((tp) => targetNex >= tp.nex)
+      .map((tp) => ({
+        id: `trail-${trail.id}-${tp.nex}`,
+        name: `Trilha ${trail.name} (${tp.nex}%): ${tp.name}`,
+        category: 'classe',
+        cost: tp.cost,
+        description: tp.description,
+        isActive: tp.cost === 0,
+        modifiers: tp.modifiers || [],
+      }));
+
+    const nextAbilities = [...filteredExisting, ...trailPowersToAdd];
+    setCharacter((prev) => {
+      if (!prev) return null;
+      const prevRaw = (prev.sheetData || {}) as Record<string, any>;
+      return {
+        ...prev,
+        sheetData: {
+          ...prevRaw,
+          trail: trailId,
+          abilities: nextAbilities,
+        },
+      };
+    });
+  }
+
+  function handleApplyInterludeRecovery() {
+    if (!character) return;
+    const peLimit = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
+    const baseRecovery = Math.max(1, Math.floor(peLimit * interludeComfort));
+
+    const extraPv = interludeDish === 'nutritivo' && interludeSleep ? peLimit : 0;
+    const extraPe = interludeDish === 'energetico' && interludeSleep ? peLimit : 0;
+    const extraSan = interludeDish === 'favorito' && interludeRelax ? 2 : 0;
+
+    const pvGain = (interludeSleep ? baseRecovery : 0) + extraPv;
+    const peGain = (interludeSleep ? baseRecovery : 0) + extraPe;
+    const sanGain = (interludeRelax ? baseRecovery : 0) + extraSan;
+
+    const updatedVitals = character.vitals.map((bar) => {
+      const bonusMax = bonuses.vitalMax[bar.id] || 0;
+      const effectiveMax = Math.max(1, bar.max + bonusMax);
+      if (bar.id === 'pv') {
+        return { ...bar, current: Math.min(effectiveMax, bar.current + pvGain) };
+      }
+      if (bar.id === 'pe') {
+        return { ...bar, current: Math.min(effectiveMax, bar.current + peGain) };
+      }
+      if (bar.id === 'san') {
+        return { ...bar, current: Math.min(effectiveMax, bar.current + sanGain) };
+      }
+      return bar;
+    });
+
+    const nextChar = { ...character, vitals: updatedVitals };
+    setCharacter(nextChar);
+    setIsInterludeModalOpen(false);
+    handleSaveSheet(nextChar);
+  }
+
+  function handleOpenNexEvolutionModal() {
+    if (!character || character.system !== 'ordem-paranormal') return;
+    setEvoTrailId(rawSheet.trail || '');
+    setEvoChoiceMode('class_power');
+    setEvoSelectedPowerId('');
+    setEvoAttrKey('agi');
+    setEvoAffinity(rawSheet.affinity || 'Sangue');
+    setEvoUpgradeSkills([]);
+    setEvoNewRitualId('');
+    setIsNexEvolutionOpen(true);
+  }
+
+  function handleConfirmNexEvolution() {
+    if (!character || character.system !== 'ordem-paranormal') return;
+    const currentNex = Number(rawSheet.nex ?? 5);
+    const nextNex = currentNex === 0 ? 5 : currentNex === 95 ? 99 : Math.min(99, currentNex + 5);
+    const milestone = ORDEM_NEX_PROGRESSION.find((m) => m.nex === nextNex);
+
+    const nextAttributes = {
+      agi: Number(rawSheet.attributes?.agi ?? 1),
+      for: Number(rawSheet.attributes?.for ?? 1),
+      int: Number(rawSheet.attributes?.int ?? 1),
+      pre: Number(rawSheet.attributes?.pre ?? 1),
+      vig: Number(rawSheet.attributes?.vig ?? 1),
+    };
+
+    if (milestone?.grantsAttributeIncrease) {
+      nextAttributes[evoAttrKey] = Math.min(5, nextAttributes[evoAttrKey] + 1);
+    }
+
+    const didTranscend =
+      Boolean(milestone?.grantsClassPower) && evoChoiceMode === 'transcend';
+    const nextTranscendedCount =
+      Number(rawSheet.transcendedCount ?? 0) + (didTranscend ? 1 : 0);
+
+    const chosenTrailId = evoTrailId || rawSheet.trail || undefined;
+    let nextAbilities = [...characterAbilities];
+
+    // Sincronizar poderes de Trilha até o novo NEX
+    if (chosenTrailId && nextNex >= 10) {
+      const trail = ORDEM_TRAILS.find((t) => t.id === chosenTrailId);
+      if (trail) {
+        nextAbilities = nextAbilities.filter(
+          (ab) => !ab.id.startsWith('trail-') && !ab.name.startsWith('Trilha ')
+        );
+        for (const tp of trail.powers) {
+          if (nextNex >= tp.nex) {
+            nextAbilities.push({
+              id: `trail-${trail.id}-${tp.nex}`,
+              name: `Trilha ${trail.name} (${tp.nex}%): ${tp.name}`,
+              category: 'classe',
+              cost: tp.cost,
+              description: tp.description,
+              isActive: tp.cost === 0,
+              modifiers: tp.modifiers || [],
+            });
+          }
+        }
+      }
+    }
+
+    // Adicionar Poder de Classe ou Poder Paranormal (Transcender)
+    if (milestone?.grantsClassPower && evoSelectedPowerId) {
+      const pEntry =
+        compendiumEntries.find((e) => e.id === evoSelectedPowerId) ||
+        ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoSelectedPowerId);
+      if (pEntry) {
+        nextAbilities.push({
+          id: `nex-${nextNex}-${pEntry.id}`,
+          name: pEntry.name,
+          category: 'poder',
+          cost: pEntry.cost,
+          description: pEntry.description,
+          isActive: pEntry.cost === 0,
+          modifiers: pEntry.modifiers || [],
+        });
+      }
+    }
+
+    // Adicionar Novo Ritual aprendido (Ocultista aprende +1 ritual a cada NEX)
+    if (evoNewRitualId) {
+      const rEntry =
+        compendiumEntries.find((e) => e.id === evoNewRitualId) ||
+        ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoNewRitualId);
+      if (rEntry) {
+        nextAbilities.push({
+          id: `rit-nex-${nextNex}-${rEntry.id}`,
+          name: rEntry.name,
+          category: 'ritual',
+          cost: rEntry.cost,
+          description: rEntry.description,
+          damageFormula: rEntry.metadata?.damageFormula,
+          isActive: false,
+          modifiers: rEntry.modifiers || [],
+        });
+      }
+    }
+
+    // Atualizar grau de treinamento de perícias (35% Veterano +10, 70% Expert +15)
+    const targetDegree: 10 | 15 = nextNex >= 70 ? 15 : 10;
+    const nextSkills = Array.isArray(rawSheet.skills)
+      ? rawSheet.skills.map((sk: any) =>
+          milestone?.grantsTrainingUpgrade && evoUpgradeSkills.includes(sk.id)
+            ? { ...sk, trainingDegree: targetDegree }
+            : sk
+        )
+      : [];
+
+    // Recalcular PV, PE e SAN máximos oficiais para o novo NEX
+    const newBaseVitals = calculateOrdemBaseVitals({
+      characterClass: rawSheet.characterClass || 'combatente',
+      attributes: nextAttributes,
+      nex: nextNex,
+      originIdOrName: rawSheet.origin,
+      transcendedCount: nextTranscendedCount,
+    });
+
+    const newBonuses = calculateActiveBonuses(
+      'ordem-paranormal',
+      nextNex,
+      nextAbilities,
+      character.inventory || [],
+      activeConditions
+    );
+
+    const updatedVitals = character.vitals.map((bar) => {
+      const oldEffectiveMax = bar.max + (bonuses.vitalMax[bar.id] || 0);
+      if (bar.id === 'pv') {
+        const newEffectiveMax = newBaseVitals.pvMax + (newBonuses.vitalMax.pv || 0);
+        const delta = Math.max(0, newEffectiveMax - oldEffectiveMax);
+        return {
+          ...bar,
+          max: newBaseVitals.pvMax,
+          current: Math.min(newEffectiveMax, bar.current + delta),
+        };
+      }
+      if (bar.id === 'pe') {
+        const newEffectiveMax = newBaseVitals.peMax + (newBonuses.vitalMax.pe || 0);
+        const delta = Math.max(0, newEffectiveMax - oldEffectiveMax);
+        return {
+          ...bar,
+          max: newBaseVitals.peMax,
+          current: Math.min(newEffectiveMax, bar.current + delta),
+        };
+      }
+      if (bar.id === 'san') {
+        const newEffectiveMax = newBaseVitals.sanMax + (newBonuses.vitalMax.san || 0);
+        const delta = Math.max(0, newEffectiveMax - oldEffectiveMax);
+        return {
+          ...bar,
+          max: newBaseVitals.sanMax,
+          current: Math.min(newEffectiveMax, bar.current + delta),
+        };
+      }
+      return bar;
+    });
+
+    const nextChar: FullCharacterResponse = {
+      ...character,
+      vitals: updatedVitals,
+      sheetData: {
+        ...rawSheet,
+        nex: nextNex,
+        trail: chosenTrailId,
+        affinity: milestone?.grantsAffinity ? evoAffinity : rawSheet.affinity,
+        transcendedCount: nextTranscendedCount,
+        attributes: nextAttributes,
+        skills: nextSkills,
+        abilities: nextAbilities,
+      },
+    };
+
+    setCharacter(nextChar);
+    setIsNexEvolutionOpen(false);
+    handleSaveSheet(nextChar);
+  }
 
   const availableConditions = compendiumEntries.filter((e) => e.category === 'condition');
 
@@ -869,8 +1153,37 @@ export function SheetContainer({
                   className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-2.5"
                 >
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
                       {bar.label}
+                      {character.system === 'ordem-paranormal' && bar.id === 'san' && (
+                        bar.current <= 0 ? (
+                          <span
+                            className="text-[10px] font-black px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-700 animate-pulse"
+                            title="Diplomacia ou Religião DT 20 em até 3 rodadas para acalmar!"
+                          >
+                            🔴 ENLOUQUECENDO
+                          </span>
+                        ) : bar.current <= Math.floor(effectiveMax / 2) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const effect =
+                                ORDEM_INSANITY_EFFECTS[
+                                  Math.floor(Math.random() * ORDEM_INSANITY_EFFECTS.length)
+                                ];
+                              setInsanityEffectText(effect);
+                            }}
+                            className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 hover:bg-amber-900 cursor-pointer"
+                            title="Clique para sortear um Efeito de Insanidade (Tabela 5.1 - 1d20)"
+                          >
+                            🟡 PERTURBADO (🎲 1d20)
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
+                            🟢 São
+                          </span>
+                        )
+                      )}
                     </span>
                     {isEditMode && canEditVitals ? (
                       <div className="flex items-center gap-1 font-mono text-xs">
@@ -937,15 +1250,485 @@ export function SheetContainer({
         </div>
       </div>
 
+      {/* MODAL DE EFEITO DE INSANIDADE (TABELA 5.1, 1d20) */}
+      {insanityEffectText && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border-2 border-purple-500 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">
+                  🧠 Estado Perturbado • Tabela 5.1 (1d20)
+                </span>
+                <h3 className="text-lg font-black text-white">Efeito de Insanidade</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInsanityEffectText(null)}
+                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-purple-200 bg-zinc-950 border border-purple-800/60 p-4 rounded-xl leading-relaxed">
+              {insanityEffectText}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const next =
+                    ORDEM_INSANITY_EFFECTS[
+                      Math.floor(Math.random() * ORDEM_INSANITY_EFFECTS.length)
+                    ];
+                  setInsanityEffectText(next);
+                }}
+                className="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-bold"
+              >
+                🎲 Rolar Novamente (1d20)
+              </button>
+              <button
+                type="button"
+                onClick={() => setInsanityEffectText(null)}
+                className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-bold"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CENA DE INTERLÚDIO (ORDEM PARANORMAL v1.3, p. 92-93) */}
+      {isInterludeModalOpen && character.system === 'ordem-paranormal' && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-indigo-500/60 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
+                  🌙 Regras Oficiais de Investigação (p. 92–93)
+                </span>
+                <h3 className="text-lg font-black text-white">Cena de Interlúdio & Descanso</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsInterludeModalOpen(false)}
+                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-400 mb-1.5">
+                  1. Condição de Conforto do Abrigo
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { mult: 0.5, label: 'Precário (0,5x)' },
+                    { mult: 1, label: 'Normal (1x)' },
+                    { mult: 2, label: 'Confortável (2x)' },
+                    { mult: 3, label: 'Luxuoso (3x)' },
+                  ].map((c) => (
+                    <button
+                      key={c.mult}
+                      type="button"
+                      onClick={() => setInterludeComfort(c.mult as 0.5 | 1 | 2 | 3)}
+                      className={`py-2 px-2 rounded-lg text-xs font-bold border ${
+                        interludeComfort === c.mult
+                          ? 'bg-indigo-600 text-white border-indigo-400'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex items-center gap-2.5 p-3 rounded-xl bg-zinc-950 border border-zinc-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={interludeSleep}
+                    onChange={(e) => setInterludeSleep(e.target.checked)}
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-white">💤 Ação: Dormir</span>
+                    <span className="text-[11px] text-zinc-400">
+                      Recupera PV e PE baseados no Limite de PE ({getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities)} PE).
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2.5 p-3 rounded-xl bg-zinc-950 border border-zinc-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={interludeRelax}
+                    onChange={(e) => setInterludeRelax(e.target.checked)}
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-white">🧘 Ação: Relaxar</span>
+                    <span className="text-[11px] text-zinc-400">
+                      Recupera Sanidade baseada no Limite de PE.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-400 mb-1.5">
+                  🍲 Ação Opcional: Alimentar-se (Escolha um Prato)
+                </label>
+                <select
+                  value={interludeDish}
+                  onChange={(e) => setInterludeDish(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white"
+                >
+                  <option value="">-- Não se alimentou neste interlúdio --</option>
+                  {ORDEM_INTERLUDE_DISHES.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} — {d.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsInterludeModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyInterludeRecovery}
+                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black"
+              >
+                ✨ Aplicar Recuperação de Interlúdio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EVOLUÇÃO GUIADA DE NEX (LEVEL-UP DE ORDEM PARANORMAL v1.3) */}
+      {isNexEvolutionOpen && character.system === 'ordem-paranormal' && (() => {
+        const currentNex = Number(rawSheet.nex ?? 5);
+        const nextNex = currentNex === 0 ? 5 : currentNex === 95 ? 99 : Math.min(99, currentNex + 5);
+        const milestone = ORDEM_NEX_PROGRESSION.find((m) => m.nex === nextNex);
+        const classTrails = ORDEM_TRAILS.filter((t) => t.classId === rawSheet.characterClass);
+        const maxCircleUnlocked = nextNex >= 85 ? 4 : nextNex >= 55 ? 3 : nextNex >= 25 ? 2 : 1;
+
+        const allPowerEntries =
+          compendiumEntries.filter((e) => e.category === 'power').length > 0
+            ? compendiumEntries.filter((e) => e.category === 'power')
+            : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'power');
+
+        const classPowerOptions = allPowerEntries.filter(
+          (e) =>
+            !e.metadata?.requirements?.toLowerCase().includes('poder paranormal') &&
+            (e.metadata?.requirements
+              ?.toLowerCase()
+              .includes(String(rawSheet.characterClass || '').toLowerCase()) ||
+              !e.metadata?.requirements?.match(/combatente|especialista|ocultista/i))
+        );
+
+        const paranormalPowerOptions = allPowerEntries.filter((e) =>
+          e.metadata?.requirements?.toLowerCase().includes('poder paranormal')
+        );
+
+        const availableRituals = (
+          compendiumEntries.filter((e) => e.category === 'spell').length > 0
+            ? compendiumEntries.filter((e) => e.category === 'spell')
+            : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'spell')
+        ).filter((r) => (r.metadata?.circle || 1) <= maxCircleUnlocked);
+
+        return (
+          <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
+            <div className="bg-zinc-900 border-2 border-amber-500 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+              <div className="px-6 py-4 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                    ⬆️ Assistente Guiado de Evolução • Ordem Paranormal v1.3
+                  </span>
+                  <h3 className="text-xl font-black text-white">
+                    Avançar Exposição: NEX {currentNex}% → NEX {nextNex}%
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNexEvolutionOpen(false)}
+                  className="text-zinc-400 hover:text-white text-sm font-bold px-2.5 py-1 bg-zinc-800 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-5">
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/40">
+                  <span className="text-[10px] font-black uppercase text-amber-300">
+                    Marco de NEX {nextNex}%
+                  </span>
+                  <p className="text-sm font-bold text-white mt-0.5">
+                    {milestone?.summary || 'Aumento automático de PV, PE e Sanidade da Classe.'}
+                  </p>
+                  <p className="text-xs text-zinc-300 mt-1">
+                    Seus PV, PE e SAN máximos serão recalculados automaticamente de acordo com sua classe, Vigor, Presença e Origem.
+                  </p>
+                </div>
+
+                {/* Escolha de Trilha em NEX 10% */}
+                {(milestone?.grantsTrailChoice || (!rawSheet.trail && nextNex >= 10)) &&
+                  rawSheet.characterClass !== 'mundano' && (
+                    <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                      <label className="block text-xs font-black uppercase text-amber-400">
+                        🛤️ Escolha sua Trilha de {rawSheet.characterClass} (Desbloqueia Poder de 10%)
+                      </label>
+                      <select
+                        value={evoTrailId}
+                        onChange={(e) => setEvoTrailId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-sm text-white"
+                      >
+                        <option value="">-- Selecione sua Trilha --</option>
+                        {classTrails.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} — {t.powers[0]?.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                {/* Poder de Classe ou Transcender (NEX 15, 30, 45, 60, 75, 90) */}
+                {milestone?.grantsClassPower && (
+                  <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                    <label className="block text-xs font-black uppercase text-amber-400">
+                      ✨ Escolha seu Poder de NEX {nextNex}% (Poder de Classe ou Transcender)
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEvoChoiceMode('class_power');
+                          setEvoSelectedPowerId('');
+                        }}
+                        className={`py-2 rounded-lg text-xs font-bold border ${
+                          evoChoiceMode === 'class_power'
+                            ? 'bg-amber-600 text-white border-amber-400'
+                            : 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                        }`}
+                      >
+                        ⚔️ Poder de Classe (+SAN normal)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEvoChoiceMode('transcend');
+                          setEvoSelectedPowerId('');
+                        }}
+                        className={`py-2 rounded-lg text-xs font-bold border ${
+                          evoChoiceMode === 'transcend'
+                            ? 'bg-purple-600 text-white border-purple-400'
+                            : 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                        }`}
+                      >
+                        👁️ Transcender (Poder Paranormal • Sem ganho de SAN)
+                      </button>
+                    </div>
+
+                    {evoChoiceMode === 'transcend' && (
+                      <p className="text-[11px] text-purple-300 bg-purple-950/40 border border-purple-800/50 p-2.5 rounded-lg">
+                        ⚠️ Regra Oficial (p. 114): Ao escolher <strong>Transcender</strong>, você recebe um Poder Paranormal, mas <strong>não recebe o aumento de Sanidade</strong> deste avanço de NEX.
+                      </p>
+                    )}
+
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {(evoChoiceMode === 'class_power'
+                        ? classPowerOptions
+                        : paranormalPowerOptions
+                      ).map((pw) => {
+                        const check = checkOrdemPowerRequirements(
+                          pw,
+                          { ...(rawSheet as OrdemSheetData), nex: nextNex },
+                          characterAbilities
+                        );
+                        const selected = evoSelectedPowerId === pw.id;
+                        return (
+                          <button
+                            key={pw.id}
+                            type="button"
+                            onClick={() => setEvoSelectedPowerId(pw.id)}
+                            className={`w-full text-left p-3 rounded-lg border transition ${
+                              selected
+                                ? 'bg-amber-600/20 border-amber-500'
+                                : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-xs text-white">{pw.name}</span>
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  check.met
+                                    ? 'bg-emerald-950 text-emerald-300'
+                                    : 'bg-red-950 text-red-300'
+                                }`}
+                              >
+                                {check.met ? '✓ Pré-req OK' : `Falta: ${check.missing.join(', ')}`}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 mt-1">{pw.description}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Aumento de Atributo (NEX 20, 50, 80, 95) */}
+                {milestone?.grantsAttributeIncrease && (
+                  <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                    <label className="block text-xs font-black uppercase text-amber-400">
+                      📈 Aumento de Atributo (+1 ponto, máx. 5)
+                    </label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {(['agi', 'for', 'int', 'pre', 'vig'] as const).map((k) => {
+                        const curr = Number(rawSheet.attributes?.[k] ?? 1);
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            disabled={curr >= 5}
+                            onClick={() => setEvoAttrKey(k)}
+                            className={`py-2 rounded-lg text-xs font-black uppercase border ${
+                              evoAttrKey === k
+                                ? 'bg-amber-600 text-white border-amber-400'
+                                : 'bg-zinc-900 text-zinc-300 border-zinc-800 disabled:opacity-40'
+                            }`}
+                          >
+                            {k} ({curr} → {Math.min(5, curr + 1)})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Grau de Treinamento (NEX 35 Veterano, NEX 70 Expert) */}
+                {milestone?.grantsTrainingUpgrade && (
+                  <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                    <label className="block text-xs font-black uppercase text-amber-400">
+                      🎓 Grau de Treinamento ({nextNex >= 70 ? 'Expert +15' : 'Veterano +10'}): Selecione as perícias treinadas para aprimorar
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(rawSheet.skills || [])
+                        .filter((s: any) => s.trainingDegree > 0)
+                        .map((sk: any) => {
+                          const picked = evoUpgradeSkills.includes(sk.id);
+                          return (
+                            <button
+                              key={sk.id}
+                              type="button"
+                              onClick={() =>
+                                setEvoUpgradeSkills((prev) =>
+                                  prev.includes(sk.id)
+                                    ? prev.filter((i) => i !== sk.id)
+                                    : [...prev, sk.id]
+                                )
+                              }
+                              className={`px-2.5 py-1 rounded text-xs font-bold border ${
+                                picked
+                                  ? 'bg-amber-600 text-white border-amber-400'
+                                  : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                              }`}
+                            >
+                              {sk.name}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Afinidade Elemental em NEX 50% */}
+                {milestone?.grantsAffinity && (
+                  <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-purple-500/40">
+                    <label className="block text-xs font-black uppercase text-purple-300">
+                      👁️ Afinidade com Elemento Paranormal (NEX 50%)
+                    </label>
+                    <select
+                      value={evoAffinity}
+                      onChange={(e) => setEvoAffinity(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-500/40 text-sm text-white"
+                    >
+                      <option value="Sangue">🩸 Sangue</option>
+                      <option value="Morte">💀 Morte</option>
+                      <option value="Conhecimento">👁️ Conhecimento</option>
+                      <option value="Energia">⚡ Energia</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Ocultista: +1 Ritual aprendido a cada novo NEX */}
+                {rawSheet.characterClass === 'ocultista' && (
+                  <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-purple-500/40">
+                    <label className="block text-xs font-black uppercase text-purple-300">
+                      🔮 Escolhido pelo Outro Lado: Escolha +1 Novo Ritual (Até {maxCircleUnlocked}º Círculo)
+                    </label>
+                    <select
+                      value={evoNewRitualId}
+                      onChange={(e) => setEvoNewRitualId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-500/40 text-xs text-white"
+                    >
+                      <option value="">-- Selecione o ritual aprendido neste NEX --</option>
+                      {availableRituals.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} — {r.description.slice(0, 85)}...
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 bg-zinc-950 border-t border-zinc-800 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsNexEvolutionOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmNexEvolution}
+                  className="px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider shadow-lg"
+                >
+                  ✅ Confirmar Evolução para NEX {nextNex}%
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Módulos dos Sistemas */}
       {character.system === 'ordem-paranormal' && (
         <OrdemSheet
           data={character.sheetData as OrdemSheetData}
           bonuses={bonuses}
           customSkills={customSkills}
+          abilities={characterAbilities}
+          isOverloaded={isCharacterOverloaded}
           isEditMode={isEditMode}
           canEditAttributes={canEditAttributes}
           canEditAbilities={canEditAbilities}
+          onSyncTrailAbilities={handleSyncOrdemTrailAbilities}
+          onOpenNexEvolution={handleOpenNexEvolutionModal}
+          onOpenInterlude={() => setIsInterludeModalOpen(true)}
           onChange={(updatedData) =>
             setCharacter((prev) => {
               if (!prev) return null;
@@ -997,6 +1780,11 @@ export function SheetContainer({
       {/* Abas Inferiores integradas com Troca entre Jogadores */}
       <SheetExtras
         system={character.system}
+        ordemSheetData={
+          character.system === 'ordem-paranormal'
+            ? (character.sheetData as OrdemSheetData)
+            : undefined
+        }
         bonuses={bonuses}
         compendiumEntries={compendiumEntries}
         isEditMode={isEditMode}

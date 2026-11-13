@@ -1,5 +1,8 @@
 export * from './ruleEngine';
 export * from './defaults';
+export * from './wizardData';
+export * from './ordemCompendiumData';
+export * from './characterBuilder';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
 
@@ -171,9 +174,17 @@ export interface OrdemSheetData {
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
   nex: number;
   patent: string;
+  trail?: string;
+  prestigePoints?: number;
+  affinity?: string;
+  peritoSkills?: string[];
+  proficiencies?: string[];
+  transcendedCount?: number;
   displacement: number;
   attributes: OrdemAttributes;
   skills: OrdemSkill[];
+  abilities?: CharacterAbility[];
+  activeConditions?: ActiveCondition[];
 }
 
 // Estrutura Específica de Ficha: Tormenta 20
@@ -202,6 +213,8 @@ export interface T20SheetData {
   origin: string;
   attributes: T20Attributes;
   skills: T20Skill[];
+  abilities?: CharacterAbility[];
+  activeConditions?: ActiveCondition[];
 }
 
 // Modelo unificado de personagem com dados completos
@@ -267,6 +280,7 @@ export interface CompendiumEntryData {
     damageFormula?: string; // Ex: "2d8+4" ou "6d6"
     critRange?: string;     // Ex: "19/x2"
     slots?: number;         // Espaços ocupados no inventário
+    categoryLevel?: number; // Categoria de item em Ordem Paranormal (0, 1, 2, 3, 4)
     requirements?: string;  // Pré-requisitos em texto
   };
 }

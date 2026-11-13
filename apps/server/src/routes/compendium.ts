@@ -2,15 +2,90 @@ import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
+import { ORDEM_COMPENDIUM_ENTRIES, ORDEM_SKILLS_METADATA } from '@totalrpg/shared';
 
 export const compendiumRouter = Router();
 
 compendiumRouter.use(authMiddleware as any);
 
+let ordemSeedPromise: Promise<void> | null = null;
+
+async function ensureOrdemCompendiumSynchronized(): Promise<void> {
+  if (ordemSeedPromise) return ordemSeedPromise;
+  ordemSeedPromise = (async () => {
+    try {
+      const existingOrdemEntries = await prisma.compendiumEntry.findMany({
+        where: { system: 'ordem-paranormal' },
+        select: { name: true },
+      });
+      const existingNames = new Set(
+        existingOrdemEntries.map((e) => e.name.toLowerCase().trim())
+      );
+
+      const missingEntries = ORDEM_COMPENDIUM_ENTRIES.filter(
+        (item) => !existingNames.has(item.name.toLowerCase().trim())
+      );
+
+      for (const item of missingEntries) {
+        await prisma.compendiumEntry.create({
+          data: {
+            system: item.system,
+            category: item.category,
+            name: item.name,
+            description: item.description,
+            cost: item.cost,
+            modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
+            metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      const existingSkillCount = await prisma.systemSkill.count({
+        where: { system: 'ordem-paranormal' },
+      });
+      if (existingSkillCount < ORDEM_SKILLS_METADATA.length) {
+        for (const sk of ORDEM_SKILLS_METADATA) {
+          await prisma.systemSkill.upsert({
+            where: {
+              system_skillKey: {
+                system: 'ordem-paranormal',
+                skillKey: sk.id,
+              },
+            },
+            update: {
+              name: sk.name,
+              defaultAttribute: sk.attribute,
+              trainedOnly: sk.trainedOnly,
+              armorPenalty: sk.armorPenalty,
+            },
+            create: {
+              system: 'ordem-paranormal',
+              skillKey: sk.id,
+              name: sk.name,
+              defaultAttribute: sk.attribute,
+              trainedOnly: sk.trainedOnly,
+              armorPenalty: sk.armorPenalty,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao sincronizar compêndio de Ordem Paranormal:', err);
+    } finally {
+      ordemSeedPromise = null;
+    }
+  })();
+  return ordemSeedPromise;
+}
+
 // Listar entradas do compêndio e perícias de um sistema
 compendiumRouter.get('/', async (req: AuthenticatedRequest, res) => {
   try {
     const system = typeof req.query.system === 'string' ? req.query.system : undefined;
+
+    if (!system || system === 'ordem-paranormal') {
+      await ensureOrdemCompendiumSynchronized();
+    }
 
     // Corrige automaticamente o Sangue de Ferro caso tenha sido criado com o valor antigo (+10 fixo)
     await prisma.compendiumEntry.updateMany({
@@ -152,9 +227,13 @@ compendiumRouter.post('/seed', async (req: AuthenticatedRequest, res) => {
       data: { isAdmin: true },
     });
 
-    const existingCount = await prisma.compendiumEntry.count();
-    if (existingCount > 0) {
-      return res.json({ message: 'Sua conta agora é Admin! O Compêndio já possui dados iniciais.' });
+    await ensureOrdemCompendiumSynchronized();
+
+    const existingT20Count = await prisma.compendiumEntry.count({
+      where: { system: 'tormenta20' },
+    });
+    if (existingT20Count > 0) {
+      return res.json({ message: 'Sua conta agora é Admin e todo o Compêndio Oficial de Ordem Paranormal v1.3 + Tormenta 20 está sincronizado!' });
     }
 
     const initialEntries = [
