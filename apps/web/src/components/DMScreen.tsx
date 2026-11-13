@@ -79,6 +79,7 @@ interface DMScreenProps {
     merchants: CampaignMerchant[],
     postIts: StickyPostIt[]
   ) => void;
+  onBroadcastSceneEnd?: () => void;
 }
 
 function parseFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -107,6 +108,7 @@ export function DMScreen({
   lastInitiativeSubmission,
   dismissedPostItSignal,
   onSyncSecondMonitor,
+  onBroadcastSceneEnd,
 }: DMScreenProps) {
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
@@ -484,6 +486,7 @@ async function handleDeliverItemToCharacter(
     const rawSheet = (char.sheetData || {}) as Record<string, any>;
     const abilities: CharacterAbility[] = Array.isArray(rawSheet.abilities) ? rawSheet.abilities : [];
     const conditions: ActiveCondition[] = Array.isArray(rawSheet.conditions) ? rawSheet.conditions : [];
+    const sceneEffects = Array.isArray(rawSheet.sceneEffects) ? rawSheet.sceneEffects : [];
     const levelOrNex =
       char.system === 'ordem-paranormal' ? Number(rawSheet.nex ?? 5) : Number(rawSheet.level ?? 1);
 
@@ -492,30 +495,85 @@ async function handleDeliverItemToCharacter(
       levelOrNex,
       abilities,
       char.inventory || [],
-      conditions
+      conditions,
+      sceneEffects
     );
+
+    let effectiveDelta = delta;
+    let nextTempHp = Number(rawSheet.tempHp || 0);
+    let tempHpChanged = false;
+
+    if (barId === 'pv' && delta < 0 && nextTempHp > 0) {
+      const damage = Math.abs(delta);
+      const absorbed = Math.min(nextTempHp, damage);
+      nextTempHp -= absorbed;
+      effectiveDelta = -(damage - absorbed);
+      tempHpChanged = true;
+    }
 
     const updatedVitals = char.vitals.map((bar) => {
       if (bar.id !== barId) return bar;
       const effectiveMax = Math.max(1, bar.max + (bonuses.vitalMax[bar.id] || 0));
-      const nextCurrent = Math.max(0, Math.min(effectiveMax, bar.current + delta));
+      const nextCurrent = Math.max(0, Math.min(effectiveMax, bar.current + effectiveDelta));
       return { ...bar, current: nextCurrent };
     });
+
+    const nextSheetData = tempHpChanged ? { ...rawSheet, tempHp: nextTempHp } : rawSheet;
 
     setCampaign((prev) =>
       prev
         ? {
             ...prev,
             characters: prev.characters.map((c) =>
-              c.id === char.id ? { ...c, vitals: updatedVitals } : c
+              c.id === char.id
+                ? { ...c, vitals: updatedVitals, sheetData: nextSheetData }
+                : c
             ),
           }
         : null
     );
 
     try {
-      await updateCharacter(char.id, { vitals: updatedVitals });
+      await updateCharacter(
+        char.id,
+        tempHpChanged
+          ? { vitals: updatedVitals, sheetData: nextSheetData }
+          : { vitals: updatedVitals }
+      );
       onBroadcastCharacterSync(char.id);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  async function handleEndSceneForAll() {
+    if (!campaign) return;
+    const updatedChars = campaign.characters.map((char) => {
+      const rawSheet = (char.sheetData || {}) as Record<string, any>;
+      return {
+        ...char,
+        sheetData: {
+          ...rawSheet,
+          tempHp: 0,
+          tempPe: 0,
+          sceneEffects: [],
+        },
+      };
+    });
+
+    setCampaign({ ...campaign, characters: updatedChars });
+    setInitFeedback('🎬 Cena encerrada! Efeitos de cena e PVs temporários foram encerrados.');
+    setTimeout(() => setInitFeedback(''), 4500);
+
+    try {
+      await Promise.all(
+        updatedChars.map((c) =>
+          updateCharacter(c.id, { sheetData: c.sheetData }).then(() =>
+            onBroadcastCharacterSync(c.id)
+          )
+        )
+      );
+      onBroadcastSceneEnd?.();
     } catch (err: any) {
       alert(err.message);
     }
@@ -650,17 +708,28 @@ async function handleDeliverItemToCharacter(
             <h2 className="text-2xl font-extrabold text-white mt-1">{campaign.name}</h2>
           </div>
 
-          <div className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl">
-            <div>
-              <span className="block text-[10px] uppercase text-zinc-500 font-bold">Código de Convite</span>
-              <span className="font-mono text-base font-extrabold text-amber-400">{campaign.inviteCode}</span>
-            </div>
-            <div className="h-8 w-[1px] bg-zinc-800 mx-1" />
-            <div>
-              <span className="block text-[10px] uppercase text-zinc-500 font-bold">Jogadores</span>
-              <span className="font-mono text-base font-extrabold text-white">
-                {campaign.characters.length} ativos
-              </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleEndSceneForAll}
+              title="Encerra a cena atual para todos os jogadores (limpa PV Temporários e efeitos com duração de 1 cena, como Consumir Manancial e Armadura de Sangue)"
+              className="px-4 py-2.5 bg-purple-950/80 hover:bg-purple-800 border border-purple-500/60 text-purple-200 rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-purple-950/40 flex items-center gap-2"
+            >
+              🎬 Encerrar Cena
+            </button>
+
+            <div className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl">
+              <div>
+                <span className="block text-[10px] uppercase text-zinc-500 font-bold">Código de Convite</span>
+                <span className="font-mono text-base font-extrabold text-amber-400">{campaign.inviteCode}</span>
+              </div>
+              <div className="h-8 w-[1px] bg-zinc-800 mx-1" />
+              <div>
+                <span className="block text-[10px] uppercase text-zinc-500 font-bold">Jogadores</span>
+                <span className="font-mono text-base font-extrabold text-white">
+                  {campaign.characters.length} ativos
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1078,7 +1147,8 @@ async function handleDeliverItemToCharacter(
                     levelOrNex,
                     abilities,
                     char.inventory || [],
-                    conditions
+                    conditions,
+                    Array.isArray(raw.sceneEffects) ? raw.sceneEffects : []
                   );
 
                   const agiOrDes =
@@ -1214,7 +1284,14 @@ async function handleDeliverItemToCharacter(
                           return (
                             <div key={bar.id} className="flex flex-col gap-1">
                               <div className="flex justify-between items-center text-xs">
-                                <span className="font-bold text-zinc-300">{bar.label}</span>
+                                <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                                  <span>{bar.label}</span>
+                                  {bar.id === 'pv' && Number(raw.tempHp || 0) > 0 && (
+                                    <span className="px-1.5 py-0.5 bg-cyan-950/80 border border-cyan-500/60 text-cyan-300 rounded text-[10px] font-mono font-extrabold">
+                                      🛡️ +{raw.tempHp} Temp
+                                    </span>
+                                  )}
+                                </span>
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     type="button"

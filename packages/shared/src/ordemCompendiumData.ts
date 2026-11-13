@@ -467,7 +467,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-aprender-ritual',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Aprender Ritual (Poder Paranormal)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -475,20 +475,50 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     metadata: { element: 'Paranormal', requirements: 'Transcender' },
   },
   {
-    id: 'ord-para-resistir-elemento',
+    id: 'ord-para-resistir-conhecimento',
     system: 'ordem-paranormal',
-    category: 'power',
-    name: 'Resistir a <Elemento> (Poder Paranormal)',
+    category: 'paranormal_power',
+    name: 'Resistir a Conhecimento (Conhecimento)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
     modifiers: [],
-    metadata: { element: 'Paranormal', requirements: 'Transcender' },
+    metadata: { element: 'Conhecimento', requirements: 'Transcender' },
+  },
+  {
+    id: 'ord-para-resistir-energia',
+    system: 'ordem-paranormal',
+    category: 'paranormal_power',
+    name: 'Resistir a Energia (Energia)',
+    description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
+    cost: 0,
+    modifiers: [],
+    metadata: { element: 'Energia', requirements: 'Transcender' },
+  },
+  {
+    id: 'ord-para-resistir-morte',
+    system: 'ordem-paranormal',
+    category: 'paranormal_power',
+    name: 'Resistir a Morte (Morte)',
+    description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
+    cost: 0,
+    modifiers: [],
+    metadata: { element: 'Morte', requirements: 'Transcender' },
+  },
+  {
+    id: 'ord-para-resistir-sangue',
+    system: 'ordem-paranormal',
+    category: 'paranormal_power',
+    name: 'Resistir a Sangue (Sangue)',
+    description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
+    cost: 0,
+    modifiers: [],
+    metadata: { element: 'Sangue', requirements: 'Transcender' },
   },
   // --- CONHECIMENTO ---
   {
     id: 'ord-para-conh-expansao',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Expansão de Conhecimento (Conhecimento)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -498,7 +528,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-percepcao',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Percepção Paranormal (Conhecimento)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -508,7 +538,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-precognicao',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Precognição (Conhecimento)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -523,7 +553,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-sensitivo',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sensitivo (Conhecimento)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -537,7 +567,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-conh-visao-oculto',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Visão do Oculto (Conhecimento)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -548,7 +578,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-afortunado',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Afortunado (Energia)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -558,7 +588,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-campo-protetor',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Campo Protetor (Energia)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
@@ -568,7 +598,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-causalidade',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Causalidade Fortuita (Energia)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -578,7 +608,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-golpe-sorte',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Golpe de Sorte (Energia)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -588,7 +618,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-ener-manipular-entropia',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Manipular Entropia (Energia)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
@@ -599,7 +629,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-encarar',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Encarar a Morte (Morte)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -609,7 +639,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-escapar',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Escapar da Morte (Morte)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -619,7 +649,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-potencial-aprimorado',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Potencial Aprimorado (Morte)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -629,7 +659,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-potencial-reaproveitado',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Potencial Reaproveitado (Morte)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -639,7 +669,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-mort-surto-temporal',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Surto Temporal (Morte)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 3,
@@ -650,7 +680,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-anatomia-insana',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Anatomia Insana (Sangue)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -660,7 +690,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-arma-sangue',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Arma de Sangue (Sangue)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
@@ -670,7 +700,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-sangue-ferro',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sangue de Ferro (Sangue)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -680,7 +710,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-sangue-fervente',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sangue Fervente (Sangue)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
@@ -690,7 +720,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   {
     id: 'ord-para-sang-sangue-vivo',
     system: 'ordem-paranormal',
-    category: 'power',
+    category: 'paranormal_power',
     name: 'Sangue Vivo (Sangue)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,

@@ -4,9 +4,10 @@ import { DiceRollResult } from '@totalrpg/shared';
 interface DiceRollModalProps {
   roll: DiceRollResult | null;
   onClose: () => void;
+  onRerollOne?: (roll: DiceRollResult, dieIndex: number) => void;
 }
 
-export function DiceRollModal({ roll, onClose }: DiceRollModalProps) {
+export function DiceRollModal({ roll, onClose, onRerollOne }: DiceRollModalProps) {
   const [isAnimating, setIsAnimating] = useState(true);
   const [fakeNumber, setFakeNumber] = useState(20);
 
@@ -82,24 +83,51 @@ export function DiceRollModal({ roll, onClose }: DiceRollModalProps) {
                 {roll.rolls.map((val, idx) => {
                   const isKeptInOrdem =
                     roll.system === 'ordem-paranormal' && val === highestRoll && roll.rolls.length > 1;
+                  const canRerollThisDie = val === 1 && !roll.rerolledAfortunado && !!onRerollOne;
                   return (
-                    <span
+                    <button
+                      type="button"
                       key={idx}
-                      className={`w-9 h-9 rounded-lg font-mono font-bold text-sm flex items-center justify-center border ${
+                      disabled={!canRerollThisDie}
+                      onClick={() => {
+                        if (canRerollThisDie && onRerollOne) {
+                          onRerollOne(roll, idx);
+                        }
+                      }}
+                      title={canRerollThisDie ? 'Clique para rerrolar este dado 1 (Poder Afortunado)' : undefined}
+                      className={`w-9 h-9 rounded-lg font-mono font-bold text-sm flex items-center justify-center border transition ${
                         val === 20
                           ? 'bg-amber-600/30 border-amber-400 text-amber-300'
                           : val === 1
-                          ? 'bg-red-950/60 border-red-700 text-red-400'
+                          ? canRerollThisDie
+                            ? 'bg-red-950/80 border-red-500 text-red-300 hover:bg-emerald-900/60 hover:border-emerald-400 hover:text-emerald-200 cursor-pointer ring-2 ring-red-500/40'
+                            : 'bg-red-950/60 border-red-700 text-red-400'
                           : isKeptInOrdem
                           ? 'bg-zinc-800 border-amber-500/60 text-white'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-400'
                       }`}
                     >
                       {val}
-                    </span>
+                    </button>
                   );
                 })}
               </div>
+
+              {!roll.rerolledAfortunado && roll.rolls.includes(1) && onRerollOne && (
+                <button
+                  type="button"
+                  onClick={() => onRerollOne(roll, roll.rolls.indexOf(1))}
+                  className="mt-2 w-full py-2 px-3 bg-emerald-950/80 hover:bg-emerald-800 border border-emerald-500/60 text-emerald-200 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                >
+                  🍀 Rerrolar dado "1" (Poder Afortunado — 1x por rolagem)
+                </button>
+              )}
+
+              {roll.rerolledAfortunado && (
+                <span className="mt-1 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                  🍀 Dado 1 rerrolado com Afortunado!
+                </span>
+              )}
             </div>
           </div>
         )}

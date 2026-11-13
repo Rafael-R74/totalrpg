@@ -9,6 +9,9 @@ import {
   OrdemSheetData,
   ORDEM_PATENTS,
   checkOrdemPowerRequirements,
+  parseOrdemRitualForms,
+  OrdemRitualCastForm,
+  getOrdemPeLimit,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 
@@ -33,6 +36,7 @@ interface SheetExtrasProps {
   onInitiateTradeItem?: (item: RPGItem) => void;
   onSpendResource: (amount: number) => boolean;
   onRoll: (label: string, count: number, sides: number, modifier: number, isDamage?: boolean) => void;
+  onCastOrdemRitual?: (ritual: CharacterAbility, form: OrdemRitualCastForm) => void;
 }
 
 function parseDiceFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -69,12 +73,17 @@ export function SheetExtras({
   onInitiateTradeItem,
   onSpendResource,
   onRoll,
+  onCastOrdemRitual,
 }: SheetExtrasProps) {
   const [activeSubTab, setActiveSubTab] = useState<'combat' | 'powers' | 'spells' | 'inventory'>('combat');
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'compendium' | 'custom'>('compendium');
   const [searchQuery, setSearchQuery] = useState('');
+  const [compendiumPowerTypeFilter, setCompendiumPowerTypeFilter] = useState<'ALL' | 'power' | 'paranormal_power'>('ALL');
+  const [compendiumElementFilter, setCompendiumElementFilter] = useState<string>('ALL');
+  const [compendiumCircleFilter, setCompendiumCircleFilter] = useState<number | 'ALL'>('ALL');
+  const [abilityUseFeedback, setAbilityUseFeedback] = useState<string>('');
 
   const [atkName, setAtkName] = useState('');
   const [atkDice, setAtkDice] = useState(1);
@@ -110,6 +119,9 @@ export function SheetExtras({
 
   function openAddModal() {
     setSearchQuery('');
+    setCompendiumPowerTypeFilter('ALL');
+    setCompendiumElementFilter('ALL');
+    setCompendiumCircleFilter('ALL');
     setModalMode(activeSubTab === 'combat' ? 'custom' : 'compendium');
     setIsAddModalOpen(true);
   }
@@ -117,12 +129,24 @@ export function SheetExtras({
   function handleSelectFromCompendium(entry: CompendiumEntryData) {
     const newId = Math.random().toString(36).substring(2, 9);
 
-    if (entry.category === 'power' || entry.category === 'spell' || entry.category === 'origin') {
+    if (
+      entry.category === 'power' ||
+      entry.category === 'paranormal_power' ||
+      entry.category === 'spell' ||
+      entry.category === 'origin'
+    ) {
       const isPassive = entry.cost === 0 && !entry.metadata?.damageFormula;
       const newAb: CharacterAbility = {
         id: newId,
         name: entry.name,
-        category: entry.category === 'spell' ? (system === 'ordem-paranormal' ? 'ritual' : 'magia') : 'poder',
+        category:
+          entry.category === 'spell'
+            ? system === 'ordem-paranormal'
+              ? 'ritual'
+              : 'magia'
+            : entry.category === 'paranormal_power'
+            ? 'poder_paranormal'
+            : 'poder',
         cost: entry.cost,
         description: entry.description,
         damageFormula: entry.metadata?.damageFormula,
@@ -253,8 +277,17 @@ export function SheetExtras({
     if (ab.damageFormula) {
       const parsed = parseDiceFormula(ab.damageFormula);
       onRoll(`${ab.name} (Efeito)`, parsed.count, parsed.sides, parsed.modifier, true);
-    } else if (ab.cost > 0) {
-      onRoll(`Ativou: ${ab.name} (-${ab.cost} ${resourceLabel})`, 1, 20, 0, true);
+    } else {
+      // Poderes sem fórmula de dano (ex.: Ampliar Ritual, Ataque Especial, Perito) apenas descontam PE e ativam bônus se houver
+      if (ab.modifiers && ab.modifiers.length > 0 && ab.isActive === false) {
+        onUpdateAbilities(
+          abilities.map((item) => (item.id === ab.id ? { ...item, isActive: true } : item))
+        );
+      }
+      setAbilityUseFeedback(
+        `✨ ${ab.name} ativado${ab.cost > 0 ? ` (-${ab.cost} ${resourceLabel} descontado)` : ''}!`
+      );
+      setTimeout(() => setAbilityUseFeedback(''), 4000);
     }
   }
 
@@ -270,17 +303,51 @@ export function SheetExtras({
     );
   }
 
-  const modalCompendiumList = compendiumEntries.filter((entry) => {
-    const matchesSearch =
-      entry.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.description.toLowerCase().includes(searchQuery.toLowerCase());
+  const modalCompendiumList = compendiumEntries
+    .filter((entry) => {
+      const matchesSearch =
+        entry.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        entry.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (entry.metadata?.element || '').toLowerCase().includes(searchQuery.toLowerCase());
 
-    if (!matchesSearch) return false;
-    if (activeSubTab === 'powers') return entry.category === 'power' || entry.category === 'origin';
-    if (activeSubTab === 'spells') return entry.category === 'spell';
-    if (activeSubTab === 'inventory') return entry.category === 'item';
-    return false;
-  });
+      if (!matchesSearch) return false;
+      if (activeSubTab === 'powers') {
+        const isPowerCat =
+          entry.category === 'power' ||
+          entry.category === 'paranormal_power' ||
+          entry.category === 'origin';
+        if (!isPowerCat) return false;
+        if (compendiumPowerTypeFilter !== 'ALL' && entry.category !== compendiumPowerTypeFilter) {
+          return false;
+        }
+        if (
+          compendiumElementFilter !== 'ALL' &&
+          (entry.metadata?.element || '').toLowerCase() !== compendiumElementFilter.toLowerCase()
+        ) {
+          return false;
+        }
+        return true;
+      }
+      if (activeSubTab === 'spells') {
+        if (entry.category !== 'spell') return false;
+        if (
+          compendiumCircleFilter !== 'ALL' &&
+          (entry.metadata?.circle || 1) !== compendiumCircleFilter
+        ) {
+          return false;
+        }
+        if (
+          compendiumElementFilter !== 'ALL' &&
+          (entry.metadata?.element || '').toLowerCase() !== compendiumElementFilter.toLowerCase()
+        ) {
+          return false;
+        }
+        return true;
+      }
+      if (activeSubTab === 'inventory') return entry.category === 'item';
+      return false;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
   let addButtonLabel = '';
   let canShowAddButton = false;
@@ -358,9 +425,90 @@ export function SheetExtras({
                   autoFocus
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="🔍 Digite o nome ou efeito para filtrar..."
+                  placeholder="🔍 Digite o nome, elemento ou efeito para filtrar..."
                   className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
                 />
+
+                {activeSubTab === 'powers' && system === 'ordem-paranormal' && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { id: 'ALL', label: 'Todos' },
+                        { id: 'power', label: '⚔️ Poderes de Classe' },
+                        { id: 'paranormal_power', label: '👁️ Poderes Paranormais' },
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setCompendiumPowerTypeFilter(tab.id as any)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                            compendiumPowerTypeFilter === tab.id
+                              ? 'bg-amber-600 border-amber-500 text-white'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {compendiumPowerTypeFilter === 'paranormal_power' && (
+                      <div className="flex flex-wrap gap-1">
+                        {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                          <button
+                            key={el}
+                            type="button"
+                            onClick={() => setCompendiumElementFilter(el)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                              compendiumElementFilter === el
+                                ? 'bg-purple-700 border-purple-500 text-white'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                            }`}
+                          >
+                            {el === 'ALL' ? 'Todos Elem.' : el}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeSubTab === 'spells' && system === 'ordem-paranormal' && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-1">
+                      {(['ALL', 1, 2, 3, 4] as const).map((circ) => (
+                        <button
+                          key={String(circ)}
+                          type="button"
+                          onClick={() => setCompendiumCircleFilter(circ)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                            compendiumCircleFilter === circ
+                              ? 'bg-purple-700 border-purple-500 text-white'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                          }`}
+                        >
+                          {circ === 'ALL' ? 'Todos Círculos' : `${circ}º Círculo`}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia', 'Medo'].map((el) => (
+                        <button
+                          key={el}
+                          type="button"
+                          onClick={() => setCompendiumElementFilter(el)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                            compendiumElementFilter === el
+                              ? 'bg-amber-600 border-amber-500 text-white'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                          }`}
+                        >
+                          {el === 'ALL' ? 'Todos Elem.' : el}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-2 overflow-y-auto pr-1 max-h-[420px]">
                   {modalCompendiumList.length === 0 ? (
@@ -372,18 +520,38 @@ export function SheetExtras({
                       const reqCheck =
                         system === 'ordem-paranormal' &&
                         ordemSheetData &&
-                        entry.category === 'power'
+                        (entry.category === 'power' || entry.category === 'paranormal_power')
                           ? checkOrdemPowerRequirements(entry, ordemSheetData, abilities)
                           : { met: true, missing: [] };
+
+                      const alreadyOwned =
+                        entry.category !== 'item' &&
+                        abilities.some(
+                          (ab) => ab.name.trim().toLowerCase() === entry.name.trim().toLowerCase()
+                        );
 
                       return (
                         <div
                           key={entry.id}
-                          className="bg-zinc-950 border border-zinc-800 hover:border-zinc-700 p-3.5 rounded-xl flex justify-between items-center gap-4 transition"
+                          className={`bg-zinc-950 border p-3.5 rounded-xl flex justify-between items-center gap-4 transition ${
+                            alreadyOwned
+                              ? 'border-zinc-800/60 opacity-60'
+                              : 'border-zinc-800 hover:border-zinc-700'
+                          }`}
                         >
                           <div className="flex flex-col gap-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-bold text-white">{entry.name}</span>
+                              {entry.category === 'paranormal_power' && (
+                                <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
+                                  👁️ Paranormal {entry.metadata?.element ? `• ${entry.metadata.element}` : ''}
+                                </span>
+                              )}
+                              {entry.category === 'spell' && entry.metadata?.circle && (
+                                <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
+                                  {entry.metadata.circle}º Círculo • {entry.metadata.element || 'Paranormal'}
+                                </span>
+                              )}
                               {entry.cost > 0 && entry.category !== 'item' && (
                                 <span className="text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">
                                   {entry.cost} {resourceLabel}
@@ -418,10 +586,15 @@ export function SheetExtras({
 
                           <button
                             type="button"
+                            disabled={alreadyOwned}
                             onClick={() => handleSelectFromCompendium(entry)}
-                            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap shadow"
+                            className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow ${
+                              alreadyOwned
+                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                : 'bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer'
+                            }`}
                           >
-                            + Adicionar
+                            {alreadyOwned ? '✓ Já possui' : '+ Adicionar'}
                           </button>
                         </div>
                       );
@@ -745,23 +918,81 @@ export function SheetExtras({
       {/* CONTEÚDO DA ABA 2 (PODERES) E ABA 3 (RITUAIS / MAGIAS) */}
       {(activeSubTab === 'powers' || activeSubTab === 'spells') && (
         <div className="flex flex-col gap-3">
+          {abilityUseFeedback && (
+            <div className="bg-emerald-950/80 border border-emerald-600 text-emerald-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between">
+              <span>{abilityUseFeedback}</span>
+              <button
+                type="button"
+                onClick={() => setAbilityUseFeedback('')}
+                className="text-emerald-400 hover:text-white ml-2 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {activeSubTab === 'spells' && system === 'ordem-paranormal' && (
+            <div className="bg-purple-950/30 border border-purple-800/50 px-3.5 py-2 rounded-xl text-[11px] text-purple-200 flex flex-wrap items-center justify-between gap-2">
+              <span>
+                👁️ <strong>O Custo do Paranormal:</strong> Conjurar um ritual desconta o PE, aplica bônus/PV temporários da cena e rola automaticamente seu <strong>Teste de Ocultismo (DT 20 + PE gasto)</strong>.
+              </span>
+              {ordemSheetData && (
+                <span className="font-mono font-bold text-purple-300">
+                  Limite de PE/Turno: {getOrdemPeLimit(ordemSheetData.nex, ordemSheetData.origin, abilities)} PE
+                </span>
+              )}
+            </div>
+          )}
+
           {(activeSubTab === 'powers' ? powerList : spellList).length === 0 ? (
             <p className="text-xs text-zinc-500 text-center py-4">
               Nenhum {activeSubTab === 'powers' ? 'poder' : spellLabel.toLowerCase()} adicionado na ficha.
             </p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2.5">
               {(activeSubTab === 'powers' ? powerList : spellList).map((ab) => {
                 const isPassive = ab.cost === 0 && !ab.damageFormula;
+                const isOrdemRitual =
+                  activeSubTab === 'spells' &&
+                  system === 'ordem-paranormal' &&
+                  (ab.category === 'ritual' || ab.category === 'magia');
+
+                const ritualForms = isOrdemRitual
+                  ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula)
+                  : [];
+
+                const prog =
+                  system === 'ordem-paranormal' && ordemSheetData
+                    ? {
+                        maxCircle:
+                          ordemSheetData.nex >= 85
+                            ? 4
+                            : ordemSheetData.nex >= 55
+                            ? 3
+                            : ordemSheetData.nex >= 25
+                            ? 2
+                            : 1,
+                        peTurnLimit: getOrdemPeLimit(
+                          ordemSheetData.nex,
+                          ordemSheetData.origin,
+                          abilities
+                        ),
+                      }
+                    : { maxCircle: 4, peTurnLimit: 20 };
 
                 return (
                   <div
                     key={ab.id}
-                    className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex justify-between items-center gap-4"
+                    className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex flex-col md:flex-row md:justify-between md:items-center gap-3"
                   >
-                    <div>
+                    <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-sm text-white">{ab.name}</h4>
+                        {ab.category === 'poder_paranormal' && (
+                          <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
+                            👁️ Paranormal
+                          </span>
+                        )}
                         {ab.cost > 0 ? (
                           <span className="text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">
                             {ab.cost} {resourceLabel}
@@ -787,15 +1018,70 @@ export function SheetExtras({
                       {ab.description && <p className="text-xs text-zinc-400 mt-1">{ab.description}</p>}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {!isPassive && (
-                        <button
-                          type="button"
-                          onClick={() => handleUseAbility(ab)}
-                          className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-700/50 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                        >
-                          ✨ Usar {ab.cost > 0 ? `(-${ab.cost} ${resourceLabel})` : ''}
-                        </button>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {isOrdemRitual && onCastOrdemRitual ? (
+                        ritualForms.map((f) => {
+                          const circleOk = !f.requiredCircle || prog.maxCircle >= f.requiredCircle;
+                          const affinityOk =
+                            !f.requiresAffinity ||
+                            (ordemSheetData &&
+                              ordemSheetData.nex >= 50 &&
+                              !!ordemSheetData.affinity &&
+                              ordemSheetData.affinity !== 'Nenhuma');
+                          const peLimitOk = f.totalCost <= prog.peTurnLimit;
+                          const canCastForm = circleOk && affinityOk;
+
+                          const missingReasons: string[] = [];
+                          if (!circleOk) missingReasons.push(`Requer ${f.requiredCircle}º Círculo`);
+                          if (!affinityOk) missingReasons.push('Requer Afinidade (NEX 50%+)');
+                          if (!peLimitOk)
+                            missingReasons.push(
+                              `Acima do Limite de PE/Turno (${prog.peTurnLimit} PE)`
+                            );
+
+                          return (
+                            <button
+                              key={f.mode}
+                              type="button"
+                              disabled={!canCastForm}
+                              onClick={() => onCastOrdemRitual(ab, f)}
+                              title={
+                                missingReasons.length > 0
+                                  ? `${f.description} (${missingReasons.join(' • ')})`
+                                  : f.description
+                              }
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap ${
+                                !canCastForm
+                                  ? 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
+                                  : f.mode === 'normal'
+                                  ? 'bg-purple-950/60 hover:bg-purple-700 text-purple-200 hover:text-white border-purple-700/60 cursor-pointer'
+                                  : f.mode === 'discente'
+                                  ? 'bg-amber-950/60 hover:bg-amber-600 text-amber-300 hover:text-white border-amber-700/60 cursor-pointer'
+                                  : 'bg-red-950/60 hover:bg-red-700 text-red-300 hover:text-white border-red-700/60 cursor-pointer'
+                              }`}
+                            >
+                              {f.mode === 'normal' && `🔮 Normal (-${f.totalCost} PE)`}
+                              {f.mode === 'discente' &&
+                                `🔥 Discente (-${f.totalCost} PE)${
+                                  f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
+                                }${f.requiresAffinity ? ' [Afin.]' : ''}`}
+                              {f.mode === 'verdadeiro' &&
+                                `👁️ Verdadeiro (-${f.totalCost} PE)${
+                                  f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
+                                }${f.requiresAffinity ? ' [Afin.]' : ''}`}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        !isPassive && (
+                          <button
+                            type="button"
+                            onClick={() => handleUseAbility(ab)}
+                            className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-700/50 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                          >
+                            ✨ Usar {ab.cost > 0 ? `(-${ab.cost} ${resourceLabel})` : ''}
+                          </button>
+                        )
                       )}
                       {allowAb && (
                         <button

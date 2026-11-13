@@ -40,6 +40,24 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
         });
       }
 
+      // Garante que Poderes Paranormais já existentes no banco sejam migrados para a categoria 'paranormal_power'
+      const paranormalNames = ORDEM_COMPENDIUM_ENTRIES.filter(
+        (e) => e.category === 'paranormal_power'
+      ).map((e) => e.name);
+
+      if (paranormalNames.length > 0) {
+        await prisma.compendiumEntry.updateMany({
+          where: {
+            system: 'ordem-paranormal',
+            name: { in: paranormalNames },
+            category: { not: 'paranormal_power' },
+          },
+          data: {
+            category: 'paranormal_power',
+          },
+        });
+      }
+
       const existingSkillCount = await prisma.systemSkill.count({
         where: { system: 'ordem-paranormal' },
       });

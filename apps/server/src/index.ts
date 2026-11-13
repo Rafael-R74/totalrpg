@@ -140,6 +140,7 @@ io.on('connection', (socket) => {
         label,
         formula: `${baseFormula}${modString}`,
         rolls,
+        sides,
         modifier,
         total,
         system,
@@ -163,6 +164,58 @@ io.on('connection', (socket) => {
       }
     }
   );
+
+  // Poder Afortunado: Rerrola um resultado '1' (1x por rolagem)
+  socket.on('dice:rerollOne', ({ campaignId, rollResult, dieIndex }) => {
+    if (!rollResult || rollResult.rerolledAfortunado) return;
+    const idx =
+      typeof dieIndex === 'number' && rollResult.rolls[dieIndex] === 1
+        ? dieIndex
+        : rollResult.rolls.indexOf(1);
+    if (idx === -1) return;
+
+    const sidesMatch = rollResult.formula.match(/d(\d+)/i);
+    const sides = rollResult.sides || (sidesMatch ? Number(sidesMatch[1]) : 20);
+    const newRollVal = Math.floor(Math.random() * sides) + 1;
+
+    const nextRolls = [...rollResult.rolls];
+    nextRolls[idx] = newRollVal;
+
+    const isZeroDicePenalty = rollResult.formula.includes('2d20 (menor)');
+    let diceTotal = 0;
+    if (isZeroDicePenalty) {
+      diceTotal = Math.min(...nextRolls);
+    } else if (rollResult.system === 'ordem-paranormal' && sides === 20) {
+      diceTotal = Math.max(...nextRolls);
+    } else {
+      diceTotal = nextRolls.reduce((a, b) => a + b, 0);
+    }
+
+    const updatedResult: DiceRollResult = {
+      ...rollResult,
+      label: rollResult.label.includes('[Afortunado]')
+        ? rollResult.label
+        : `${rollResult.label} [🍀 Afortunado: 1 → ${newRollVal}]`,
+      rolls: nextRolls,
+      sides,
+      total: diceTotal + rollResult.modifier,
+      rerolledAfortunado: true,
+    };
+
+    if (rollResult.isSecret) {
+      socket.emit('dice:rolled', updatedResult);
+    } else {
+      io.to(campaignId).emit('dice:rolled', updatedResult);
+    }
+  });
+
+  // Mestre encerra a cena atual para limpar efeitos de duração "Cena"
+  socket.on('scene:end', ({ campaignId }) => {
+    io.to(campaignId).emit('scene:ended', {
+      campaignId,
+      timestamp: Date.now(),
+    });
+  });
 
   socket.on('disconnect', () => {
     console.log(`❌ Cliente desconectado: ${socket.id}`);
