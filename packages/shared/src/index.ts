@@ -32,8 +32,11 @@ export interface RPGItem {
   name: string;
   slots: number;
   quantity: number;
-  isEquipped: boolean;       // Se true, aplica os modificadores do item (ex: Defesa de armadura)
+  category?: number;
+  price?: number;
+  imageUrl?: string;
   description?: string;
+  isEquipped?: boolean;
   modifiers?: RuleModifier[];
 }
 
@@ -44,6 +47,8 @@ export type UserRole = 'dm' | 'player' | 'spectator';
 export interface DiceRollResult {
   id: string;
   rollerUserId?: string;
+  characterId?: string;
+  isInitiativeRoll?: boolean;
   characterName: string;
   label: string;
   formula: string;
@@ -54,7 +59,6 @@ export interface DiceRollResult {
   timestamp: string;
   isSecret?: boolean;
 }
-
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
   'vital:updated': (data: VitalBar) => void;
@@ -73,6 +77,16 @@ export interface ServerToClientEvents {
     targetCharacterId: string;
     item: RPGItem;
     attack?: PreparedAttack;
+  }) => void;
+  'monitor:updated': (payload: {
+    director: MonitorDirectorState;
+    combatState: {
+      combatants: any[];
+      currentTurnIndex: number;
+      roundNumber: number;
+    };
+    merchants?: CampaignMerchant[];
+    postIts?: StickyPostIt[];
   }) => void;
 }
 
@@ -111,6 +125,17 @@ export interface ClientToServerEvents {
     targetCharacterId: string;
     item: RPGItem;
     attack?: PreparedAttack;
+  }) => void;
+  'monitor:sync': (payload: {
+    campaignId: string;
+    director: MonitorDirectorState;
+    combatState: {
+      combatants: any[];
+      currentTurnIndex: number;
+      roundNumber: number;
+    };
+    merchants?: CampaignMerchant[];
+    postIts?: StickyPostIt[];
   }) => void;
 }
 
@@ -275,6 +300,7 @@ export interface CampaignThreat {
   id: string;
   name: string;
   system: SystemId;
+  imageUrl?: string;
   hpMax: number;
   defense: number;
   initiativeDice: number;
@@ -290,7 +316,7 @@ export interface MerchantStockItem {
   item: RPGItem;
   attack?: PreparedAttack;
   price: number;
-  currency?: string; // Moeda personalizada (Ex: "T$", "PO", "Cat.", "Almas", "Favores")
+  currency?: string;
   stockQty: number;
 }
 
@@ -312,5 +338,29 @@ export interface StickyPostIt {
   width: number;
   height: number;
   isPinned: boolean;
-  sharedWithCharacterIds?: string[]; // Lista de IDs dos personagens que estão vendo este Post-it
+  sharedWithCharacterIds?: string[];
+  sharedOnMonitor?: boolean; // Se true, aparece destacado no 2º Monitor!
+}
+
+// 17. Projeção Universal e Diretor do 2º Monitor
+export interface MonitorProjection {
+  type: 'item' | 'threat' | 'postit' | 'handout';
+  id: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  imageUrl?: string;
+}
+
+export interface MonitorDirectorState {
+  showCombatTracker: boolean;
+  enemyHpVisibility: 'narrative' | 'exact' | 'hidden';
+  activeMerchantId?: string | null; // Exibe a loja do Mercador no lado DIREITO da tela
+  activeProjection?: MonitorProjection | null; // Projeta Item, Ameaça, Post-it ou Pista em destaque
+  sceneTitle?: string;
+  sceneSubtitle?: string;
+  backgroundUrl?: string;
+  handoutTitle?: string;
+  handoutImageUrl?: string;
+  handoutText?: string;
 }

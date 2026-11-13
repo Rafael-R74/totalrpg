@@ -74,6 +74,16 @@ io.on('connection', (socket) => {
     socket.to(campaignId).emit('item:received', { targetCharacterId, item, attack });
   });
 
+  // Mestre atualiza a cena, turno de combate, mercador ativo ou pista projetada no 2º Monitor
+  socket.on('monitor:sync', ({ campaignId, director, combatState, merchants, postIts }) => {
+    socket.to(campaignId).emit('monitor:updated', {
+      director,
+      combatState,
+      merchants,
+      postIts,
+    });
+  });
+
   // Motor de rolagem de dados (Com isolamento de autor e gatilho automático de Iniciativa)
   socket.on(
     'dice:roll',
@@ -110,6 +120,8 @@ io.on('connection', (socket) => {
       const result: DiceRollResult = {
         id: Math.random().toString(36).substring(2, 9),
         rollerUserId,
+        characterId,
+        isInitiativeRoll: Boolean(isInitiativeRoll),
         characterName,
         label,
         formula: `${safeCount}d${sides}${modString}`,
