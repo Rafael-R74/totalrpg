@@ -290,6 +290,17 @@ export default function App() {
               socket.emit('character:sync', { campaignId: room, characterId: charId });
             }
           }}
+          onNotifyItemGiven={(targetCharacterId, item, attack) => {
+            const room = openedCharacter.campaignId || activeRoomId;
+            if (room) {
+              socket.emit('item:giveNotify', {
+                campaignId: room,
+                targetCharacterId,
+                item,
+                attack,
+              });
+            }
+          }}
         />
       ) : currentCampaignSession ? (
         /* VISÃO 2: Escudo do Mestre Completo */

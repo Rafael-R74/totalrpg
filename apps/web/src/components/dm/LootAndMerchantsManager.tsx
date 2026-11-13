@@ -62,6 +62,7 @@ export function LootAndMerchantsManager({
     fromMerchant: boolean;
   } | null>(null);
   const [selectedRecipientCharId, setSelectedRecipientCharId] = useState('');
+  const [giveQuantity, setGiveQuantity] = useState<number>(1);
 
   // Estados de Criação / Edição de Mercador
   const [isMerchantFormOpen, setIsMerchantFormOpen] = useState(false);
@@ -183,9 +184,12 @@ export function LootAndMerchantsManager({
     const targetChar = characters.find((c) => c.id === selectedRecipientCharId);
     if (!targetChar) return;
 
+    const safeQty = Math.max(1, Number(giveQuantity) || 1);
+
     const clonedItem: RPGItem = {
       ...itemToGiveModal.stored.item,
       id: Math.random().toString(36).substring(2, 9),
+      quantity: safeQty,
     };
     const clonedAttack = itemToGiveModal.stored.attack
       ? { ...itemToGiveModal.stored.attack, id: Math.random().toString(36).substring(2, 9) }
@@ -199,6 +203,7 @@ export function LootAndMerchantsManager({
     );
     setItemToGiveModal(null);
     setSelectedRecipientCharId('');
+    setGiveQuantity(1);
   }
 
   function handleOpenNewMerchantForm() {
@@ -625,7 +630,7 @@ export function LootAndMerchantsManager({
         </div>
       )}
 
-      {/* MODAL 4: ESCOLHER QUAL JOGADOR RECEBE O ITEM */}
+{/* MODAL 4: ESCOLHER QUAL JOGADOR RECEBE O ITEM E A QUANTIDADE */}
       {itemToGiveModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <form
@@ -659,7 +664,7 @@ export function LootAndMerchantsManager({
 
             <div>
               <label className="block text-xs font-bold text-zinc-300 mb-1.5">
-                Selecione qual personagem da mesa receberá este item:
+                1. Selecione qual personagem da mesa receberá:
               </label>
               {characters.length === 0 ? (
                 <p className="text-xs text-red-400">Nenhum personagem vinculado à campanha ainda.</p>
@@ -680,6 +685,51 @@ export function LootAndMerchantsManager({
               )}
             </div>
 
+            {/* Quantidade a ser vendida */}
+            <div className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <label className="block text-xs font-bold text-zinc-200">
+                  2. Quantidade a {itemToGiveModal.fromMerchant ? 'Vender' : 'Entregar'}:
+                </label>
+                <span className="text-[11px] font-mono text-zinc-500">
+                  Peso total: {(itemToGiveModal.stored.item.slots * Math.max(1, giveQuantity)).toFixed(1).replace('.0', '')} esp. ({itemToGiveModal.stored.item.slots} esp. cada)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setGiveQuantity((q) => Math.max(1, q - 1))}
+                  className="w-8 h-8 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg font-mono font-bold text-white cursor-pointer"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  required
+                  value={giveQuantity}
+                  onChange={(e) => setGiveQuantity(Math.max(1, Number(e.target.value)))}
+                  className="w-16 bg-zinc-900 border border-amber-500/80 rounded-lg py-1 text-center font-mono text-sm font-extrabold text-amber-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setGiveQuantity((q) => q + 1)}
+                  className="w-8 h-8 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg font-mono font-bold text-white cursor-pointer"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGiveQuantity((q) => q + 5)}
+                  className="px-2 h-8 bg-zinc-900 hover:bg-amber-600 border border-zinc-700 rounded-lg font-mono text-xs font-bold text-amber-400 hover:text-white cursor-pointer"
+                >
+                  +5
+                </button>
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -693,7 +743,7 @@ export function LootAndMerchantsManager({
                 disabled={!selectedRecipientCharId}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white rounded-lg text-xs font-bold cursor-pointer"
               >
-                Confirmar Entrega
+                Confirmar ({Math.max(1, giveQuantity)}x)
               </button>
             </div>
           </form>

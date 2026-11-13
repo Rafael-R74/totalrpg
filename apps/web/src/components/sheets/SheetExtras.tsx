@@ -16,6 +16,7 @@ interface SheetExtrasProps {
   canEditInventory: boolean;
   canEditAbilities: boolean;
   canCreateCustom: boolean;
+  canTrade?: boolean;
   attacks: PreparedAttack[];
   abilities: CharacterAbility[];
   inventory: RPGItem[];
@@ -24,11 +25,11 @@ interface SheetExtrasProps {
   onUpdateAbilities: (abilities: CharacterAbility[]) => void;
   onUpdateInventory: (inventory: RPGItem[]) => void;
   onAddItemAndAttack: (newItem: RPGItem, newAttack?: PreparedAttack) => void;
+  onInitiateTradeItem?: (item: RPGItem) => void;
   onSpendResource: (amount: number) => boolean;
   onRoll: (label: string, count: number, sides: number, modifier: number, isDamage?: boolean) => void;
 }
 
-// Extrai quantidade, faces e modificador de uma string no padrão XdY+Z
 function parseDiceFormula(formula: string): { count: number; sides: number; modifier: number } {
   const clean = formula.toLowerCase().replace(/\s+/g, '');
   const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
@@ -50,6 +51,7 @@ export function SheetExtras({
   canEditInventory,
   canEditAbilities,
   canCreateCustom,
+  canTrade,
   attacks,
   abilities,
   inventory,
@@ -58,17 +60,16 @@ export function SheetExtras({
   onUpdateAbilities,
   onUpdateInventory,
   onAddItemAndAttack,
+  onInitiateTradeItem,
   onSpendResource,
   onRoll,
 }: SheetExtrasProps) {
   const [activeSubTab, setActiveSubTab] = useState<'combat' | 'powers' | 'spells' | 'inventory'>('combat');
 
-  // Estados do Modal de Adição e Pesquisa
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'compendium' | 'custom'>('compendium');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Estados dos formulários personalizados (Mestre/Admin)
   const [atkName, setAtkName] = useState('');
   const [atkDice, setAtkDice] = useState(1);
   const [atkBonus, setAtkBonus] = useState(5);
@@ -92,10 +93,9 @@ export function SheetExtras({
   const allowAb = isEditMode && canEditAbilities;
 
   const effectiveMaxSlots = maxLoadSlots + bonuses.loadLimit;
-  const currentLoad = inventory.reduce((acc, item) => acc + item.slots * item.quantity, 0);
+  const currentLoad = inventory.reduce((acc, item) => acc + item.slots * (item.quantity || 1), 0);
   const isOverloaded = currentLoad > effectiveMaxSlots;
 
-  // Separação entre Poderes e Rituais/Magias
   const powerList = abilities.filter((ab) => ab.category !== 'ritual' && ab.category !== 'magia');
   const spellList = abilities.filter((ab) => ab.category === 'ritual' || ab.category === 'magia');
 
@@ -105,7 +105,6 @@ export function SheetExtras({
     setIsAddModalOpen(true);
   }
 
-  // Importa item selecionado do modal do Compêndio para a ficha
   function handleSelectFromCompendium(entry: CompendiumEntryData) {
     const newId = Math.random().toString(36).substring(2, 9);
 
@@ -240,7 +239,6 @@ export function SheetExtras({
     );
   }
 
-  // Filtragem do Compêndio para o Modal de acordo com a aba ativa
   const modalCompendiumList = compendiumEntries.filter((entry) => {
     const matchesSearch =
       entry.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -253,7 +251,6 @@ export function SheetExtras({
     return false;
   });
 
-  // Define rótulo e visibilidade do botão de ação na extrema direita da barra de abas
   let addButtonLabel = '';
   let canShowAddButton = false;
 
@@ -300,7 +297,6 @@ export function SheetExtras({
               </button>
             </div>
 
-            {/* Seletor entre Catálogo do Compêndio e Criação Manual (se for Mestre/Admin) */}
             {canCreateCustom && activeSubTab !== 'combat' && (
               <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800">
                 <button
@@ -324,7 +320,6 @@ export function SheetExtras({
               </div>
             )}
 
-            {/* MODO 1: PESQUISA E LISTA DO COMPÊNDIO */}
             {modalMode === 'compendium' && activeSubTab !== 'combat' ? (
               <div className="flex flex-col gap-3 overflow-hidden">
                 <input
@@ -382,7 +377,6 @@ export function SheetExtras({
                 </div>
               </div>
             ) : (
-              /* MODO 2: FORMULÁRIOS PERSONALIZADOS (MESTRE / ADMIN) */
               <div className="pt-2">
                 {activeSubTab === 'combat' && (
                   <form onSubmit={handleAddAttack} className="flex flex-col gap-3">
@@ -591,7 +585,6 @@ export function SheetExtras({
           </button>
         </div>
 
-        {/* Botão de Adicionar alinhado à extrema direita na mesma linha das abas */}
         {canShowAddButton && (
           <button
             type="button"
@@ -608,7 +601,7 @@ export function SheetExtras({
         <div className="flex flex-col gap-4">
           {attacks.length === 0 ? (
             <p className="text-xs text-zinc-500 text-center py-4">
-              Nenhum ataque preparado. Adicione uma arma na aba "🎒 Inventário" para gerar seu ataque automaticamente!
+              Nenhum ataque preparado. Adicione uma arma na aba &quot;🎒 Inventário&quot; para gerar seu ataque automaticamente!
             </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -740,11 +733,18 @@ export function SheetExtras({
         </div>
       )}
 
-      {/* CONTEÚDO DA ABA 4: INVENTÁRIO */}
+      {/* CONTEÚDO DA ABA 4: INVENTÁRIO (Com Quantidades xN e Troca entre Aliados) */}
       {activeSubTab === 'inventory' && (
         <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl">
-            <span className="text-xs text-zinc-400">Capacidade de Carga:</span>
+          <div className="flex flex-wrap justify-between items-center bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400">Capacidade de Carga:</span>
+              {canTrade && (
+                <span className="text-[10px] font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-700 px-2 py-0.5 rounded-full">
+                  🤝 Trocas entre Jogadores Liberadas
+                </span>
+              )}
+            </div>
             <span className={`text-xs font-mono font-bold ${isOverloaded ? 'text-red-400' : 'text-emerald-400'}`}>
               {currentLoad} / {effectiveMaxSlots} Espaços {isOverloaded && '⚠️ SOBRECARGA!'}
             </span>
@@ -757,13 +757,16 @@ export function SheetExtras({
               {inventory.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 rounded-lg flex justify-between items-center"
+                  className="bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 rounded-lg flex justify-between items-center gap-2"
                 >
                   <div>
                     <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-extrabold bg-amber-950/70 text-amber-400 border border-amber-800/60 px-1.5 py-0.5 rounded">
+                        {item.quantity || 1}x
+                      </span>
                       <p className="text-sm font-semibold text-white">{item.name}</p>
                       <span className="text-[11px] font-mono text-zinc-500">
-                        ({item.slots * item.quantity} esp.)
+                        ({item.slots * (item.quantity || 1)} esp.)
                       </span>
                     </div>
                     <label className="flex items-center gap-1.5 text-[11px] text-emerald-400 mt-1 cursor-pointer">
@@ -776,15 +779,46 @@ export function SheetExtras({
                     </label>
                   </div>
 
-                  {allowInv && (
-                    <button
-                      type="button"
-                      onClick={() => onUpdateInventory(inventory.filter((i) => i.id !== item.id))}
-                      className="text-xs text-zinc-600 hover:text-red-400 px-2 cursor-pointer"
-                    >
-                      Excluir
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {canTrade && onInitiateTradeItem && (
+                      <button
+                        type="button"
+                        onClick={() => onInitiateTradeItem(item)}
+                        className="px-2.5 py-1 bg-blue-900/60 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700/60 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                        title="Entregar este item para outro jogador da mesa"
+                      >
+                        🤝 Passar p/ Aliado
+                      </button>
+                    )}
+
+                    {allowInv && (
+                      <div className="flex items-center gap-1">
+                        {item.quantity > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateInventory(
+                                inventory.map((i) =>
+                                  i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
+                                )
+                              )
+                            }
+                            className="px-1.5 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded text-[10px] font-mono font-bold cursor-pointer"
+                            title="Consumir / Reduzir 1 unidade"
+                          >
+                            -1
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onUpdateInventory(inventory.filter((i) => i.id !== item.id))}
+                          className="text-xs text-zinc-600 hover:text-red-400 px-1.5 cursor-pointer"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
