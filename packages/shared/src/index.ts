@@ -27,6 +27,9 @@ export interface PreparedAttack {
   damageFormula: string; // Ex: "1d10+4" ou "2d6"
   critRange: string;     // Ex: "19/x2"
   damageType: string;    // Ex: "Corte", "Balístico", "Sangue"
+  isMelee?: boolean;
+  isFirearm?: boolean;
+  isWorkTool?: boolean;  // Operário — Ferramenta de Trabalho (+1 ataque, +1 dano, +1 margem de ameaça)
 }
 
 // Molde de itens
@@ -40,6 +43,8 @@ export interface RPGItem {
   imageUrl?: string;
   description?: string;
   isEquipped?: boolean;
+  isFavoriteTool?: boolean;    // Engenheiro — Ferramenta Favorita (-1 Categoria, exceto armas)
+  ignorePatentLimit?: boolean; // Criminoso — O Crime Compensa (isento do limite de patente)
   modifiers?: RuleModifier[];
 }
 
@@ -112,6 +117,7 @@ export interface ClientToServerEvents {
     modifier: number;
     system: SystemId;
     isSecret?: boolean;
+    fixedRolls?: number[];
   }) => void;
   'character:sync': (payload: { campaignId: string; characterId: string }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;
@@ -200,6 +206,7 @@ export interface OrdemSheetData {
   peritoSkills?: string[];
   proficiencies?: string[];
   transcendedCount?: number;
+  workToolWeaponName?: string;
   tempHp?: number;
   tempPe?: number;
   sceneEffects?: SceneEffect[];

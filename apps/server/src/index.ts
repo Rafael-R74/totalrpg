@@ -104,16 +104,22 @@ io.on('connection', (socket) => {
       modifier,
       system,
       isSecret,
+      fixedRolls,
     }) => {
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
       const safeCount = isOrdemZeroDicePenalty
         ? 2
         : Math.max(1, Math.min(50, count));
-      const rolls: number[] = [];
+      const rolls: number[] =
+        Array.isArray(fixedRolls) && fixedRolls.length > 0
+          ? fixedRolls
+          : [];
 
-      for (let i = 0; i < safeCount; i++) {
-        rolls.push(Math.floor(Math.random() * sides) + 1);
+      if (rolls.length === 0) {
+        for (let i = 0; i < safeCount; i++) {
+          rolls.push(Math.floor(Math.random() * sides) + 1);
+        }
       }
 
       let diceTotal = 0;

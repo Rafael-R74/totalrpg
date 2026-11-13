@@ -13,6 +13,7 @@ import {
   PreparedAttack,
   calculateActiveBonuses,
   ORDEM_CLASSES,
+  ORDEM_ORIGINS,
   ORDEM_NEX_PROGRESSION,
   ORDEM_TRAILS,
   ORDEM_COMPENDIUM_ENTRIES,
@@ -52,7 +53,8 @@ interface SheetContainerProps {
     modifier: number,
     isSecret?: boolean,
     isInitiativeRoll?: boolean,
-    characterId?: string
+    characterId?: string,
+    fixedRolls?: number[]
   ) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
   onNotifyItemGiven?: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
@@ -101,6 +103,7 @@ export function SheetContainer({
   const [interludeSleep, setInterludeSleep] = useState(true);
   const [interludeRelax, setInterludeRelax] = useState(true);
   const [interludeDish, setInterludeDish] = useState<string>('');
+  const [interludeSecondDish, setInterludeSecondDish] = useState<string>('');
 
   const [isNexEvolutionOpen, setIsNexEvolutionOpen] = useState(false);
   const [evoTrailId, setEvoTrailId] = useState<string>('');
@@ -115,6 +118,7 @@ export function SheetContainer({
   const [evoRitualSearch, setEvoRitualSearch] = useState<string>('');
   const [evoRitualElementFilter, setEvoRitualElementFilter] = useState<string>('ALL');
   const [evoRitualCircleFilter, setEvoRitualCircleFilter] = useState<number | 'ALL'>('ALL');
+  const [evoShowAmaldicoarPrompt, setEvoShowAmaldicoarPrompt] = useState<boolean>(false);
   const [ritualCastSummaryModal, setRitualCastSummaryModal] = useState<{
     ritualName: string;
     formLabel: string;
@@ -128,6 +132,7 @@ export function SheetContainer({
     sanLost: number;
     permSanLost: number;
     effectAppliedText?: string;
+    damageFormulaToRoll?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -153,6 +158,24 @@ export function SheetContainer({
                   { id: 'm2', targetType: 'vital_max', targetKey: 'pv', value: 2, scaleWithLevel: true },
                 ],
               };
+            }
+            // Sincroniza poderes de Origem de fichas já criadas com as definições oficiais v1.3
+            if (ab.id.startsWith('orig-')) {
+              const origId = ab.id.replace('orig-', '');
+              const origDef = ORDEM_ORIGINS.find((o) => o.id === origId);
+              if (origDef) {
+                const isPassive =
+                  origDef.powerCost === 0 && !origDef.requiresManualActivation;
+                return {
+                  ...ab,
+                  cost: origDef.powerCost,
+                  modifiers: origDef.modifiers || [],
+                  isActive:
+                    origDef.powerCost > 0 || origDef.requiresManualActivation
+                      ? false
+                      : isPassive,
+                };
+              }
             }
             return ab;
           });
@@ -241,6 +264,7 @@ export function SheetContainer({
     ? rawSheet.sceneEffects
     : [];
   const tempHp = Number(rawSheet.tempHp || 0);
+  const tempPe = Number(rawSheet.tempPe || 0);
 
   const levelOrNex =
     character.system === 'ordem-paranormal'
@@ -348,6 +372,8 @@ export function SheetContainer({
 
     let nextTempHp = Number(rawSheet.tempHp || 0);
     let tempHpChanged = false;
+    let nextTempPe = Number(rawSheet.tempPe || 0);
+    let tempPeChanged = false;
 
     const updatedVitals = character.vitals.map((bar) => {
       if (bar.id !== barId) return bar;
@@ -368,6 +394,15 @@ export function SheetContainer({
           targetVal = bar.current - remainingDamage;
           tempHpChanged = true;
         }
+        // Se for gasto de PE e houver PE Temporários (ex.: Vislumbres do Passado do Amnésico), desconta primeiro dos PE Temporários!
+        if (barId === 'pe' && newValue < bar.current && nextTempPe > 0) {
+          const spent = bar.current - newValue;
+          const absorbed = Math.min(nextTempPe, spent);
+          nextTempPe -= absorbed;
+          const remainingSpent = spent - absorbed;
+          targetVal = bar.current - remainingSpent;
+          tempPeChanged = true;
+        }
         const clampedCurrent = Math.max(0, Math.min(effectiveMax, targetVal));
         return { ...bar, current: clampedCurrent };
       }
@@ -376,7 +411,10 @@ export function SheetContainer({
     const nextChar: FullCharacterResponse = {
       ...character,
       vitals: updatedVitals,
-      sheetData: tempHpChanged ? { ...rawSheet, tempHp: nextTempHp } : character.sheetData,
+      sheetData:
+        tempHpChanged || tempPeChanged
+          ? { ...rawSheet, tempHp: nextTempHp, tempPe: nextTempPe }
+          : character.sheetData,
     };
     setCharacter(nextChar);
 
@@ -420,8 +458,8 @@ export function SheetContainer({
   function handleCastOrdemRitual(ritual: CharacterAbility, form: OrdemRitualCastForm) {
     if (!character) return;
     const peBar = character.vitals.find((b) => b.id === 'pe');
-    if (peBar && peBar.current < form.totalCost) {
-      alert(`PE insuficiente para conjurar ${ritual.name} (${form.label})! Necessário: ${form.totalCost} PE (Atual: ${peBar.current} PE).`);
+    if (peBar && peBar.current + tempPe < form.totalCost) {
+      alert(`PE insuficiente para conjurar ${ritual.name} (${form.label})! Necessário: ${form.totalCost} PE (Atual: ${peBar.current + tempPe} PE).`);
       return;
     }
 
@@ -450,20 +488,45 @@ export function SheetContainer({
     const sanLost = passed ? 0 : form.totalCost;
     const permSanLost = failedByFiveOrMore ? 1 : 0;
 
-    // Dispara a rolagem oficial de Ocultismo no log da mesa para transparência (e suporte a Afortunado)
+    // Dispara a rolagem oficial de Ocultismo no log da mesa usando EXATAMENTE os mesmos dados (fixedRolls) para que o Modal e a Notificação mostrem o mesmo valor!
     onRollDice(
       character.name,
       character.system,
       `O Custo do Paranormal (Ocultismo DT ${dt}) — ${ritual.name} [${form.label}]`,
-      Math.max(1, ocultismoDice),
+      ocultismoDice,
       20,
-      ocultismoMod
+      ocultismoMod,
+      false,
+      false,
+      character.id,
+      ocultismoRolls
     );
 
-    // 2. Efeitos de Cena e PV Temporários (ex.: Consumir Manancial, Armadura de Sangue, Tela de Ruído, Embaralhar)
+    // 2. Efeitos de Cena e PV Temporários (ex.: Consumir Manancial, Armadura de Sangue, Tela de Ruído, Embaralhar, Amaldiçoar Arma)
     let nextTempHp = Number(rawSheet.tempHp || 0);
+    let nextTempPe = Number(rawSheet.tempPe || 0);
     let nextSceneEffects: SceneEffect[] = [...activeSceneEffects];
     const effectNotes: string[] = [];
+    const isAmaldicoarArma = ritual.name.toLowerCase().includes('amaldiçoar arma');
+    const isCicatrizacao =
+      ritual.name.toLowerCase().includes('cicatrização') ||
+      ritual.name.toLowerCase().includes('cicatrizacao');
+    const originNormalized = String(rawSheet.origin || '').toLowerCase();
+    const isAgenteSaude =
+      originNormalized === 'agente_saude' || originNormalized === 'agente de saúde';
+
+    if (isAmaldicoarArma) {
+      const bonusWeaponDice =
+        form.mode === 'verdadeiro' ? '+4d6' : form.mode === 'discente' ? '+2d6' : '+1d6';
+      nextSceneEffects = nextSceneEffects.filter((e) => e.name !== ritual.name);
+      nextSceneEffects.push({
+        id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: ritual.name,
+        source: form.label,
+        description: `Arma imbuída com ${bonusWeaponDice} de dano elemental até o fim da cena`,
+      });
+      effectNotes.push(`⚔️ ${ritual.name}: Arma imbuída com ${bonusWeaponDice} de dano durante a cena!`);
+    }
 
     if (form.tempHpFormula) {
       const rolled = rollDiceFormulaLocally(form.tempHpFormula);
@@ -519,26 +582,14 @@ export function SheetContainer({
       effectNotes.push(`✨ Efeito de ${ritual.name} ativo na cena!`);
     }
 
-    // Se o ritual tiver rolagem de dano/cura direta (e não for PV temporário como Consumir Manancial)
-    if (form.damageFormula && !form.tempHpFormula) {
-      const clean = form.damageFormula.toLowerCase().replace(/\s+/g, '');
-      const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
-      if (match) {
-        onRollDice(
-          character.name,
-          character.system,
-          `Efeito: ${ritual.name} (${form.label})`,
-          parseInt(match[1], 10),
-          parseInt(match[2], 10),
-          match[3] ? parseInt(match[3], 10) : 0
-        );
-      }
-    }
+    // 3. Atualiza PE (descontando PE Temp primeiro, se houver) e Sanidade
+    const absorbedTempPe = Math.min(nextTempPe, form.totalCost);
+    nextTempPe = Math.max(0, nextTempPe - absorbedTempPe);
+    const remainingPeCost = form.totalCost - absorbedTempPe;
 
-    // 3. Atualiza PE e Sanidade (caso tenha falhado no Custo do Paranormal)
     const updatedVitals = character.vitals.map((bar) => {
       if (bar.id === 'pe') {
-        return { ...bar, current: Math.max(0, bar.current - form.totalCost) };
+        return { ...bar, current: Math.max(0, bar.current - remainingPeCost) };
       }
       if (bar.id === 'san' && (sanLost > 0 || permSanLost > 0)) {
         const nextMax = Math.max(1, bar.max - permSanLost);
@@ -554,6 +605,7 @@ export function SheetContainer({
       sheetData: {
         ...rawSheet,
         tempHp: nextTempHp,
+        tempPe: nextTempPe,
         sceneEffects: nextSceneEffects,
       },
     };
@@ -574,6 +626,10 @@ export function SheetContainer({
       sanLost,
       permSanLost,
       effectAppliedText: effectNotes.length > 0 ? effectNotes.join(' • ') : undefined,
+      damageFormulaToRoll:
+        form.damageFormula && !form.tempHpFormula && !isAmaldicoarArma
+          ? form.damageFormula
+          : undefined,
     });
   }
 
@@ -583,13 +639,145 @@ export function SheetContainer({
     const resourceBar = character.vitals.find((b) => b.id === targetBarId);
 
     if (!resourceBar) return true;
-    if (resourceBar.current < amount) {
-      alert(`Pontos insuficientes de ${resourceBar.label}! (${resourceBar.current}/${amount})`);
+    const availableTemp = targetBarId === 'pe' ? tempPe : 0;
+    if (resourceBar.current + availableTemp < amount) {
+      alert(
+        `Pontos insuficientes de ${resourceBar.label}! (${resourceBar.current + availableTemp}/${amount})`
+      );
       return false;
     }
 
     handleVitalChange(targetBarId, 'current', resourceBar.current - amount);
     return true;
+  }
+
+  function handleTriggerOriginSpecial(originId: string) {
+    if (!character || character.system !== 'ordem-paranormal') return;
+    const intAttr = Number(rawSheet.attributes?.int ?? 1) + (bonuses.attributes['int'] || 0);
+
+    if (originId === 'amnesico') {
+      // Vislumbres do Passado (Livro p. 16): Teste de Intelecto DT 10. Se passar, recebe 1d4 PE temporários!
+      const numD20 = intAttr <= 0 ? Math.abs(intAttr) + 2 : intAttr;
+      const rolls: number[] = [];
+      for (let i = 0; i < numD20; i++) {
+        rolls.push(Math.floor(Math.random() * 20) + 1);
+      }
+      const kept = intAttr <= 0 ? Math.min(...rolls) : Math.max(...rolls);
+      const passed = kept >= 10;
+
+      onRollDice(
+        character.name,
+        character.system,
+        'Vislumbres do Passado (Intelecto DT 10)',
+        intAttr,
+        20,
+        0,
+        false,
+        false,
+        character.id,
+        rolls
+      );
+
+      if (passed) {
+        const peRoll = Math.floor(Math.random() * 4) + 1;
+        const nextTempPe = Number(rawSheet.tempPe || 0) + peRoll;
+        const nextEffects: SceneEffect[] = [
+          ...activeSceneEffects.filter((e) => e.id !== 'orig-vislumbres'),
+          {
+            id: 'orig-vislumbres',
+            name: 'Vislumbres do Passado',
+            source: 'Origem Amnésico',
+            description: `+${peRoll} PE Temporários concedidos (Total: +${nextTempPe} PE Temp)`,
+          },
+        ];
+        const nextChar: FullCharacterResponse = {
+          ...character,
+          sheetData: {
+            ...rawSheet,
+            tempPe: nextTempPe,
+            sceneEffects: nextEffects,
+          },
+        };
+        setCharacter(nextChar);
+        handleSaveSheet(nextChar);
+        alert(
+          `✅ Sucesso em Vislumbres do Passado! (Rolagem: ${kept} vs DT 10)\nVocê lembrou de algo familiar e recebeu +${peRoll} PE Temporários!`
+        );
+      } else {
+        alert(
+          `❌ Falha em Vislumbres do Passado (Rolagem: ${kept} vs DT 10). Nenhuma lembrança emergiu desta vez.`
+        );
+      }
+      return;
+    }
+
+    if (originId === 'ti') {
+      if (!handleSpendResource(2)) return;
+      const skill = (rawSheet.skills || []).find((s: any) => s.id === 'tecnologia');
+      const dice = intAttr + bonuses.skillDiceAll + (bonuses.skillDice['tecnologia'] || 0);
+      const mod =
+        Number(skill?.trainingDegree ?? 0) +
+        Number(skill?.otherModifier ?? 0) +
+        bonuses.skillBonusAll +
+        (bonuses.skillBonus['tecnologia'] || 0);
+      onRollDice(
+        character.name,
+        character.system,
+        'Teste de Tecnologia (Motor de Busca -2 PE)',
+        dice,
+        20,
+        mod
+      );
+      return;
+    }
+
+    if (originId === 'trambiqueiro') {
+      if (activeSceneEffects.some((e) => e.id === 'orig-scene-impostor')) {
+        alert('Impostor só pode ser utilizado 1 vez por cena!');
+        return;
+      }
+      if (!handleSpendResource(2)) return;
+      const preAttr = Number(rawSheet.attributes?.pre ?? 1) + (bonuses.attributes['pre'] || 0);
+      const skill = (rawSheet.skills || []).find((s: any) => s.id === 'enganacao');
+      const dice = preAttr + bonuses.skillDiceAll + (bonuses.skillDice['enganacao'] || 0);
+      const mod =
+        Number(skill?.trainingDegree ?? 0) +
+        Number(skill?.otherModifier ?? 0) +
+        bonuses.skillBonusAll +
+        (bonuses.skillBonus['enganacao'] || 0);
+
+      const nextEffects: SceneEffect[] = [
+        ...activeSceneEffects,
+        {
+          id: 'orig-scene-impostor',
+          name: 'Impostor (1x/cena)',
+          source: 'Origem Trambiqueiro',
+          description: 'Já utilizado nesta cena',
+        },
+      ];
+      setCharacter((prev) => {
+        if (!prev) return null;
+        const prevRaw = (prev.sheetData || {}) as Record<string, any>;
+        const updated = {
+          ...prev,
+          sheetData: {
+            ...prevRaw,
+            sceneEffects: nextEffects,
+          },
+        };
+        handleSaveSheet(updated);
+        return updated;
+      });
+
+      onRollDice(
+        character.name,
+        character.system,
+        'Teste de Enganação (Impostor -2 PE • 1x/Cena)',
+        dice,
+        20,
+        mod
+      );
+    }
   }
 
   function handleApplyConditionFromCompendium(entry: CompendiumEntryData) {
@@ -682,9 +870,12 @@ export function SheetContainer({
     const peLimit = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
     const baseRecovery = Math.max(1, Math.floor(peLimit * interludeComfort));
 
-    const extraPv = interludeDish === 'nutritivo' && interludeSleep ? peLimit : 0;
-    const extraPe = interludeDish === 'energetico' && interludeSleep ? peLimit : 0;
-    const extraSan = interludeDish === 'favorito' && interludeRelax ? 2 : 0;
+    const dishes = [interludeDish, interludeSecondDish].filter(Boolean);
+    const extraPv =
+      dishes.filter((d) => d === 'nutritivo').length * (interludeSleep ? peLimit : 0);
+    const extraPe =
+      dishes.filter((d) => d === 'energetico').length * (interludeSleep ? peLimit : 0);
+    const extraSan = dishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0);
 
     const pvGain = (interludeSleep ? baseRecovery : 0) + extraPv;
     const peGain = (interludeSleep ? baseRecovery : 0) + extraPe;
@@ -725,6 +916,7 @@ export function SheetContainer({
     setEvoRitualSearch('');
     setEvoRitualElementFilter('ALL');
     setEvoRitualCircleFilter('ALL');
+    setEvoShowAmaldicoarPrompt(false);
     setIsNexEvolutionOpen(true);
   }
 
@@ -810,19 +1002,32 @@ export function SheetContainer({
       }
     }
 
-    // Adicionar Novo Ritual aprendido (Ocultista aprende +1 ritual a cada NEX)
+    // Adicionar Novo Ritual aprendido (Ocultista aprende +1 ritual a cada NEX, com suporte a Elemento em Amaldiçoar Arma)
     if (evoNewRitualId) {
+      const [baseRitId, chosenEl] = evoNewRitualId.split(':');
       const rEntry =
-        compendiumEntries.find((e) => e.id === evoNewRitualId) ||
-        ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoNewRitualId);
+        compendiumEntries.find((e) => e.id === baseRitId) ||
+        ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === baseRitId);
       if (rEntry) {
+        const isAmaldicoar =
+          rEntry.id === 'ord-rit-amaldicoar-arma' ||
+          rEntry.name.toLowerCase().includes('amaldiçoar arma');
+        const finalName = chosenEl
+          ? `Amaldiçoar Arma — ${chosenEl} (1º Círculo)`
+          : rEntry.name;
+        const finalDesc = chosenEl
+          ? `[Elemento: ${chosenEl}] ${rEntry.description}`
+          : rEntry.description;
         nextAbilities.push({
-          id: `rit-nex-${nextNex}-${rEntry.id}`,
-          name: rEntry.name,
+          id: chosenEl
+            ? `rit-nex-${nextNex}-${rEntry.id}-${chosenEl.toLowerCase()}`
+            : `rit-nex-${nextNex}-${rEntry.id}`,
+          name: finalName,
           category: 'ritual',
           cost: rEntry.cost,
-          description: rEntry.description,
-          damageFormula: rEntry.metadata?.damageFormula,
+          element: chosenEl || rEntry.metadata?.element,
+          description: finalDesc,
+          damageFormula: isAmaldicoar ? undefined : rEntry.metadata?.damageFormula,
           isActive: false,
           modifiers: rEntry.modifiers || [],
         });
@@ -1424,6 +1629,14 @@ export function SheetContainer({
                           🛡️ +{tempHp} PV Temp
                         </span>
                       )}
+                      {bar.id === 'pe' && tempPe > 0 && (
+                        <span
+                          className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/70 shadow"
+                          title="Pontos de Esforço Temporários da Cena (descontados primeiro ao gastar PE!)"
+                        >
+                          ⚡ +{tempPe} PE Temp
+                        </span>
+                      )}
                       {character.system === 'ordem-paranormal' && bar.id === 'san' && (
                         bar.current <= 0 ? (
                           <span
@@ -1545,14 +1758,14 @@ export function SheetContainer({
                 )}
               </div>
 
-              {(activeSceneEffects.length > 0 || tempHp > 0 || canMasterControl) && (
+              {canMasterControl && (
                 <button
                   type="button"
                   onClick={handleEndCharacterScene}
                   className="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-700 border border-purple-500/60 text-purple-100 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap"
-                  title="Encerra todos os efeitos que duram 1 cena e zera os PV Temporários"
+                  title="Exclusivo do Mestre: Encerra todos os efeitos que duram 1 cena e zera os PV Temporários"
                 >
-                  🎬 Encerrar Cena
+                  🎬 Encerrar Cena (Mestre)
                 </button>
               )}
             </div>
@@ -1591,13 +1804,39 @@ export function SheetContainer({
                   </p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setRitualCastSummaryModal(null)}
-                className="px-3 py-1 bg-black/40 hover:bg-black/70 rounded-lg text-xs font-bold self-end sm:self-center cursor-pointer"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                {ritualCastSummaryModal.damageFormulaToRoll && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const clean = ritualCastSummaryModal.damageFormulaToRoll!
+                        .toLowerCase()
+                        .replace(/\s+/g, '');
+                      const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
+                      if (match) {
+                        onRollDice(
+                          character.name,
+                          character.system,
+                          `Efeito: ${ritualCastSummaryModal.ritualName} (${ritualCastSummaryModal.formLabel})`,
+                          parseInt(match[1], 10),
+                          parseInt(match[2], 10),
+                          match[3] ? parseInt(match[3], 10) : 0
+                        );
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold shadow cursor-pointer"
+                  >
+                    🎲 Rolar Efeito ({ritualCastSummaryModal.damageFormulaToRoll})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setRitualCastSummaryModal(null)}
+                  className="px-3 py-1 bg-black/40 hover:bg-black/70 rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1742,6 +1981,24 @@ export function SheetContainer({
                   {ORDEM_INTERLUDE_DISHES.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name} — {d.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-amber-400 mb-1.5">
+                  👨‍🍳 2º Prato Especial (Origem Chef — Ingrediente Secreto, p. 17)
+                </label>
+                <select
+                  value={interludeSecondDish}
+                  onChange={(e) => setInterludeSecondDish(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-amber-800/60 text-xs text-white"
+                >
+                  <option value="">-- Sem 2º prato (padrão) --</option>
+                  {ORDEM_INTERLUDE_DISHES.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      2º Prato: {d.name} — {d.description} (Acumula se igual ao 1º!)
                     </option>
                   ))}
                 </select>
@@ -1897,8 +2154,9 @@ export function SheetContainer({
                   </p>
                 </div>
 
-                {/* Escolha de Trilha em NEX 10% COM DETALHAMENTO COMPLETO DOS PODERES */}
-                {(milestone?.grantsTrailChoice || (!rawSheet.trail && nextNex >= 10)) &&
+                {/* Escolha de Trilha em NEX 10% (Apenas se ainda não tiver escolhido trilha!) */}
+                {!rawSheet.trail &&
+                  nextNex >= 10 &&
                   rawSheet.characterClass !== 'mundano' && (
                     <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-amber-500/40">
                       <label className="block text-xs font-black uppercase text-amber-400">
@@ -2296,18 +2554,88 @@ export function SheetContainer({
                       ))}
                     </div>
 
+                    {evoShowAmaldicoarPrompt && (
+                      <div className="p-3.5 rounded-xl bg-amber-950/40 border-2 border-amber-500 flex flex-col gap-2.5">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-black uppercase text-amber-400">
+                              🔮 Escolha Obrigatória do Ritual
+                            </span>
+                            <h5 className="text-xs font-black text-white">
+                              De qual elemento você quer aprender &quot;Amaldiçoar Arma&quot;?
+                            </h5>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setEvoShowAmaldicoarPrompt(false)}
+                            className="text-xs text-zinc-400 hover:text-white px-2 py-0.5"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {(
+                            [
+                              { el: 'Sangue', icon: '🩸', color: 'bg-red-900/70 hover:bg-red-700 border-red-500 text-red-100' },
+                              { el: 'Morte', icon: '💀', color: 'bg-zinc-900 hover:bg-zinc-700 border-zinc-400 text-zinc-100' },
+                              { el: 'Conhecimento', icon: '👁️', color: 'bg-amber-900/70 hover:bg-amber-700 border-amber-400 text-amber-100' },
+                              { el: 'Energia', icon: '⚡', color: 'bg-purple-900/70 hover:bg-purple-700 border-purple-400 text-purple-100' },
+                            ] as const
+                          ).map((opt) => {
+                            const hasThisEl = characterAbilities.some((ab) =>
+                              ab.name.toLowerCase().includes(`amaldiçoar arma — ${opt.el.toLowerCase()}`)
+                            );
+                            return (
+                              <button
+                                key={opt.el}
+                                type="button"
+                                disabled={hasThisEl}
+                                onClick={() => {
+                                  setEvoNewRitualId(`ord-rit-amaldicoar-arma:${opt.el}`);
+                                  setEvoShowAmaldicoarPrompt(false);
+                                }}
+                                className={`py-2 px-2.5 rounded-lg border font-black text-xs transition flex items-center justify-center gap-1.5 ${
+                                  hasThisEl
+                                    ? 'bg-zinc-950 border-zinc-800 text-zinc-600 cursor-not-allowed'
+                                    : `${opt.color} cursor-pointer`
+                                }`}
+                              >
+                                <span>{opt.icon}</span>
+                                <span>{opt.el}</span>
+                                {hasThisEl && <span>(Já tem)</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {allRitualsUpToCircle.map((r) => {
-                        const alreadyKnown = characterAbilities.some(
+                        const isAmaldicoar =
+                          r.id === 'ord-rit-amaldicoar-arma' ||
+                          r.name.toLowerCase().includes('amaldiçoar arma');
+                        const alreadyKnown = !isAmaldicoar && characterAbilities.some(
                           (ab) => ab.name.trim().toLowerCase() === r.name.trim().toLowerCase()
                         );
-                        const isPicked = evoNewRitualId === r.id;
+                        const isPicked =
+                          evoNewRitualId === r.id || evoNewRitualId.startsWith(`${r.id}:`);
+                        const pickedElement = evoNewRitualId.startsWith(`${r.id}:`)
+                          ? evoNewRitualId.split(':')[1]
+                          : undefined;
                         return (
                           <button
                             key={r.id}
                             type="button"
                             disabled={alreadyKnown}
-                            onClick={() => setEvoNewRitualId(r.id)}
+                            onClick={() => {
+                              if (isAmaldicoar) {
+                                setEvoShowAmaldicoarPrompt(true);
+                              } else {
+                                setEvoNewRitualId(r.id);
+                                setEvoShowAmaldicoarPrompt(false);
+                              }
+                            }}
                             className={`w-full text-left p-3 rounded-xl border transition ${
                               alreadyKnown
                                 ? 'bg-zinc-950 border-zinc-800/50 opacity-50 cursor-not-allowed'
@@ -2321,6 +2649,7 @@ export function SheetContainer({
                                 <span className="font-bold text-xs text-white">
                                   {isPicked ? '✓ ' : ''}
                                   {r.name}
+                                  {pickedElement ? ` (${pickedElement})` : ''}
                                 </span>
                                 <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">
                                   {r.metadata?.circle || 1}º Círculo • {r.metadata?.element || 'Paranormal'}
@@ -2385,7 +2714,8 @@ export function SheetContainer({
           canEditAbilities={canEditAbilities}
           onSyncTrailAbilities={handleSyncOrdemTrailAbilities}
           onOpenNexEvolution={handleOpenNexEvolutionModal}
-          onOpenInterlude={() => setIsInterludeModalOpen(true)}
+          onOpenInterlude={canMasterControl ? () => setIsInterludeModalOpen(true) : undefined}
+          onSpendResource={handleSpendResource}
           onChange={(updatedData) =>
             setCharacter((prev) => {
               if (!prev) return null;
@@ -2396,9 +2726,9 @@ export function SheetContainer({
                   ...updatedData,
                   abilities: prevRaw.abilities || [],
                   conditions: prevRaw.conditions || [],
-                  tempHp: prevRaw.tempHp || 0,
-                  tempPe: prevRaw.tempPe || 0,
-                  sceneEffects: prevRaw.sceneEffects || [],
+                  tempHp: updatedData.tempHp ?? prevRaw.tempHp ?? 0,
+                  tempPe: updatedData.tempPe ?? prevRaw.tempPe ?? 0,
+                  sceneEffects: updatedData.sceneEffects ?? prevRaw.sceneEffects ?? [],
                 } as any,
               };
             })
@@ -2488,6 +2818,7 @@ export function SheetContainer({
         onInitiateTradeItem={handleOpenTradeModal}
         onSpendResource={handleSpendResource}
         onCastOrdemRitual={handleCastOrdemRitual}
+        onTriggerOriginSpecial={handleTriggerOriginSpecial}
         onRoll={(label, count, sides, mod) =>
           onRollDice(character.name, character.system, label, count, sides, mod)
         }
