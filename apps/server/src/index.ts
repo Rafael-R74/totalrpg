@@ -107,6 +107,7 @@ io.on('connection', (socket) => {
       fixedRolls,
       hasAfortunado,
       attackDamagePayload,
+      forcaOpressoraPayload,
     }) => {
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
@@ -156,6 +157,7 @@ io.on('connection', (socket) => {
         isSecret: Boolean(isSecret),
         hasAfortunado: Boolean(hasAfortunado),
         attackDamagePayload,
+        forcaOpressoraPayload,
       };
 
       if (isSecret) {

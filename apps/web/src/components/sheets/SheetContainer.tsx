@@ -26,6 +26,7 @@ import {
   getOrdemClassMilestoneSummary,
   OrdemRitualCastForm,
   AttackDamageRollPayload,
+  ForcaOpressoraRollPayload,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -57,8 +58,10 @@ interface SheetContainerProps {
     characterId?: string,
     fixedRolls?: number[],
     hasAfortunado?: boolean,
-    attackDamagePayload?: AttackDamageRollPayload
+    attackDamagePayload?: AttackDamageRollPayload,
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload
   ) => void;
+  onRegisterSpendResource?: (fn: (amount: number) => boolean) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
   onNotifyItemGiven?: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
   externalPermissions?: SheetPermissions | null;
@@ -76,6 +79,7 @@ export function SheetContainer({
   currentUserId,
   onBack,
   onRollDice,
+  onRegisterSpendResource,
   onCharacterSaved,
   onNotifyItemGiven,
   externalPermissions,
@@ -108,6 +112,27 @@ export function SheetContainer({
   const [peSpentThisTurn, setPeSpentThisTurn] = useState<number>(0);
   const [turnResetSignal, setTurnResetSignal] = useState<number>(0);
   const lastTurnKeyRef = useRef<string>('');
+  const latestCharacterRef = useRef<FullCharacterResponse | null>(null);
+  latestCharacterRef.current = character;
+  const autoSaveQueuedRef = useRef<boolean>(false);
+  const latestSpendResourceRef = useRef<(amount: number) => boolean>(() => false);
+
+  useEffect(() => {
+    if (onRegisterSpendResource) {
+      onRegisterSpendResource((amt: number) => latestSpendResourceRef.current(amt));
+    }
+  }, [onRegisterSpendResource]);
+
+  function scheduleGameModeSave() {
+    if (autoSaveQueuedRef.current) return;
+    autoSaveQueuedRef.current = true;
+    queueMicrotask(() => {
+      autoSaveQueuedRef.current = false;
+      if (latestCharacterRef.current) {
+        handleSaveSheet(latestCharacterRef.current);
+      }
+    });
+  }
 
   function showHoverToast(msg: string) {
     setHoverToastMsg(msg);
@@ -198,6 +223,36 @@ export function SheetContainer({
                 modifiers: [],
                 isActive: false,
               };
+            }
+            if (
+              ab.id === 'trail-tropa_choque-99' ||
+              ab.name.toLowerCase().includes('inquebrável') ||
+              ab.name.toLowerCase().includes('inquebravel')
+            ) {
+              return {
+                ...ab,
+                modifiers: [],
+              };
+            }
+            // Sincroniza poderes de Trilha / Versatilidade já existentes com ORDEM_TRAILS
+            if (ab.id.startsWith('trail-') || ab.id.startsWith('versatility-')) {
+              const prefix = ab.id.startsWith('trail-') ? 'trail-' : 'versatility-';
+              const rest = ab.id.slice(prefix.length);
+              const lastDash = rest.lastIndexOf('-');
+              if (lastDash > 0) {
+                const tId = rest.slice(0, lastDash);
+                const tNex = Number(rest.slice(lastDash + 1));
+                const trailDef = ORDEM_TRAILS.find((t) => t.id === tId);
+                const tpDef = trailDef?.powers.find((p) => p.nex === tNex);
+                if (tpDef) {
+                  return {
+                    ...ab,
+                    cost: tpDef.cost,
+                    description: tpDef.description,
+                    modifiers: tpDef.modifiers || [],
+                  };
+                }
+              }
             }
             // Sincroniza poderes de Combatente já existentes com as novas regras automáticas do motor
             const officialCombatPower = ORDEM_COMPENDIUM_ENTRIES.find(
@@ -484,7 +539,8 @@ export function SheetContainer({
     isSecret?: boolean,
     isInitiativeRoll?: boolean,
     fixedRolls?: number[],
-    attackDamagePayload?: AttackDamageRollPayload
+    attackDamagePayload?: AttackDamageRollPayload,
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload
   ) {
     if (!character) return;
     onRollDice(
@@ -499,7 +555,8 @@ export function SheetContainer({
       character.id,
       fixedRolls,
       hasAfortunado,
-      attackDamagePayload
+      attackDamagePayload,
+      forcaOpressoraPayload
     );
   }
 
@@ -960,6 +1017,8 @@ export function SheetContainer({
     handleSaveSheet(nextChar);
     return true;
   }
+
+  latestSpendResourceRef.current = handleSpendResource;
 
   function handleRollVislumbresPe() {
     if (!character || character.system !== 'ordem-paranormal') return;
@@ -1585,7 +1644,7 @@ export function SheetContainer({
   return (
     <div className="flex flex-col gap-6">
       {hoverToastMsg && (
-        <div className="fixed bottom-6 right-6 z-50 bg-red-950/95 border border-red-500 text-red-100 px-4 py-3 rounded-xl shadow-2xl text-xs font-extrabold flex items-center gap-2 animate-fade-in">
+        <div className="fixed bottom-6 right-6 z-[60] bg-red-950/95 border border-red-500 text-red-100 px-4 py-3 rounded-xl shadow-2xl text-xs font-extrabold flex items-center gap-2 animate-fade-in">
           <span>{hoverToastMsg}</span>
         </div>
       )}
@@ -2543,9 +2602,39 @@ export function SheetContainer({
             ? compendiumEntries.filter((e) => e.category === 'power')
             : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'power');
 
+        const effectiveCharAffinity = milestone?.grantsAffinity
+          ? evoAffinity
+          : rawSheet.affinity;
+
         const evoSheetForCheck: OrdemSheetData = {
           ...(rawSheet as OrdemSheetData),
           nex: nextNex,
+        };
+
+        const getPowerSortPriority = (
+          pw: CompendiumEntryData,
+          mode: 'class_power' | 'transcend'
+        ): number => {
+          const check = checkOrdemPowerRequirements(pw, evoSheetForCheck, characterAbilities);
+          const alreadyOwnedAb = characterAbilities.find(
+            (ab) =>
+              ab.name.trim().toLowerCase() === pw.name.trim().toLowerCase() ||
+              ab.name.trim().toLowerCase() === `${pw.name.trim().toLowerCase()} (afinidade)`
+          );
+          const isRepeatableSkillPower = pw.name.toLowerCase().includes('treinamento em perícia');
+          const canUpgradeAffinity =
+            mode === 'transcend' &&
+            Boolean(alreadyOwnedAb) &&
+            !alreadyOwnedAb?.name.toLowerCase().includes('afinidade') &&
+            nextNex >= 50 &&
+            Boolean(effectiveCharAffinity) &&
+            effectiveCharAffinity?.toLowerCase() === (pw.metadata?.element || '').toLowerCase();
+          const isBlockedDuplicate =
+            Boolean(alreadyOwnedAb) && !isRepeatableSkillPower && !canUpgradeAffinity;
+
+          if (isBlockedDuplicate) return 2;
+          if (!check.met) return 1;
+          return 0;
         };
 
         const classPowerOptions = allPowerEntries
@@ -2572,9 +2661,9 @@ export function SheetContainer({
               e.description.toLowerCase().includes(evoPowerSearch.toLowerCase())
           )
           .sort((a, b) => {
-            const checkA = checkOrdemPowerRequirements(a, evoSheetForCheck, characterAbilities).met;
-            const checkB = checkOrdemPowerRequirements(b, evoSheetForCheck, characterAbilities).met;
-            if (checkA !== checkB) return checkA ? -1 : 1;
+            const pA = getPowerSortPriority(a, 'class_power');
+            const pB = getPowerSortPriority(b, 'class_power');
+            if (pA !== pB) return pA - pB;
             return a.name.localeCompare(b.name, 'pt-BR');
           });
 
@@ -2597,9 +2686,9 @@ export function SheetContainer({
               e.description.toLowerCase().includes(evoPowerSearch.toLowerCase())
           )
           .sort((a, b) => {
-            const checkA = checkOrdemPowerRequirements(a, evoSheetForCheck, characterAbilities).met;
-            const checkB = checkOrdemPowerRequirements(b, evoSheetForCheck, characterAbilities).met;
-            if (checkA !== checkB) return checkA ? -1 : 1;
+            const pA = getPowerSortPriority(a, 'transcend');
+            const pB = getPowerSortPriority(b, 'transcend');
+            if (pA !== pB) return pA - pB;
             return a.name.localeCompare(b.name, 'pt-BR');
           });
 
@@ -2632,10 +2721,6 @@ export function SheetContainer({
           nextNex,
           activeTrailId
         );
-
-        const effectiveCharAffinity = milestone?.grantsAffinity
-          ? evoAffinity
-          : rawSheet.affinity;
 
         return (
           <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
@@ -3534,9 +3619,16 @@ export function SheetContainer({
         abilities={characterAbilities}
         inventory={character.inventory || []}
         maxLoadSlots={maxLoadSlots}
-        onUpdateAttacks={(newAttacks) =>
-          setCharacter((prev) => (prev ? { ...prev, attacks: newAttacks } : null))
-        }
+        onUpdateAttacks={(newAttacks) => {
+          const base = latestCharacterRef.current;
+          if (!base) return;
+          const nextChar: FullCharacterResponse = { ...base, attacks: newAttacks };
+          latestCharacterRef.current = nextChar;
+          setCharacter(nextChar);
+          if (!isEditMode) {
+            scheduleGameModeSave();
+          }
+        }}
         onUpdateAbilities={(newAbilities) =>
           setCharacter((prev) => {
             if (!prev) return null;
@@ -3547,9 +3639,16 @@ export function SheetContainer({
             };
           })
         }
-        onUpdateInventory={(newInv) =>
-          setCharacter((prev) => (prev ? { ...prev, inventory: newInv } : null))
-        }
+        onUpdateInventory={(newInv) => {
+          const base = latestCharacterRef.current;
+          if (!base) return;
+          const nextChar: FullCharacterResponse = { ...base, inventory: newInv };
+          latestCharacterRef.current = nextChar;
+          setCharacter(nextChar);
+          if (!isEditMode) {
+            scheduleGameModeSave();
+          }
+        }}
         onAddItemAndAttack={(newItem, newAttack) =>
           setCharacter((prev) => {
             if (!prev) return null;
@@ -3571,7 +3670,15 @@ export function SheetContainer({
         onRollVislumbresPe={handleRollVislumbresPe}
         hasActiveInitiativeOrder={hasActiveInitiativeOrder}
         turnResetSignal={turnResetSignal}
-        onRoll={(label, count, sides, mod, _isDamage, attackDamagePayload) =>
+        onRoll={(
+          label,
+          count,
+          sides,
+          mod,
+          _isDamage,
+          attackDamagePayload,
+          forcaOpressoraPayload
+        ) =>
           triggerCharacterRoll(
             label,
             count,
@@ -3580,7 +3687,8 @@ export function SheetContainer({
             false,
             false,
             undefined,
-            attackDamagePayload
+            attackDamagePayload,
+            forcaOpressoraPayload
           )
         }
       />

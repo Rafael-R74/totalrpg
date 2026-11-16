@@ -54,6 +54,13 @@ export interface RPGItem {
 // Perfis de usuários
 export type UserRole = 'dm' | 'player' | 'spectator';
 
+// Payload de Força Opressora (Guerreiro 65%) vinculado a uma rolagem de dano corpo a corpo
+export interface ForcaOpressoraRollPayload {
+  lutaDiceCount: number;
+  lutaBonus: number;
+  weaponName: string;
+}
+
 // Payload de dano vinculado a uma rolagem de acerto de arma (para botão direto de Dano / Dano Crítico no modal)
 export interface AttackDamageRollPayload {
   weaponName: string;
@@ -64,6 +71,7 @@ export interface AttackDamageRollPayload {
   dieSides: number;
   damageModifier: number;
   damageLabelSuffix?: string;
+  forcaOpressoraPayload?: ForcaOpressoraRollPayload;
 }
 
 // Rolagem de dados
@@ -85,6 +93,7 @@ export interface DiceRollResult {
   hasAfortunado?: boolean;
   rerolledAfortunado?: boolean;
   attackDamagePayload?: AttackDamageRollPayload;
+  forcaOpressoraPayload?: ForcaOpressoraRollPayload;
 }
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
@@ -137,6 +146,7 @@ export interface ClientToServerEvents {
     fixedRolls?: number[];
     hasAfortunado?: boolean;
     attackDamagePayload?: AttackDamageRollPayload;
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload;
   }) => void;
   'character:sync': (payload: { campaignId: string; characterId: string }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;

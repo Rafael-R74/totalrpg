@@ -6,6 +6,7 @@ interface DiceRollModalProps {
   onClose: () => void;
   onRerollOne?: (roll: DiceRollResult, dieIndex: number) => void;
   onRollDamage?: (roll: DiceRollResult, isCrit: boolean) => void;
+  onRollForcaOpressora?: (roll: DiceRollResult, maneuver: 'empurrar' | 'derrubar') => void;
 }
 
 export function DiceRollModal({
@@ -13,6 +14,7 @@ export function DiceRollModal({
   onClose,
   onRerollOne,
   onRollDamage,
+  onRollForcaOpressora,
 }: DiceRollModalProps) {
   const [isAnimating, setIsAnimating] = useState(true);
   const [fakeNumber, setFakeNumber] = useState(20);
@@ -186,6 +188,42 @@ export function DiceRollModal({
                   : `🩸 Rolar Dano (${dmgPayload.normalDiceCount}d${dmgPayload.dieSides}${dmgModStr})`}
               </button>
             )}
+
+            {/* Força Opressora (Guerreiro 65%): Empurrar ou Derrubar após rolar Dano */}
+            {roll.forcaOpressoraPayload && onRollForcaOpressora && (() => {
+              const pushBonus = Math.floor(Math.max(0, roll.total) / 10) * 5;
+              const fo = roll.forcaOpressoraPayload!;
+              const totalEmpurrarBonus = fo.lutaBonus + pushBonus;
+              const diceText =
+                fo.lutaDiceCount <= 0 ? '2d20(menor)' : `${fo.lutaDiceCount}d20`;
+              return (
+                <div className="w-full bg-zinc-950 border border-amber-700/70 rounded-xl p-3 flex flex-col gap-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-amber-400">
+                    ⚔️ Força Opressora (Guerreiro 65% • -1 PE)
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onRollForcaOpressora(roll, 'empurrar')}
+                      className="py-2.5 px-2 bg-amber-600/20 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-600/60 rounded-lg text-xs font-extrabold transition cursor-pointer"
+                      title={`Teste de Luta com +${pushBonus} (${roll.total} de dano) para Empurrar`}
+                    >
+                      🫸 Empurrar ({diceText}
+                      {totalEmpurrarBonus >= 0 ? `+${totalEmpurrarBonus}` : totalEmpurrarBonus})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRollForcaOpressora(roll, 'derrubar')}
+                      className="py-2.5 px-2 bg-red-950/60 hover:bg-red-700 text-red-200 hover:text-white border border-red-700/60 rounded-lg text-xs font-extrabold transition cursor-pointer"
+                      title="Teste de Luta para Derrubar"
+                    >
+                      🦵 Derrubar ({diceText}
+                      {fo.lutaBonus >= 0 ? `+${fo.lutaBonus}` : fo.lutaBonus})
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
