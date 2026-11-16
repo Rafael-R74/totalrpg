@@ -5,9 +5,15 @@ interface DiceRollModalProps {
   roll: DiceRollResult | null;
   onClose: () => void;
   onRerollOne?: (roll: DiceRollResult, dieIndex: number) => void;
+  onRollDamage?: (roll: DiceRollResult, isCrit: boolean) => void;
 }
 
-export function DiceRollModal({ roll, onClose, onRerollOne }: DiceRollModalProps) {
+export function DiceRollModal({
+  roll,
+  onClose,
+  onRerollOne,
+  onRollDamage,
+}: DiceRollModalProps) {
   const [isAnimating, setIsAnimating] = useState(true);
   const [fakeNumber, setFakeNumber] = useState(20);
 
@@ -35,7 +41,22 @@ export function DiceRollModal({ roll, onClose, onRerollOne }: DiceRollModalProps
 
   if (!roll) return null;
 
+  const isZeroDicePenalty = roll.formula.includes('2d20 (menor)');
   const highestRoll = Math.max(...roll.rolls);
+  const keptNaturalRoll = isZeroDicePenalty
+    ? Math.min(...roll.rolls)
+    : highestRoll;
+
+  const dmgPayload = roll.attackDamagePayload;
+  const isCriticalHit = Boolean(
+    dmgPayload && keptNaturalRoll >= dmgPayload.critThreatMin
+  );
+  const dmgModStr =
+    dmgPayload && dmgPayload.damageModifier !== 0
+      ? dmgPayload.damageModifier > 0
+        ? `+${dmgPayload.damageModifier}`
+        : `${dmgPayload.damageModifier}`
+      : '';
 
   return (
     <div
@@ -68,8 +89,20 @@ export function DiceRollModal({ roll, onClose, onRerollOne }: DiceRollModalProps
           </div>
         ) : (
           <div className="py-4 flex flex-col items-center gap-4 w-full">
+            {isCriticalHit && dmgPayload && (
+              <div className="w-full py-1.5 px-3 rounded-xl bg-red-950/90 border border-red-500 text-red-200 text-xs font-black uppercase tracking-wider animate-pulse">
+                💥 Acerto Crítico! (Dado natural {keptNaturalRoll} ≥ {dmgPayload.critThreatMin})
+              </div>
+            )}
+
             {/* Total Final em Destaque */}
-            <div className="w-28 h-28 rounded-2xl bg-zinc-950 border-2 border-amber-500 flex flex-col items-center justify-center shadow-lg shadow-amber-900/30">
+            <div
+              className={`w-28 h-28 rounded-2xl bg-zinc-950 border-2 flex flex-col items-center justify-center shadow-lg ${
+                isCriticalHit
+                  ? 'border-red-500 shadow-red-900/40'
+                  : 'border-amber-500 shadow-amber-900/30'
+              }`}
+            >
               <span className="text-[10px] uppercase font-bold text-zinc-500">Total</span>
               <span className="text-5xl font-extrabold font-mono text-white">{roll.total}</span>
             </div>
@@ -136,6 +169,23 @@ export function DiceRollModal({ roll, onClose, onRerollOne }: DiceRollModalProps
                 </span>
               )}
             </div>
+
+            {/* Botão Direto de Rolagem de Dano / Dano Crítico após Rolagem de Acerto */}
+            {dmgPayload && onRollDamage && (
+              <button
+                type="button"
+                onClick={() => onRollDamage(roll, isCriticalHit)}
+                className={`w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider border transition cursor-pointer shadow-lg flex items-center justify-center gap-2 ${
+                  isCriticalHit
+                    ? 'bg-red-600 hover:bg-red-500 border-red-400 text-white shadow-red-900/50 animate-pulse'
+                    : 'bg-amber-600 hover:bg-amber-500 border-amber-400 text-white shadow-amber-900/40'
+                }`}
+              >
+                {isCriticalHit
+                  ? `💥 Rolar Dano Crítico (${dmgPayload.critDiceCount}d${dmgPayload.dieSides}${dmgModStr}) [x${dmgPayload.critMultiplier}]`
+                  : `🩸 Rolar Dano (${dmgPayload.normalDiceCount}d${dmgPayload.dieSides}${dmgModStr})`}
+              </button>
+            )}
           </div>
         )}
 

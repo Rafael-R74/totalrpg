@@ -54,6 +54,18 @@ export interface RPGItem {
 // Perfis de usuários
 export type UserRole = 'dm' | 'player' | 'spectator';
 
+// Payload de dano vinculado a uma rolagem de acerto de arma (para botão direto de Dano / Dano Crítico no modal)
+export interface AttackDamageRollPayload {
+  weaponName: string;
+  critThreatMin: number;
+  critMultiplier: number;
+  normalDiceCount: number;
+  critDiceCount: number;
+  dieSides: number;
+  damageModifier: number;
+  damageLabelSuffix?: string;
+}
+
 // Rolagem de dados
 export interface DiceRollResult {
   id: string;
@@ -72,6 +84,7 @@ export interface DiceRollResult {
   isSecret?: boolean;
   hasAfortunado?: boolean;
   rerolledAfortunado?: boolean;
+  attackDamagePayload?: AttackDamageRollPayload;
 }
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
@@ -123,6 +136,7 @@ export interface ClientToServerEvents {
     isSecret?: boolean;
     fixedRolls?: number[];
     hasAfortunado?: boolean;
+    attackDamagePayload?: AttackDamageRollPayload;
   }) => void;
   'character:sync': (payload: { campaignId: string; characterId: string }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;

@@ -12,6 +12,7 @@ import { SecondMonitorScreen } from './components/SecondMonitorScreen';
 import {
   SystemId,
   DiceRollResult,
+  AttackDamageRollPayload,
   SheetPermissions,
   StickyPostIt,
   RPGItem,
@@ -54,6 +55,11 @@ export default function App() {
   } | null>(null);
 
   const [livePermissions, setLivePermissions] = useState<SheetPermissions | null>(null);
+  const [liveCombatState, setLiveCombatState] = useState<{
+    combatants: any[];
+    currentTurnIndex: number;
+    roundNumber: number;
+  } | null>(null);
   const [lastUpdatedCharSignal, setLastUpdatedCharSignal] = useState<{
     characterId: string;
     timestamp: number;
@@ -165,6 +171,12 @@ export default function App() {
       });
     });
 
+    socket.on('monitor:updated', ({ combatState }) => {
+      if (combatState) {
+        setLiveCombatState(combatState);
+      }
+    });
+
     return () => {
       socket.off('dice:rolled');
       socket.off('campaign:permissionsUpdated');
@@ -175,6 +187,7 @@ export default function App() {
       socket.off('postit:dismissed');
       socket.off('item:received');
       socket.off('scene:ended');
+      socket.off('monitor:updated');
     };
   }, [currentUser, activeRoomId, currentCampaignSession, openedCharacter]);
 
@@ -197,7 +210,8 @@ export default function App() {
     isInitiativeRoll?: boolean,
     characterId?: string,
     fixedRolls?: number[],
-    hasAfortunado?: boolean
+    hasAfortunado?: boolean,
+    attackDamagePayload?: AttackDamageRollPayload
   ) {
     if (!activeRoomId || !currentUser) return;
     socket.emit('dice:roll', {
@@ -214,6 +228,7 @@ export default function App() {
       isSecret,
       fixedRolls,
       hasAfortunado,
+      attackDamagePayload,
     });
   }
 
@@ -243,6 +258,28 @@ export default function App() {
             rollResult,
             dieIndex,
           });
+        }}
+        onRollDamage={(rollResult, isCrit) => {
+          const p = rollResult.attackDamagePayload;
+          if (!p) return;
+          const suffix = p.damageLabelSuffix || '';
+          const label = isCrit
+            ? `💥 Dano Crítico [x${p.critMultiplier}]: ${p.weaponName}${suffix}`
+            : `Dano: ${p.weaponName}${suffix}`;
+          const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
+          triggerRoll(
+            rollResult.characterName,
+            rollResult.system,
+            label,
+            diceCount,
+            p.dieSides,
+            p.damageModifier,
+            rollResult.isSecret,
+            false,
+            rollResult.characterId,
+            undefined,
+            rollResult.hasAfortunado
+          );
         }}
       />
 
@@ -313,6 +350,7 @@ export default function App() {
           onBack={() => setOpenedCharacter(null)}
           onRollDice={triggerRoll}
           externalPermissions={livePermissions}
+          externalCombatState={liveCombatState}
           externalReloadSignal={lastUpdatedCharSignal}
           initiativeRequestSignal={initiativeRequestSignal}
           onCharacterSaved={(charId, campId) => {

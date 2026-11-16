@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   OrdemSheetData,
   T20SheetData,
@@ -25,6 +25,7 @@ import {
   checkOrdemPowerRequirements,
   getOrdemClassMilestoneSummary,
   OrdemRitualCastForm,
+  AttackDamageRollPayload,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -55,13 +56,19 @@ interface SheetContainerProps {
     isInitiativeRoll?: boolean,
     characterId?: string,
     fixedRolls?: number[],
-    hasAfortunado?: boolean
+    hasAfortunado?: boolean,
+    attackDamagePayload?: AttackDamageRollPayload
   ) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
   onNotifyItemGiven?: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
   externalPermissions?: SheetPermissions | null;
   externalReloadSignal?: { characterId: string; timestamp: number } | null;
   initiativeRequestSignal?: number;
+  externalCombatState?: {
+    combatants: any[];
+    currentTurnIndex: number;
+    roundNumber: number;
+  } | null;
 }
 
 export function SheetContainer({
@@ -74,6 +81,7 @@ export function SheetContainer({
   externalPermissions,
   externalReloadSignal,
   initiativeRequestSignal,
+  externalCombatState,
 }: SheetContainerProps) {
   const [character, setCharacter] = useState<FullCharacterResponse | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
@@ -90,6 +98,16 @@ export function SheetContainer({
     passed: boolean;
     peGranted?: number;
   } | null>(null);
+
+  // Controle de Turno e Iniciativa em Tempo Real (Regra Geral de Turno: Limite de PE, Segurar o Gatilho e Combate Defensivo)
+  const [liveCombatState, setLiveCombatState] = useState<{
+    combatants: any[];
+    currentTurnIndex: number;
+    roundNumber: number;
+  } | null>(null);
+  const [peSpentThisTurn, setPeSpentThisTurn] = useState<number>(0);
+  const [turnResetSignal, setTurnResetSignal] = useState<number>(0);
+  const lastTurnKeyRef = useRef<string>('');
 
   function showHoverToast(msg: string) {
     setHoverToastMsg(msg);
@@ -190,6 +208,7 @@ export function SheetContainer({
             if (officialCombatPower) {
               return {
                 ...ab,
+                cost: officialCombatPower.cost,
                 modifiers: officialCombatPower.modifiers || [],
               };
             }
@@ -217,18 +236,36 @@ export function SheetContainer({
         }
 
         setCharacter(charData);
+        if ((charData.campaign as any)?.combatState) {
+          setLiveCombatState((charData.campaign as any).combatState);
+        } else {
+          setLiveCombatState(null);
+        }
 
         const compData = (await fetchCompendium(charData.system)) as any;
-        const syncedEntries = ((compData.entries || []) as CompendiumEntryData[]).map((entry) => {
-          const officialCombat = ORDEM_COMPENDIUM_ENTRIES.find(
-            (ce) =>
-              ce.id.startsWith('ord-pwr-comb-') &&
-              ce.name.toLowerCase() === entry.name.toLowerCase()
-          );
-          return officialCombat
-            ? { ...entry, modifiers: officialCombat.modifiers, metadata: officialCombat.metadata }
-            : entry;
-        });
+        const syncedEntries = ((compData.entries || []) as CompendiumEntryData[])
+          .filter((entry) => {
+            const lower = entry.name.trim().toLowerCase();
+            return (
+              lower !== 'ataque especial (combatente)' &&
+              lower !== 'resistir a <elemento> (poder paranormal)'
+            );
+          })
+          .map((entry) => {
+            const officialCombat = ORDEM_COMPENDIUM_ENTRIES.find(
+              (ce) =>
+                ce.id.startsWith('ord-pwr-comb-') &&
+                ce.name.toLowerCase() === entry.name.toLowerCase()
+            );
+            return officialCombat
+              ? {
+                  ...entry,
+                  cost: officialCombat.cost,
+                  modifiers: officialCombat.modifiers,
+                  metadata: officialCombat.metadata,
+                }
+              : entry;
+          });
         setCompendiumEntries(syncedEntries);
         setCustomSkills(compData.skills || []);
         setViewerIsAdmin(Boolean(compData.isAdmin));
@@ -240,6 +277,12 @@ export function SheetContainer({
     }
     loadSheetAndCompendium();
   }, [characterId]);
+
+  useEffect(() => {
+    if (externalCombatState !== undefined) {
+      setLiveCombatState(externalCombatState);
+    }
+  }, [externalCombatState]);
 
   useEffect(() => {
     if (!externalPermissions) return;
@@ -265,10 +308,91 @@ export function SheetContainer({
         externalReloadSignal.characterId === 'ALL')
     ) {
       fetchCharacterById(characterId)
-        .then((freshData) => setCharacter(freshData))
+        .then((freshData) => {
+          setCharacter(freshData);
+          if ((freshData.campaign as any)?.combatState !== undefined) {
+            setLiveCombatState((freshData.campaign as any).combatState);
+          }
+        })
         .catch((err) => console.error(err));
     }
   }, [externalReloadSignal, characterId]);
+
+  // Regra Geral de Turno na Iniciativa: Quando chega o turno deste personagem novamente na ordem de iniciativa,
+  // reseta automaticamente os PE gastos no turno, o Segurar o Gatilho e desativa o Combate Defensivo ("até o seu próximo turno").
+  useEffect(() => {
+    if (!character || !character.campaignId) {
+      lastTurnKeyRef.current = '';
+      setPeSpentThisTurn(0);
+      return;
+    }
+    const cList = liveCombatState?.combatants;
+    if (!Array.isArray(cList) || cList.length === 0) {
+      lastTurnKeyRef.current = '';
+      setPeSpentThisTurn(0);
+      return;
+    }
+    const activeComb = cList[liveCombatState!.currentTurnIndex ?? 0];
+    if (!activeComb) return;
+
+    const isMyTurn =
+      activeComb.characterId === character.id ||
+      (activeComb.name &&
+        activeComb.name.trim().toLowerCase() === character.name.trim().toLowerCase());
+
+    if (isMyTurn) {
+      const turnKey = `${liveCombatState!.roundNumber ?? 1}-${liveCombatState!.currentTurnIndex ?? 0}-${character.id}`;
+      if (lastTurnKeyRef.current !== turnKey) {
+        const hadPreviousTurn = lastTurnKeyRef.current !== '';
+        lastTurnKeyRef.current = turnKey;
+        setPeSpentThisTurn(0);
+        setTurnResetSignal((s) => s + 1);
+
+        // Se Combate Defensivo ou Combater com Duas Armas estavam ativos do turno anterior, desativa no início do novo turno!
+        const currRaw = (character.sheetData || {}) as Record<string, any>;
+        const currAbs: CharacterAbility[] = Array.isArray(currRaw.abilities)
+          ? currRaw.abilities
+          : [];
+        let postureReset = false;
+        const nextAbs = currAbs.map((ab) => {
+          const isTurnPosture =
+            ab.id === 'ord-pwr-comb-defensivo' ||
+            ab.id === 'ord-pwr-comb-duas-armas' ||
+            ab.name.toLowerCase().includes('combate defensivo') ||
+            ab.name.toLowerCase().includes('combater com duas armas');
+          if (isTurnPosture && ab.isActive !== false) {
+            postureReset = true;
+            return { ...ab, isActive: false };
+          }
+          return ab;
+        });
+
+        if (postureReset) {
+          const updatedChar: FullCharacterResponse = {
+            ...character,
+            sheetData: { ...currRaw, abilities: nextAbs },
+          };
+          setCharacter(updatedChar);
+          updateCharacter(updatedChar.id, {
+            name: updatedChar.name,
+            portraitUrl: updatedChar.portraitUrl,
+            vitals: updatedChar.vitals,
+            sheetData: updatedChar.sheetData,
+            inventory: updatedChar.inventory,
+            attacks: updatedChar.attacks,
+          }).catch(() => {});
+        }
+
+        if (hadPreviousTurn) {
+          showHoverToast(
+            `⚔️ Seu turno chegou (Rodada ${liveCombatState!.roundNumber ?? 1})! Limite de PE/turno${
+              postureReset ? ' e Combate Defensivo' : ''
+            } reiniciados.`
+          );
+        }
+      }
+    }
+  }, [liveCombatState, character?.id, character?.campaignId]);
 
   if (isLoading) {
     return (
@@ -331,6 +455,27 @@ export function SheetContainer({
       ab.name.toLowerCase().includes('afortunado')
   );
 
+  const hasActiveInitiativeOrder = Boolean(
+    character.campaignId &&
+      liveCombatState &&
+      Array.isArray(liveCombatState.combatants) &&
+      liveCombatState.combatants.length > 0
+  );
+  const activeCombatantInOrder = hasActiveInitiativeOrder
+    ? liveCombatState!.combatants[liveCombatState!.currentTurnIndex ?? 0]
+    : null;
+  const isMyTurnInCombat = Boolean(
+    hasActiveInitiativeOrder &&
+      activeCombatantInOrder &&
+      (activeCombatantInOrder.characterId === character.id ||
+        (activeCombatantInOrder.name &&
+          activeCombatantInOrder.name.trim().toLowerCase() ===
+            character.name.trim().toLowerCase()))
+  );
+  const currentRoundNumber = hasActiveInitiativeOrder
+    ? liveCombatState!.roundNumber ?? 1
+    : 1;
+
   function triggerCharacterRoll(
     label: string,
     count: number,
@@ -338,7 +483,8 @@ export function SheetContainer({
     modifier: number,
     isSecret?: boolean,
     isInitiativeRoll?: boolean,
-    fixedRolls?: number[]
+    fixedRolls?: number[],
+    attackDamagePayload?: AttackDamageRollPayload
   ) {
     if (!character) return;
     onRollDice(
@@ -352,7 +498,8 @@ export function SheetContainer({
       isInitiativeRoll,
       character.id,
       fixedRolls,
-      hasAfortunado
+      hasAfortunado,
+      attackDamagePayload
     );
   }
 
@@ -540,6 +687,12 @@ export function SheetContainer({
       );
       return;
     }
+    if (!checkTurnPeLimitAllowed(form.totalCost, `${ritual.name} (${form.label})`)) {
+      return;
+    }
+    if (hasActiveInitiativeOrder && form.totalCost > 0) {
+      setPeSpentThisTurn((prev) => prev + form.totalCost);
+    }
 
     // 1. Teste de Ocultismo — O Custo do Paranormal (DT 20 + PE gasto)
     const dt = 20 + form.totalCost;
@@ -708,6 +861,25 @@ export function SheetContainer({
     });
   }
 
+  function checkTurnPeLimitAllowed(amount: number, powerLabel?: string): boolean {
+    if (!character || character.system !== 'ordem-paranormal' || amount <= 0) return true;
+    if (!hasActiveInitiativeOrder) return true;
+    const peTurnLimit = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
+    // Regra Oficial (p. 23, Limite de PE): um personagem sempre pode usar uma habilidade em seu custo mínimo (ex.: 2 PE em NEX 5%), mesmo que isso exceda seu limite, desde que ainda não tenha gasto PE no turno.
+    if (peSpentThisTurn === 0 && amount <= 2) {
+      return true;
+    }
+    if (peSpentThisTurn + amount > peTurnLimit) {
+      showHoverToast(
+        `⚠️ Limite de PE por turno atingido${
+          powerLabel ? ` para ${powerLabel}` : ''
+        } (${peSpentThisTurn}/${peTurnLimit} PE gastos neste turno)! Ele será resetado automaticamente quando seu turno chegar novamente.`
+      );
+      return false;
+    }
+    return true;
+  }
+
   function handleCheckResource(amount: number, powerLabel?: string): boolean {
     if (!character) return false;
     const targetBarId = character.system === 'ordem-paranormal' ? 'pe' : 'pm';
@@ -720,6 +892,9 @@ export function SheetContainer({
           powerLabel ? ` para usar ${powerLabel}` : ''
         }! Necessário: ${amount} (Atual: ${resourceBar.current + availableTemp}).`
       );
+      return false;
+    }
+    if (!checkTurnPeLimitAllowed(amount, powerLabel)) {
       return false;
     }
     return true;
@@ -739,6 +914,13 @@ export function SheetContainer({
         }).`
       );
       return false;
+    }
+    if (!checkTurnPeLimitAllowed(amount)) {
+      return false;
+    }
+
+    if (hasActiveInitiativeOrder && character.system === 'ordem-paranormal' && amount > 0) {
+      setPeSpentThisTurn((prev) => prev + amount);
     }
 
     let nextTempPe = Number(rawSheet.tempPe || 0);
@@ -1139,6 +1321,17 @@ export function SheetContainer({
           compendiumEntries.find((e) => e.id === evoSelectedPowerId) ||
           ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoSelectedPowerId);
         if (pEntry) {
+          const reqValidation = checkOrdemPowerRequirements(
+            pEntry,
+            { ...(rawSheet as OrdemSheetData), nex: nextNex, attributes: nextAttributes },
+            characterAbilities
+          );
+          if (!reqValidation.met) {
+            showHoverToast(
+              `🔒 Você não cumpre os pré-requisitos para escolher ${pEntry.name} (Falta: ${reqValidation.missing.join(', ')})!`
+            );
+            return;
+          }
           const existingIdx = nextAbilities.findIndex(
             (ab) => ab.name.trim().toLowerCase() === pEntry.name.trim().toLowerCase()
           );
@@ -2350,22 +2543,40 @@ export function SheetContainer({
             ? compendiumEntries.filter((e) => e.category === 'power')
             : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'power');
 
+        const evoSheetForCheck: OrdemSheetData = {
+          ...(rawSheet as OrdemSheetData),
+          nex: nextNex,
+        };
+
         const classPowerOptions = allPowerEntries
-          .filter(
-            (e) =>
-              !e.metadata?.requirements?.toLowerCase().includes('poder paranormal') &&
-              (e.metadata?.requirements
-                ?.toLowerCase()
-                .includes(String(rawSheet.characterClass || '').toLowerCase()) ||
-                !e.metadata?.requirements?.match(/combatente|especialista|ocultista/i))
-          )
+          .filter((e) => {
+            const lowerName = e.name.trim().toLowerCase();
+            const lowerReq = (e.metadata?.requirements || '').toLowerCase();
+            if (
+              lowerName.includes('ataque especial') ||
+              lowerName.startsWith('resistir a ') ||
+              lowerReq.includes('poder paranormal') ||
+              lowerReq.includes('transcender')
+            ) {
+              return false;
+            }
+            return (
+              lowerReq.includes(String(rawSheet.characterClass || '').toLowerCase()) ||
+              !lowerReq.match(/combatente|especialista|ocultista/i)
+            );
+          })
           .filter(
             (e) =>
               !evoPowerSearch.trim() ||
               e.name.toLowerCase().includes(evoPowerSearch.toLowerCase()) ||
               e.description.toLowerCase().includes(evoPowerSearch.toLowerCase())
           )
-          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          .sort((a, b) => {
+            const checkA = checkOrdemPowerRequirements(a, evoSheetForCheck, characterAbilities).met;
+            const checkB = checkOrdemPowerRequirements(b, evoSheetForCheck, characterAbilities).met;
+            if (checkA !== checkB) return checkA ? -1 : 1;
+            return a.name.localeCompare(b.name, 'pt-BR');
+          });
 
         const rawParanormalPowers =
           compendiumEntries.filter((e) => e.category === 'paranormal_power').length > 0
@@ -2375,8 +2586,9 @@ export function SheetContainer({
         const paranormalPowerOptions = rawParanormalPowers
           .filter(
             (e) =>
-              evoPowerElementFilter === 'ALL' ||
-              (e.metadata?.element || '').toLowerCase() === evoPowerElementFilter.toLowerCase()
+              e.name.trim().toLowerCase() !== 'resistir a <elemento> (poder paranormal)' &&
+              (evoPowerElementFilter === 'ALL' ||
+                (e.metadata?.element || '').toLowerCase() === evoPowerElementFilter.toLowerCase())
           )
           .filter(
             (e) =>
@@ -2384,7 +2596,12 @@ export function SheetContainer({
               e.name.toLowerCase().includes(evoPowerSearch.toLowerCase()) ||
               e.description.toLowerCase().includes(evoPowerSearch.toLowerCase())
           )
-          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          .sort((a, b) => {
+            const checkA = checkOrdemPowerRequirements(a, evoSheetForCheck, characterAbilities).met;
+            const checkB = checkOrdemPowerRequirements(b, evoSheetForCheck, characterAbilities).met;
+            if (checkA !== checkB) return checkA ? -1 : 1;
+            return a.name.localeCompare(b.name, 'pt-BR');
+          });
 
         const allRitualsUpToCircle = (
           compendiumEntries.filter((e) => e.category === 'spell').length > 0
@@ -2697,19 +2914,21 @@ export function SheetContainer({
 
                             const isBlockedDuplicate =
                               Boolean(alreadyOwnedAb) && !isRepeatableSkillPower && !canUpgradeAffinity;
+                            const isUnselectable = !check.met || isBlockedDuplicate;
                             const selected = evoSelectedPowerId === pw.id;
 
                             return (
                               <button
                                 key={pw.id}
                                 type="button"
-                                disabled={isBlockedDuplicate}
+                                disabled={isUnselectable}
                                 onClick={() => {
+                                  if (isUnselectable) return;
                                   setEvoSelectedPowerId(pw.id);
                                   setEvoSkillTrainingPowerIds([]);
                                 }}
                                 className={`w-full text-left p-3 rounded-lg border transition ${
-                                  isBlockedDuplicate
+                                  isUnselectable
                                     ? 'bg-zinc-950 border-zinc-800/50 opacity-50 cursor-not-allowed'
                                     : selected
                                     ? 'bg-amber-600/20 border-amber-500 cursor-pointer'
@@ -3156,6 +3375,10 @@ export function SheetContainer({
           onOpenInterlude={canMasterControl ? () => setIsInterludeModalOpen(true) : undefined}
           onCheckResource={handleCheckResource}
           onSpendResource={handleSpendResource}
+          hasActiveInitiativeOrder={hasActiveInitiativeOrder}
+          isMyTurnInCombat={isMyTurnInCombat}
+          currentRoundNumber={currentRoundNumber}
+          peSpentThisTurn={peSpentThisTurn}
           onChange={(updatedData) =>
             setCharacter((prev) => {
               if (!prev) return null;
@@ -3346,8 +3569,19 @@ export function SheetContainer({
           vislumbresResult?.passed && !vislumbresResult?.peGranted
         )}
         onRollVislumbresPe={handleRollVislumbresPe}
-        onRoll={(label, count, sides, mod) =>
-          triggerCharacterRoll(label, count, sides, mod)
+        hasActiveInitiativeOrder={hasActiveInitiativeOrder}
+        turnResetSignal={turnResetSignal}
+        onRoll={(label, count, sides, mod, _isDamage, attackDamagePayload) =>
+          triggerCharacterRoll(
+            label,
+            count,
+            sides,
+            mod,
+            false,
+            false,
+            undefined,
+            attackDamagePayload
+          )
         }
       />
     </div>
