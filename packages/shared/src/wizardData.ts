@@ -410,7 +410,7 @@ export const ORDEM_CLASSES: OrdemClassDefinition[] = [
         cost: 2,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
         isActive: false,
-        modifiers: [{ id: 'cls-comb-atk', targetType: 'attack_bonus', targetKey: 'all', value: 5 }],
+        modifiers: [],
       },
     ],
   },

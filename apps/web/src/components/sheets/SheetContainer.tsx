@@ -121,8 +121,9 @@ export function SheetContainer({
 
   const [isNexEvolutionOpen, setIsNexEvolutionOpen] = useState(false);
   const [evoTrailId, setEvoTrailId] = useState<string>('');
-  const [evoChoiceMode, setEvoChoiceMode] = useState<'class_power' | 'transcend'>('class_power');
+  const [evoChoiceMode, setEvoChoiceMode] = useState<'class_power' | 'transcend' | 'versatility'>('class_power');
   const [evoSelectedPowerId, setEvoSelectedPowerId] = useState<string>('');
+  const [evoSkillTrainingPowerIds, setEvoSkillTrainingPowerIds] = useState<string[]>([]);
   const [evoPowerSearch, setEvoPowerSearch] = useState<string>('');
   const [evoPowerElementFilter, setEvoPowerElementFilter] = useState<string>('ALL');
   const [evoAttrKey, setEvoAttrKey] = useState<'agi' | 'for' | 'int' | 'pre' | 'vig'>('agi');
@@ -173,6 +174,25 @@ export function SheetContainer({
                 ],
               };
             }
+            if (ab.name.trim().toLowerCase() === 'ataque especial') {
+              return {
+                ...ab,
+                modifiers: [],
+                isActive: false,
+              };
+            }
+            // Sincroniza poderes de Combatente já existentes com as novas regras automáticas do motor
+            const officialCombatPower = ORDEM_COMPENDIUM_ENTRIES.find(
+              (ce) =>
+                ce.id.startsWith('ord-pwr-comb-') &&
+                ce.name.toLowerCase() === ab.name.trim().toLowerCase()
+            );
+            if (officialCombatPower) {
+              return {
+                ...ab,
+                modifiers: officialCombatPower.modifiers || [],
+              };
+            }
             // Sincroniza poderes de Origem de fichas já criadas com as definições oficiais v1.3
             if (ab.id.startsWith('orig-')) {
               const origId = ab.id.replace('orig-', '');
@@ -199,7 +219,17 @@ export function SheetContainer({
         setCharacter(charData);
 
         const compData = (await fetchCompendium(charData.system)) as any;
-        setCompendiumEntries(compData.entries || []);
+        const syncedEntries = ((compData.entries || []) as CompendiumEntryData[]).map((entry) => {
+          const officialCombat = ORDEM_COMPENDIUM_ENTRIES.find(
+            (ce) =>
+              ce.id.startsWith('ord-pwr-comb-') &&
+              ce.name.toLowerCase() === entry.name.toLowerCase()
+          );
+          return officialCombat
+            ? { ...entry, modifiers: officialCombat.modifiers, metadata: officialCombat.metadata }
+            : entry;
+        });
+        setCompendiumEntries(syncedEntries);
         setCustomSkills(compData.skills || []);
         setViewerIsAdmin(Boolean(compData.isAdmin));
       } catch (err: any) {
@@ -861,6 +891,30 @@ export function SheetContainer({
         20,
         mod
       );
+      return;
+    }
+
+    if (originId === 'sentido_tatico') {
+      if (
+        !handleSpendResource(2, {
+          id: 'pwr-scene-sentido-tatico',
+          name: 'Sentido Tático (Poder de Combatente)',
+          source: 'Cena',
+          description: `+${intAttr} na Defesa e em testes de resistência (Fortitude, Reflexos e Vontade) até o fim da cena`,
+          modifiers: [
+            { id: 'mod-st-def', targetType: 'defense', targetKey: 'defense', value: intAttr },
+            { id: 'mod-st-fort', targetType: 'skill_bonus', targetKey: 'fortitude', value: intAttr },
+            { id: 'mod-st-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: intAttr },
+            { id: 'mod-st-von', targetType: 'skill_bonus', targetKey: 'vontade', value: intAttr },
+          ],
+        })
+      ) {
+        return;
+      }
+      setFeedbackMsg(
+        `🧠 Sentido Tático ativado (-2 PE)! +${intAttr} na Defesa e Resistências nesta cena.`
+      );
+      setTimeout(() => setFeedbackMsg(''), 4000);
     }
   }
 
@@ -991,6 +1045,7 @@ export function SheetContainer({
     setEvoTrailId(rawSheet.trail || '');
     setEvoChoiceMode('class_power');
     setEvoSelectedPowerId('');
+    setEvoSkillTrainingPowerIds([]);
     setEvoPowerSearch('');
     setEvoPowerElementFilter('ALL');
     setEvoAttrKey('agi');
@@ -1023,12 +1078,18 @@ export function SheetContainer({
     }
 
     const didTranscend =
-      Boolean(milestone?.grantsClassPower) && evoChoiceMode === 'transcend';
+      Boolean(milestone?.grantsClassPower || milestone?.grantsVersatility) &&
+      evoChoiceMode === 'transcend';
     const nextTranscendedCount =
       Number(rawSheet.transcendedCount ?? 0) + (didTranscend ? 1 : 0);
 
     const chosenTrailId = evoTrailId || rawSheet.trail || undefined;
     let nextAbilities = [...characterAbilities];
+    const nextProficiencies: string[] = Array.isArray(rawSheet.proficiencies)
+      ? [...rawSheet.proficiencies]
+      : [];
+    const nextAttacks: PreparedAttack[] = [...(character.attacks || [])];
+    let trainedFromPowerIds: string[] = [];
 
     // Sincronizar poderes de Trilha até o novo NEX
     if (chosenTrailId && nextNex >= 10) {
@@ -1053,35 +1114,108 @@ export function SheetContainer({
       }
     }
 
-    // Adicionar Poder de Classe ou Poder Paranormal (Transcender / Afinidade)
-    if (milestone?.grantsClassPower && evoSelectedPowerId) {
-      const pEntry =
-        compendiumEntries.find((e) => e.id === evoSelectedPowerId) ||
-        ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoSelectedPowerId);
-      if (pEntry) {
-        const existingIdx = nextAbilities.findIndex(
-          (ab) => ab.name.trim().toLowerCase() === pEntry.name.trim().toLowerCase()
-        );
-        if (existingIdx >= 0 && evoChoiceMode === 'transcend') {
-          // Upgrade de Afinidade do Poder Paranormal
-          nextAbilities[existingIdx] = {
-            ...nextAbilities[existingIdx],
-            name: `${pEntry.name} (Afinidade)`,
-            category: 'poder_paranormal',
-          };
-        } else {
+    // Adicionar Poder de Classe, Poder Paranormal (Transcender / Afinidade) ou Versatilidade (NEX 50%)
+    if (
+      (milestone?.grantsClassPower || milestone?.grantsVersatility) &&
+      evoSelectedPowerId
+    ) {
+      if (milestone?.grantsVersatility && evoChoiceMode === 'versatility') {
+        const versTrailId = evoSelectedPowerId.replace('versatility:', '');
+        const versTrail = ORDEM_TRAILS.find((t) => t.id === versTrailId);
+        const p10 = versTrail?.powers.find((p) => p.nex === 10);
+        if (versTrail && p10) {
           nextAbilities.push({
-            id: `nex-${nextNex}-${pEntry.id}`,
-            name: pEntry.name,
-            category:
-              pEntry.category === 'paranormal_power' || evoChoiceMode === 'transcend'
-                ? 'poder_paranormal'
-                : 'poder',
-            cost: pEntry.cost,
-            description: pEntry.description,
-            isActive: pEntry.cost === 0,
-            modifiers: pEntry.modifiers || [],
+            id: `versatility-${versTrail.id}-10`,
+            name: `Versatilidade (${versTrail.name} 10%): ${p10.name}`,
+            category: 'classe',
+            cost: p10.cost,
+            description: p10.description,
+            isActive: p10.cost === 0,
+            modifiers: p10.modifiers || [],
           });
+        }
+      } else {
+        const pEntry =
+          compendiumEntries.find((e) => e.id === evoSelectedPowerId) ||
+          ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoSelectedPowerId);
+        if (pEntry) {
+          const existingIdx = nextAbilities.findIndex(
+            (ab) => ab.name.trim().toLowerCase() === pEntry.name.trim().toLowerCase()
+          );
+          if (existingIdx >= 0 && evoChoiceMode === 'transcend') {
+            // Upgrade de Afinidade do Poder Paranormal
+            nextAbilities[existingIdx] = {
+              ...nextAbilities[existingIdx],
+              name: `${pEntry.name} (Afinidade)`,
+              category: 'poder_paranormal',
+            };
+          } else {
+            const requiresManualToggle =
+              pEntry.id === 'ord-pwr-comb-defensivo' ||
+              pEntry.id === 'ord-pwr-comb-duas-armas' ||
+              pEntry.name.toLowerCase().includes('combate defensivo') ||
+              pEntry.name.toLowerCase().includes('combater com duas armas');
+
+            nextAbilities.push({
+              id: `nex-${nextNex}-${pEntry.id}`,
+              name: pEntry.name,
+              category:
+                pEntry.category === 'paranormal_power' || evoChoiceMode === 'transcend'
+                  ? 'poder_paranormal'
+                  : 'poder',
+              cost: pEntry.cost,
+              description: pEntry.description,
+              isActive: pEntry.cost === 0 && !requiresManualToggle,
+              modifiers: pEntry.modifiers || [],
+            });
+
+            const lowerPowerName = pEntry.name.toLowerCase();
+            if (
+              lowerPowerName.includes('armamento pesado') &&
+              !nextProficiencies.some((p) => p.toLowerCase().includes('armas pesadas'))
+            ) {
+              nextProficiencies.push('Armas pesadas');
+            }
+            if (
+              (lowerPowerName.includes('proteção pesada') ||
+                lowerPowerName.includes('protecao pesada')) &&
+              !nextProficiencies.some(
+                (p) =>
+                  p.toLowerCase().includes('proteções pesadas') ||
+                  p.toLowerCase().includes('protecoes pesadas')
+              )
+            ) {
+              nextProficiencies.push('Proteções pesadas');
+            }
+            if (
+              lowerPowerName.includes('artista marcial') &&
+              !nextAttacks.some((a) => a.isUnarmed || a.name.toLowerCase().includes('desarmado'))
+            ) {
+              const lutaSk = Array.isArray(rawSheet.skills)
+                ? rawSheet.skills.find((s: any) => s.id === 'luta')
+                : null;
+              const dieSides = nextNex >= 70 ? 10 : nextNex >= 35 ? 8 : 6;
+              nextAttacks.push({
+                id: `atk-unarmed-${Math.random().toString(36).slice(2, 7)}`,
+                name: 'Ataque Desarmado (Artista Marcial)',
+                diceCount: Math.max(1, nextAttributes.for, nextAttributes.agi),
+                attackBonus:
+                  Number(lutaSk?.trainingDegree ?? 0) + Number(lutaSk?.otherModifier ?? 0),
+                damageFormula: `1d${dieSides}`,
+                critRange: '20/x2',
+                damageType: 'Impacto',
+                isMelee: true,
+                isFirearm: false,
+                isUnarmed: true,
+              });
+            }
+            if (
+              lowerPowerName.includes('treinamento em perícia') &&
+              evoSkillTrainingPowerIds.length > 0
+            ) {
+              trainedFromPowerIds = [...evoSkillTrainingPowerIds];
+            }
+          }
         }
       }
     }
@@ -1118,14 +1252,28 @@ export function SheetContainer({
       }
     }
 
-    // Atualizar grau de treinamento de perícias (35% Veterano +10, 70% Expert +15)
+    // Atualizar grau de treinamento de perícias (35% Veterano +10, 70% Expert +15 e poder Treinamento em Perícia)
     const targetDegree: 10 | 15 = nextNex >= 70 ? 15 : 10;
     const nextSkills = Array.isArray(rawSheet.skills)
-      ? rawSheet.skills.map((sk: any) =>
-          milestone?.grantsTrainingUpgrade && evoUpgradeSkills.includes(sk.id)
-            ? { ...sk, trainingDegree: targetDegree }
-            : sk
-        )
+      ? rawSheet.skills.map((sk: any) => {
+          let updatedSk =
+            milestone?.grantsTrainingUpgrade && evoUpgradeSkills.includes(sk.id)
+              ? { ...sk, trainingDegree: targetDegree }
+              : sk;
+          if (trainedFromPowerIds.includes(updatedSk.id)) {
+            const currDeg = Number(updatedSk.trainingDegree || 0);
+            const nextDeg =
+              currDeg === 0
+                ? 5
+                : currDeg === 5 && nextNex >= 35
+                ? 10
+                : currDeg === 10 && nextNex >= 70
+                ? 15
+                : currDeg;
+            updatedSk = { ...updatedSk, trainingDegree: nextDeg };
+          }
+          return updatedSk;
+        })
       : [];
 
     // Recalcular PV, PE e SAN máximos oficiais para o novo NEX
@@ -1180,12 +1328,14 @@ export function SheetContainer({
     const nextChar: FullCharacterResponse = {
       ...character,
       vitals: updatedVitals,
+      attacks: nextAttacks,
       sheetData: {
         ...rawSheet,
         nex: nextNex,
         trail: chosenTrailId,
         affinity: milestone?.grantsAffinity ? evoAffinity : rawSheet.affinity,
         transcendedCount: nextTranscendedCount,
+        proficiencies: nextProficiencies,
         attributes: nextAttributes,
         skills: nextSkills,
         abilities: nextAbilities,
@@ -1198,6 +1348,14 @@ export function SheetContainer({
   }
 
   const availableConditions = compendiumEntries.filter((e) => e.category === 'condition');
+
+  const pvBarForStatus = character.vitals.find((v) => v.id === 'pv');
+  const pvMaxForStatus = pvBarForStatus
+    ? Math.max(1, pvBarForStatus.max + (bonuses.vitalMax['pv'] || 0))
+    : 1;
+  const isCharacterMachucado = pvBarForStatus
+    ? pvBarForStatus.current <= Math.floor(pvMaxForStatus / 2)
+    : false;
 
   const initSkill = Array.isArray(rawSheet.skills)
     ? rawSheet.skills.find((s: any) => s.id === 'iniciativa')
@@ -2378,41 +2536,68 @@ export function SheetContainer({
                   </div>
                 )}
 
-                {/* Poder de Classe ou Transcender (NEX 15, 30, 45, 60, 75, 90) */}
-                {milestone?.grantsClassPower && (
+                {/* Poder de Classe, Transcender ou Versatilidade (NEX 15, 30, 45, 50, 60, 75, 90) */}
+                {(milestone?.grantsClassPower || milestone?.grantsVersatility) && (
                   <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                     <label className="block text-xs font-black uppercase text-amber-400">
-                      ✨ Escolha seu Poder de NEX {nextNex}% (Poder de Classe ou Transcender)
+                      {milestone?.grantsVersatility
+                        ? `🛤️ Versatilidade (NEX 50%: Escolha Poder de ${clsObj.name}, Transcender ou Poder de 10% de outra Trilha)`
+                        : `✨ Escolha seu Poder de NEX ${nextNex}% (Poder de Classe ou Transcender)`}
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div
+                      className={`grid gap-2 ${
+                        milestone?.grantsVersatility && classTrails.length > 1
+                          ? 'grid-cols-1 sm:grid-cols-3'
+                          : 'grid-cols-2'
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => {
                           setEvoChoiceMode('class_power');
                           setEvoSelectedPowerId('');
+                          setEvoSkillTrainingPowerIds([]);
                         }}
-                        className={`py-2 rounded-lg text-xs font-bold border cursor-pointer ${
+                        className={`py-2 px-2 rounded-lg text-xs font-bold border cursor-pointer ${
                           evoChoiceMode === 'class_power'
                             ? 'bg-amber-600 text-white border-amber-400'
                             : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                         }`}
                       >
-                        ⚔️ Poder de Classe (+SAN normal)
+                        ⚔️ Poder de {clsObj.name} (+SAN normal)
                       </button>
                       <button
                         type="button"
                         onClick={() => {
                           setEvoChoiceMode('transcend');
                           setEvoSelectedPowerId('');
+                          setEvoSkillTrainingPowerIds([]);
                         }}
-                        className={`py-2 rounded-lg text-xs font-bold border cursor-pointer ${
+                        className={`py-2 px-2 rounded-lg text-xs font-bold border cursor-pointer ${
                           evoChoiceMode === 'transcend'
                             ? 'bg-purple-600 text-white border-purple-400'
                             : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                         }`}
                       >
-                        👁️ Transcender (Poder Paranormal • Sem ganho de SAN)
+                        👁️ Transcender (Poder Paranormal)
                       </button>
+                      {milestone?.grantsVersatility && classTrails.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEvoChoiceMode('versatility');
+                            setEvoSelectedPowerId('');
+                            setEvoSkillTrainingPowerIds([]);
+                          }}
+                          className={`py-2 px-2 rounded-lg text-xs font-bold border cursor-pointer ${
+                            evoChoiceMode === 'versatility'
+                              ? 'bg-emerald-600 text-white border-emerald-400'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                          }`}
+                        >
+                          🛤️ 1º Poder de outra Trilha
+                        </button>
+                      )}
                     </div>
 
                     {evoChoiceMode === 'transcend' && (
@@ -2439,96 +2624,207 @@ export function SheetContainer({
                       </div>
                     )}
 
-                    <input
-                      type="text"
-                      value={evoPowerSearch}
-                      onChange={(e) => setEvoPowerSearch(e.target.value)}
-                      placeholder="🔎 Pesquisar poder por nome ou efeito..."
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      {(evoChoiceMode === 'class_power'
-                        ? classPowerOptions
-                        : paranormalPowerOptions
-                      ).map((pw) => {
-                        const check = checkOrdemPowerRequirements(
-                          pw,
-                          { ...(rawSheet as OrdemSheetData), nex: nextNex },
-                          characterAbilities
-                        );
-                        const alreadyOwnedAb = characterAbilities.find(
-                          (ab) =>
-                            ab.name.trim().toLowerCase() === pw.name.trim().toLowerCase() ||
-                            ab.name.trim().toLowerCase() ===
-                              `${pw.name.trim().toLowerCase()} (afinidade)`
-                        );
-                        const isRepeatableSkillPower = pw.name
-                          .toLowerCase()
-                          .includes('treinamento em perícia');
-                        const canUpgradeAffinity =
-                          evoChoiceMode === 'transcend' &&
-                          Boolean(alreadyOwnedAb) &&
-                          !alreadyOwnedAb?.name.toLowerCase().includes('afinidade') &&
-                          nextNex >= 50 &&
-                          Boolean(effectiveCharAffinity) &&
-                          effectiveCharAffinity?.toLowerCase() ===
-                            (pw.metadata?.element || '').toLowerCase();
-
-                        const isBlockedDuplicate =
-                          Boolean(alreadyOwnedAb) && !isRepeatableSkillPower && !canUpgradeAffinity;
-                        const selected = evoSelectedPowerId === pw.id;
-
-                        return (
-                          <button
-                            key={pw.id}
-                            type="button"
-                            disabled={isBlockedDuplicate}
-                            onClick={() => setEvoSelectedPowerId(pw.id)}
-                            className={`w-full text-left p-3 rounded-lg border transition ${
-                              isBlockedDuplicate
-                                ? 'bg-zinc-950 border-zinc-800/50 opacity-50 cursor-not-allowed'
-                                : selected
-                                ? 'bg-amber-600/20 border-amber-500 cursor-pointer'
-                                : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 cursor-pointer'
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-xs text-white">{pw.name}</span>
-                                {pw.metadata?.element && (
-                                  <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">
-                                    {pw.metadata.element}
+                    {evoChoiceMode === 'versatility' ? (
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {classTrails
+                          .filter((t) => t.id !== activeTrailId)
+                          .map((t) => {
+                            const p10 = t.powers.find((p) => p.nex === 10);
+                            if (!p10) return null;
+                            const valKey = `versatility:${t.id}`;
+                            const selected = evoSelectedPowerId === valKey;
+                            return (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setEvoSelectedPowerId(valKey)}
+                                className={`w-full text-left p-3 rounded-lg border transition cursor-pointer ${
+                                  selected
+                                    ? 'bg-emerald-600/20 border-emerald-500'
+                                    : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-bold text-xs text-white">
+                                    {selected ? '✓ ' : ''}Trilha {t.name} (10%): {p10.name}
                                   </span>
-                                )}
+                                  <span className="text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-700 px-1.5 py-0.5 rounded">
+                                    {p10.cost > 0 ? `${p10.cost} PE` : 'Passivo'}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-zinc-400 mt-1">{p10.description}</p>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={evoPowerSearch}
+                          onChange={(e) => setEvoPowerSearch(e.target.value)}
+                          placeholder="🔎 Pesquisar poder por nome ou efeito..."
+                          className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {(evoChoiceMode === 'class_power'
+                            ? classPowerOptions
+                            : paranormalPowerOptions
+                          ).map((pw) => {
+                            const check = checkOrdemPowerRequirements(
+                              pw,
+                              { ...(rawSheet as OrdemSheetData), nex: nextNex },
+                              characterAbilities
+                            );
+                            const alreadyOwnedAb = characterAbilities.find(
+                              (ab) =>
+                                ab.name.trim().toLowerCase() === pw.name.trim().toLowerCase() ||
+                                ab.name.trim().toLowerCase() ===
+                                  `${pw.name.trim().toLowerCase()} (afinidade)`
+                            );
+                            const isRepeatableSkillPower = pw.name
+                              .toLowerCase()
+                              .includes('treinamento em perícia');
+                            const canUpgradeAffinity =
+                              evoChoiceMode === 'transcend' &&
+                              Boolean(alreadyOwnedAb) &&
+                              !alreadyOwnedAb?.name.toLowerCase().includes('afinidade') &&
+                              nextNex >= 50 &&
+                              Boolean(effectiveCharAffinity) &&
+                              effectiveCharAffinity?.toLowerCase() ===
+                                (pw.metadata?.element || '').toLowerCase();
+
+                            const isBlockedDuplicate =
+                              Boolean(alreadyOwnedAb) && !isRepeatableSkillPower && !canUpgradeAffinity;
+                            const selected = evoSelectedPowerId === pw.id;
+
+                            return (
+                              <button
+                                key={pw.id}
+                                type="button"
+                                disabled={isBlockedDuplicate}
+                                onClick={() => {
+                                  setEvoSelectedPowerId(pw.id);
+                                  setEvoSkillTrainingPowerIds([]);
+                                }}
+                                className={`w-full text-left p-3 rounded-lg border transition ${
+                                  isBlockedDuplicate
+                                    ? 'bg-zinc-950 border-zinc-800/50 opacity-50 cursor-not-allowed'
+                                    : selected
+                                    ? 'bg-amber-600/20 border-amber-500 cursor-pointer'
+                                    : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 cursor-pointer'
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-xs text-white">{pw.name}</span>
+                                    {pw.metadata?.element && (
+                                      <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">
+                                        {pw.metadata.element}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    {isBlockedDuplicate ? (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                                        ✓ Já possui na ficha
+                                      </span>
+                                    ) : canUpgradeAffinity ? (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900 text-purple-200 border border-purple-500">
+                                        👁️ Desbloquear Afinidade
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                          check.met
+                                            ? 'bg-emerald-950 text-emerald-300'
+                                            : 'bg-red-950 text-red-300'
+                                        }`}
+                                      >
+                                        {check.met ? '✓ Pré-req OK' : `Falta: ${check.missing.join(', ')}`}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-zinc-400 mt-1">{pw.description}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Seletor de 2 perícias quando Treinamento em Perícia for escolhido */}
+                        {evoChoiceMode === 'class_power' &&
+                          (() => {
+                            const selectedEntry = classPowerOptions.find(
+                              (e) => e.id === evoSelectedPowerId
+                            );
+                            if (
+                              !selectedEntry?.name
+                                .toLowerCase()
+                                .includes('treinamento em perícia')
+                            ) {
+                              return null;
+                            }
+                            const eligibleSkills = (rawSheet.skills || []).filter((sk: any) => {
+                              const deg = Number(sk.trainingDegree || 0);
+                              return (
+                                deg === 0 ||
+                                (deg === 5 && nextNex >= 35) ||
+                                (deg === 10 && nextNex >= 70)
+                              );
+                            });
+
+                            return (
+                              <div className="mt-2 p-3 rounded-xl bg-zinc-900 border border-amber-500/40 space-y-2">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-bold text-amber-300">
+                                    🎓 Treinamento em Perícia: Escolha até 2 perícias para evoluir
+                                  </span>
+                                  <span className="font-mono text-amber-200">
+                                    {evoSkillTrainingPowerIds.length} / 2
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                                  {eligibleSkills.map((sk: any) => {
+                                    const picked = evoSkillTrainingPowerIds.includes(sk.id);
+                                    const deg = Number(sk.trainingDegree || 0);
+                                    const nextDeg = deg === 0 ? 5 : deg === 5 ? 10 : 15;
+                                    const full =
+                                      !picked && evoSkillTrainingPowerIds.length >= 2;
+                                    return (
+                                      <button
+                                        key={sk.id}
+                                        type="button"
+                                        disabled={full}
+                                        onClick={() =>
+                                          setEvoSkillTrainingPowerIds((prev) =>
+                                            prev.includes(sk.id)
+                                              ? prev.filter((id) => id !== sk.id)
+                                              : prev.length < 2
+                                              ? [...prev, sk.id]
+                                              : prev
+                                          )
+                                        }
+                                        className={`px-2 py-1 rounded text-[11px] font-bold border cursor-pointer ${
+                                          picked
+                                            ? 'bg-amber-600 text-white border-amber-400'
+                                            : full
+                                            ? 'bg-zinc-950 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                                            : 'bg-zinc-950 text-zinc-300 border-zinc-700 hover:border-zinc-500'
+                                        }`}
+                                      >
+                                        {picked ? '✓ ' : ''}
+                                        {sk.name} (+{deg} → +{nextDeg})
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1.5">
-                                {isBlockedDuplicate ? (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                                    ✓ Já possui na ficha
-                                  </span>
-                                ) : canUpgradeAffinity ? (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900 text-purple-200 border border-purple-500">
-                                    👁️ Desbloquear Afinidade
-                                  </span>
-                                ) : (
-                                  <span
-                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                      check.met
-                                        ? 'bg-emerald-950 text-emerald-300'
-                                        : 'bg-red-950 text-red-300'
-                                    }`}
-                                  >
-                                    {check.met ? '✓ Pré-req OK' : `Falta: ${check.missing.join(', ')}`}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <p className="text-[11px] text-zinc-400 mt-1">{pw.description}</p>
-                          </button>
-                        );
-                      })}
-                    </div>
+                            );
+                          })()}
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -2851,6 +3147,7 @@ export function SheetContainer({
           customSkills={customSkills}
           abilities={characterAbilities}
           isOverloaded={isCharacterOverloaded}
+          isMachucado={isCharacterMachucado}
           isEditMode={isEditMode}
           canEditAttributes={canEditAttributes}
           canEditAbilities={canEditAbilities}
@@ -3041,6 +3338,7 @@ export function SheetContainer({
           })
         }
         onInitiateTradeItem={handleOpenTradeModal}
+        onCheckResource={handleCheckResource}
         onSpendResource={handleSpendResource}
         onCastOrdemRitual={handleCastOrdemRitual}
         onTriggerOriginSpecial={handleTriggerOriginSpecial}

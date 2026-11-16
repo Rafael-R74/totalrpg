@@ -30,6 +30,8 @@ export interface PreparedAttack {
   isMelee?: boolean;
   isFirearm?: boolean;
   isWorkTool?: boolean;  // Operário — Ferramenta de Trabalho (+1 ataque, +1 dano, +1 margem de ameaça)
+  isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita
+  isUnarmed?: boolean;             // Artista Marcial — Ataque Desarmado
 }
 
 // Molde de itens
@@ -43,8 +45,9 @@ export interface RPGItem {
   imageUrl?: string;
   description?: string;
   isEquipped?: boolean;
-  isFavoriteTool?: boolean;    // Engenheiro — Ferramenta Favorita (-1 Categoria, exceto armas)
-  ignorePatentLimit?: boolean; // Criminoso — O Crime Compensa (isento do limite de patente)
+  isFavoriteTool?: boolean;        // Engenheiro — Ferramenta Favorita (-1 Categoria, exceto armas)
+  ignorePatentLimit?: boolean;     // Criminoso — O Crime Compensa (isento do limite de patente)
+  isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita (-I / -II / -III Categoria)
   modifiers?: RuleModifier[];
 }
 

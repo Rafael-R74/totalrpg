@@ -148,6 +148,41 @@ export function boostCritRangeBySteps(critRange: string, steps: number): string 
   return clean;
 }
 
+export function boostCritMultiplier(critRange: string, extraMult: number): string {
+  if (!extraMult || extraMult <= 0) return critRange;
+  const clean = (critRange || '20/x2').trim();
+  const match = clean.match(/^(\d+)\s*\/\s*x(\d+)$/i);
+  if (match) {
+    return `${match[1]}/x${Number(match[2]) + extraMult}`;
+  }
+  const multOnly = clean.match(/^x(\d+)$/i);
+  if (multOnly) {
+    return `20/x${Number(multOnly[1]) + extraMult}`;
+  }
+  return clean;
+}
+
+export interface AtaqueEspecialTier {
+  peCost: number;
+  totalBonus: number; // 5, 10, 15 ou 20
+  minNex: number;
+}
+
+export function getOrdemAtaqueEspecialTiers(nex: number): AtaqueEspecialTier[] {
+  const all: AtaqueEspecialTier[] = [
+    { peCost: 2, totalBonus: 5, minNex: 5 },
+    { peCost: 3, totalBonus: 10, minNex: 25 },
+    { peCost: 4, totalBonus: 15, minNex: 55 },
+    { peCost: 5, totalBonus: 20, minNex: 85 },
+  ];
+  return all.filter((t) => nex >= t.minNex);
+}
+
+export function getOrdemAtaqueEspecialMaxTier(nex: number): AtaqueEspecialTier {
+  const tiers = getOrdemAtaqueEspecialTiers(nex);
+  return tiers[tiers.length - 1] || { peCost: 2, totalBonus: 5, minNex: 5 };
+}
+
 export function getOrdemMaxLoad(
   effectiveFor: number,
   effectiveInt: number,
@@ -175,14 +210,23 @@ export function checkOrdemPowerRequirements(
   const lowerReq = reqText.toLowerCase();
 
   // 1. Classe
-  if (lowerReq.includes('combatente') && sheetData.characterClass !== 'combatente') {
-    missing.push('Classe: Combatente');
-  }
-  if (lowerReq.includes('especialista') && sheetData.characterClass !== 'especialista') {
-    missing.push('Classe: Especialista');
-  }
-  if (lowerReq.includes('ocultista') && sheetData.characterClass !== 'ocultista') {
-    missing.push('Classe: Ocultista');
+  if (lowerReq.includes('combatente ou especialista')) {
+    if (
+      sheetData.characterClass !== 'combatente' &&
+      sheetData.characterClass !== 'especialista'
+    ) {
+      missing.push('Classe: Combatente ou Especialista');
+    }
+  } else {
+    if (lowerReq.includes('combatente') && sheetData.characterClass !== 'combatente') {
+      missing.push('Classe: Combatente');
+    }
+    if (lowerReq.includes('especialista') && sheetData.characterClass !== 'especialista') {
+      missing.push('Classe: Especialista');
+    }
+    if (lowerReq.includes('ocultista') && sheetData.characterClass !== 'ocultista') {
+      missing.push('Classe: Ocultista');
+    }
   }
 
   // 2. NEX mínimo (ex: "NEX 30%", "NEX 45%", "NEX 60%")
@@ -228,7 +272,17 @@ export function checkOrdemPowerRequirements(
     { token: 'ocultismo', skillId: 'ocultismo', label: 'Treinado em Ocultismo' },
   ];
   if (lowerReq.includes('treinado')) {
+    if (lowerReq.includes('luta ou pontaria')) {
+      const lutaSk = sheetData.skills.find((s) => s.id === 'luta');
+      const pontSk = sheetData.skills.find((s) => s.id === 'pontaria');
+      if ((!lutaSk || lutaSk.trainingDegree < 5) && (!pontSk || pontSk.trainingDegree < 5)) {
+        missing.push('Treinado em Luta ou Pontaria');
+      }
+    }
     for (const sc of skillChecks) {
+      if (lowerReq.includes('luta ou pontaria') && (sc.skillId === 'luta' || sc.skillId === 'pontaria')) {
+        continue;
+      }
       if (lowerReq.includes(sc.token)) {
         const sk = sheetData.skills.find((s) => s.id === sc.skillId);
         if (!sk || sk.trainingDegree < 5) {

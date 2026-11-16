@@ -41,7 +41,11 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Combater com Duas Armas (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-duas-armas', targetType: 'skill_dice', targetKey: 'luta', value: -1 }],
+    modifiers: [
+      { id: 'm-duas-armas-atk', targetType: 'skill_dice', targetKey: 'attack_all', value: -1 },
+      { id: 'm-duas-armas-luta', targetType: 'skill_dice', targetKey: 'luta', value: -1 },
+      { id: 'm-duas-armas-pont', targetType: 'skill_dice', targetKey: 'pontaria', value: -1 },
+    ],
     metadata: { requirements: 'Combatente, Agi 3, treinado em Luta ou Pontaria' },
   },
   {
@@ -51,7 +55,12 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Combate Defensivo (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-comb-def', targetType: 'defense', targetKey: 'defense', value: 5 }],
+    modifiers: [
+      { id: 'm-comb-def-def', targetType: 'defense', targetKey: 'defense', value: 5 },
+      { id: 'm-comb-def-atk', targetType: 'skill_dice', targetKey: 'attack_all', value: -1 },
+      { id: 'm-comb-def-luta', targetType: 'skill_dice', targetKey: 'luta', value: -1 },
+      { id: 'm-comb-def-pont', targetType: 'skill_dice', targetKey: 'pontaria', value: -1 },
+    ],
     metadata: { requirements: 'Combatente, Int 2' },
   },
   {
@@ -146,7 +155,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Sentido Tático (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
-    modifiers: [{ id: 'm-sent-tat', targetType: 'defense', targetKey: 'defense', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, Int 2, treinado em Percepção e Tática' },
   },
   {
@@ -156,7 +165,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Tanque de Guerra (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-tanque', targetType: 'defense', targetKey: 'defense', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, Proteção Pesada' },
   },
   {
@@ -166,7 +175,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Tiro Certeiro (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-tiro-cert', targetType: 'damage_bonus', targetKey: 'all', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, treinado em Pontaria' },
   },
   {
