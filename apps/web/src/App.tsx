@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { Dashboard } from './components/Dashboard';
 import { SheetContainer } from './components/sheets/SheetContainer';
@@ -13,6 +13,7 @@ import {
   SystemId,
   DiceRollResult,
   AttackDamageRollPayload,
+  ForcaOpressoraRollPayload,
   SheetPermissions,
   StickyPostIt,
   RPGItem,
@@ -71,6 +72,7 @@ export default function App() {
     initiative: number;
     timestamp: number;
   } | null>(null);
+  const sheetSpendResourceRef = useRef<((amount: number) => boolean) | null>(null);
 
   const activeRoomId =
     currentCampaignSession?.campaignId ||
@@ -211,7 +213,8 @@ export default function App() {
     characterId?: string,
     fixedRolls?: number[],
     hasAfortunado?: boolean,
-    attackDamagePayload?: AttackDamageRollPayload
+    attackDamagePayload?: AttackDamageRollPayload,
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload
   ) {
     if (!activeRoomId || !currentUser) return;
     socket.emit('dice:roll', {
@@ -229,6 +232,7 @@ export default function App() {
       fixedRolls,
       hasAfortunado,
       attackDamagePayload,
+      forcaOpressoraPayload,
     });
   }
 
@@ -278,8 +282,48 @@ export default function App() {
             false,
             rollResult.characterId,
             undefined,
-            rollResult.hasAfortunado
+            rollResult.hasAfortunado,
+            undefined,
+            p.forcaOpressoraPayload
           );
+        }}
+        onRollForcaOpressora={(rollResult, maneuver) => {
+          const fo = rollResult.forcaOpressoraPayload;
+          if (!fo) return;
+          if (sheetSpendResourceRef.current && !sheetSpendResourceRef.current(1)) {
+            setActiveRollModal(null);
+            return;
+          }
+          if (maneuver === 'empurrar') {
+            const pushBonus = Math.floor(Math.max(0, rollResult.total) / 10) * 5;
+            triggerRoll(
+              rollResult.characterName,
+              rollResult.system,
+              `Força Opressora — Empurrar (${rollResult.total} dano → +${pushBonus}): Luta`,
+              fo.lutaDiceCount,
+              20,
+              fo.lutaBonus + pushBonus,
+              rollResult.isSecret,
+              false,
+              rollResult.characterId,
+              undefined,
+              rollResult.hasAfortunado
+            );
+          } else {
+            triggerRoll(
+              rollResult.characterName,
+              rollResult.system,
+              'Força Opressora — Derrubar: Luta',
+              fo.lutaDiceCount,
+              20,
+              fo.lutaBonus,
+              rollResult.isSecret,
+              false,
+              rollResult.characterId,
+              undefined,
+              rollResult.hasAfortunado
+            );
+          }
         }}
       />
 
@@ -349,6 +393,9 @@ export default function App() {
           currentUserId={currentUser.id}
           onBack={() => setOpenedCharacter(null)}
           onRollDice={triggerRoll}
+          onRegisterSpendResource={(fn) => {
+            sheetSpendResourceRef.current = fn;
+          }}
           externalPermissions={livePermissions}
           externalCombatState={liveCombatState}
           externalReloadSignal={lastUpdatedCharSignal}
