@@ -41,7 +41,11 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Combater com Duas Armas (Combatente)',
     description: 'Se estiver empunhando duas armas (e pelo menos uma for leve) e fizer a ação agredir, pode fazer dois ataques, um com cada arma, sofrendo -1d20 em todos os testes de ataque até o próximo turno. Pré-requisitos: Agi 3, treinado em Luta ou Pontaria.',
     cost: 0,
-    modifiers: [{ id: 'm-duas-armas', targetType: 'skill_dice', targetKey: 'luta', value: -1 }],
+    modifiers: [
+      { id: 'm-duas-armas-atk', targetType: 'skill_dice', targetKey: 'attack_all', value: -1 },
+      { id: 'm-duas-armas-luta', targetType: 'skill_dice', targetKey: 'luta', value: -1 },
+      { id: 'm-duas-armas-pont', targetType: 'skill_dice', targetKey: 'pontaria', value: -1 },
+    ],
     metadata: { requirements: 'Combatente, Agi 3, treinado em Luta ou Pontaria' },
   },
   {
@@ -51,7 +55,12 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Combate Defensivo (Combatente)',
     description: 'Quando usa a ação agredir, pode combater defensivamente: até seu próximo turno, sofre -1d20 em todos os testes de ataque, mas recebe +5 na Defesa. Pré-requisito: Int 2.',
     cost: 0,
-    modifiers: [{ id: 'm-comb-def', targetType: 'defense', targetKey: 'defense', value: 5 }],
+    modifiers: [
+      { id: 'm-comb-def-def', targetType: 'defense', targetKey: 'defense', value: 5 },
+      { id: 'm-comb-def-atk', targetType: 'skill_dice', targetKey: 'attack_all', value: -1 },
+      { id: 'm-comb-def-luta', targetType: 'skill_dice', targetKey: 'luta', value: -1 },
+      { id: 'm-comb-def-pont', targetType: 'skill_dice', targetKey: 'pontaria', value: -1 },
+    ],
     metadata: { requirements: 'Combatente, Int 2' },
   },
   {
@@ -146,7 +155,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Sentido Tático (Combatente)',
     description: 'Gaste uma ação de movimento e 2 PE para analisar o ambiente. Recebe bônus em Defesa e em testes de resistência igual ao seu Intelecto até o final da cena. Pré-requisitos: Int 2, treinado em Percepção e Tática.',
     cost: 2,
-    modifiers: [{ id: 'm-sent-tat', targetType: 'defense', targetKey: 'defense', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, Int 2, treinado em Percepção e Tática' },
   },
   {
@@ -156,7 +165,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Tanque de Guerra (Combatente)',
     description: 'Se estiver usando uma proteção pesada, a Defesa e a resistência a dano que ela fornece aumentam em +2. Pré-requisito: Proteção Pesada.',
     cost: 0,
-    modifiers: [{ id: 'm-tanque', targetType: 'defense', targetKey: 'defense', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, Proteção Pesada' },
   },
   {
@@ -166,7 +175,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Tiro Certeiro (Combatente)',
     description: 'Se estiver usando uma arma de disparo, soma sua Agilidade nas rolagens de dano e ignora a penalidade contra alvos envolvidos em combate corpo a corpo. Pré-requisito: treinado em Pontaria.',
     cost: 0,
-    modifiers: [{ id: 'm-tiro-cert', targetType: 'damage_bonus', targetKey: 'all', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, treinado em Pontaria' },
   },
   {

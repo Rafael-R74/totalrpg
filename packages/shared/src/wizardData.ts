@@ -410,7 +410,7 @@ export const ORDEM_CLASSES: OrdemClassDefinition[] = [
         cost: 2,
         description: 'Quando faz um ataque, você pode gastar 2 PE para receber +5 no teste de ataque ou na rolagem de dano. Aumenta para +10 (3 PE) em NEX 25%, +15 (4 PE) em 55% e +20 (5 PE) em 85%.',
         isActive: false,
-        modifiers: [{ id: 'cls-comb-atk', targetType: 'attack_bonus', targetKey: 'all', value: 5 }],
+        modifiers: [],
       },
     ],
   },
