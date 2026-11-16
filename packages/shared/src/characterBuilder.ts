@@ -162,6 +162,35 @@ export function boostCritMultiplier(critRange: string, extraMult: number): strin
   return clean;
 }
 
+export function parseCritRange(critRange: string): {
+  threatMin: number;
+  multiplier: number;
+} {
+  const clean = (critRange || '20/x2').trim();
+  const bothMatch = clean.match(/^(\d+)\s*\/\s*x(\d+)$/i);
+  if (bothMatch) {
+    return {
+      threatMin: Math.max(1, Math.min(20, Number(bothMatch[1]))),
+      multiplier: Math.max(2, Number(bothMatch[2])),
+    };
+  }
+  const multOnly = clean.match(/^x(\d+)$/i);
+  if (multOnly) {
+    return {
+      threatMin: 20,
+      multiplier: Math.max(2, Number(multOnly[1])),
+    };
+  }
+  const threatOnly = clean.match(/^(\d+)$/);
+  if (threatOnly) {
+    return {
+      threatMin: Math.max(1, Math.min(20, Number(threatOnly[1]))),
+      multiplier: 2,
+    };
+  }
+  return { threatMin: 20, multiplier: 2 };
+}
+
 export interface AtaqueEspecialTier {
   peCost: number;
   totalBonus: number; // 5, 10, 15 ou 20
@@ -785,17 +814,30 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
 
     // Se for arma (possui damageFormula), cria ataque preparado automaticamente!
     if (itemEntry.metadata?.damageFormula) {
+      const lowerName = itemEntry.name.toLowerCase();
       const lowerDesc = itemEntry.description.toLowerCase();
       const isFirearm =
+        lowerName.includes('fogo') ||
         lowerDesc.includes('fogo') ||
         (itemEntry.metadata?.element || '').toLowerCase().includes('balístico');
-      const isRanged =
-        isFirearm ||
-        lowerDesc.includes('disparo') ||
-        (itemEntry.metadata?.range && itemEntry.metadata.range !== 'Corpo a Corpo');
-      const isMelee = !isRanged;
-      const skillId = isRanged ? 'pontaria' : 'luta';
-      const attrVal = isRanged ? input.attributes.agi : input.attributes.for;
+      const isDisparo =
+        lowerName.includes('disparo') ||
+        lowerDesc.includes('arma de disparo') ||
+        lowerName.includes('arco') ||
+        lowerName.includes('besta') ||
+        lowerName.includes('balestra');
+      const isRangedOnly = isFirearm || isDisparo;
+      const isMelee = !isRangedOnly;
+      const isAgile =
+        lowerName.includes('ágil') ||
+        lowerDesc.includes('arma ágil') ||
+        lowerDesc.includes('ágil');
+      const skillId = isRangedOnly ? 'pontaria' : 'luta';
+      const attrVal = isRangedOnly
+        ? input.attributes.agi
+        : isAgile
+        ? Math.max(input.attributes.for, input.attributes.agi)
+        : input.attributes.for;
       const skillBonus = allTrainedSet.has(skillId) ? 5 : 0;
 
       attacks.push({

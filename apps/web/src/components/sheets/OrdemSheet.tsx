@@ -24,6 +24,10 @@ interface OrdemSheetProps {
   abilities?: CharacterAbility[];
   isOverloaded?: boolean;
   isMachucado?: boolean;
+  hasActiveInitiativeOrder?: boolean;
+  isMyTurnInCombat?: boolean;
+  currentRoundNumber?: number;
+  peSpentThisTurn?: number;
   isEditMode: boolean;
   canEditAttributes: boolean;
   canEditAbilities: boolean;
@@ -51,6 +55,10 @@ export function OrdemSheet({
   abilities = [],
   isOverloaded = false,
   isMachucado = false,
+  hasActiveInitiativeOrder = false,
+  isMyTurnInCombat = false,
+  currentRoundNumber = 1,
+  peSpentThisTurn = 0,
   isEditMode,
   canEditAttributes,
   canEditAbilities,
@@ -63,10 +71,6 @@ export function OrdemSheet({
   onRoll,
 }: OrdemSheetProps) {
   const [armOriginBoost, setArmOriginBoost] = useState(false);
-  const [armCombatSkillOverride, setArmCombatSkillOverride] = useState<
-    null | 'incansavel' | 'presteza_atletica'
-  >(null);
-  const [combatOverrideAttr, setCombatOverrideAttr] = useState<'for' | 'agi'>('for');
 
   const fallback = createDefaultOrdemSheet().sheetData;
   const baseSkills = data?.skills && data.skills.length > 0 ? data.skills : fallback.skills;
@@ -115,9 +119,8 @@ export function OrdemSheet({
   const sceneEffects = safeData.sceneEffects || [];
   const faroPistasUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-faro-pistas');
   const impostorUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-impostor');
-  const incansavelUsedInScene = sceneEffects.some((e) => e.id === 'pwr-scene-incansavel');
 
-  // Poderes de Tropa de Choque e Combatente para indicadores e automação
+  // Poderes de Tropa de Choque para indicadores e automação
   const hasCascaGrossa = abilities.some(
     (a) =>
       a.id === 'trail-tropa_choque-10' ||
@@ -133,18 +136,6 @@ export function OrdemSheet({
       a.id === 'trail-tropa_choque-99' ||
       a.name.toLowerCase().includes('inquebrável') ||
       a.name.toLowerCase().includes('inquebravel')
-  );
-  const hasIncansavel = abilities.some(
-    (a) =>
-      a.id === 'ord-pwr-comb-incansavel' ||
-      a.name.toLowerCase().includes('incansável') ||
-      a.name.toLowerCase().includes('incansavel')
-  );
-  const hasPrestezaAtletica = abilities.some(
-    (a) =>
-      a.id === 'ord-pwr-comb-presteza-atletica' ||
-      a.name.toLowerCase().includes('presteza atlética') ||
-      a.name.toLowerCase().includes('presteza atletica')
   );
 
   // Defesa em Ordem Paranormal: 10 + AGI + Bônus (+5 Inquebrável se Machucado) - 5 se sobrecarregado
@@ -363,13 +354,22 @@ export function OrdemSheet({
             </span>
           </div>
 
-          <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex items-center justify-between">
+          <div
+            className={`bg-zinc-950 border rounded-lg px-3 py-2 flex items-center justify-between ${
+              hasActiveInitiativeOrder && isMyTurnInCombat
+                ? 'border-amber-500 ring-1 ring-amber-500/40'
+                : 'border-zinc-800'
+            }`}
+          >
             <div>
               <span className="block text-[10px] uppercase font-bold text-amber-400">
                 ⚡ Limite de PE / Turno
+                {hasActiveInitiativeOrder && isMyTurnInCombat ? ` • ⚔️ SEU TURNO (Rod. ${currentRoundNumber})` : ''}
               </span>
               <span className="text-[10px] text-zinc-500">
-                Máx. de PE gasto por rodada
+                {hasActiveInitiativeOrder
+                  ? `Gasto neste turno: ${peSpentThisTurn} / ${peLimitPerTurn} PE`
+                  : 'Máx. de PE gasto por rodada'}
               </span>
             </div>
             <span className="text-xl font-black font-mono text-amber-300">
@@ -648,94 +648,6 @@ export function OrdemSheet({
           </div>
         )}
 
-        {/* Barra de Automação Rápida de Poderes de Combatente para Perícias (Incansável / Presteza Atlética) */}
-        {(hasIncansavel || hasPrestezaAtletica) && (
-          <div className="mb-3 p-3 rounded-xl bg-red-950/20 border border-red-700/40 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-red-200">
-              <strong className="text-red-400">⚔️ Poderes de Investigação Física:</strong>
-              <span className="text-zinc-400">Atributo substituto:</span>
-              <div className="inline-flex rounded-lg overflow-hidden border border-zinc-700">
-                <button
-                  type="button"
-                  onClick={() => setCombatOverrideAttr('for')}
-                  className={`px-2 py-0.5 text-[11px] font-bold cursor-pointer ${
-                    combatOverrideAttr === 'for'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-zinc-900 text-zinc-400'
-                  }`}
-                >
-                  FOR ({effectiveFor})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCombatOverrideAttr('agi')}
-                  className={`px-2 py-0.5 text-[11px] font-bold cursor-pointer ${
-                    combatOverrideAttr === 'agi'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-zinc-900 text-zinc-400'
-                  }`}
-                >
-                  AGI ({effectiveAgi})
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {hasIncansavel && (
-                incansavelUsedInScene ? (
-                  <span className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-500 text-xs font-bold">
-                    ✓ Incansável já usado nesta cena
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (armCombatSkillOverride !== 'incansavel') {
-                        if (onCheckResource && !onCheckResource(2, 'Incansável')) return;
-                        setArmCombatSkillOverride('incansavel');
-                      } else {
-                        setArmCombatSkillOverride(null);
-                      }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                      armCombatSkillOverride === 'incansavel'
-                        ? 'bg-red-500 text-white border-red-300 shadow-lg'
-                        : 'bg-zinc-900 hover:bg-red-950 text-red-300 border-red-700/60'
-                    }`}
-                  >
-                    {armCombatSkillOverride === 'incansavel'
-                      ? `⚡ Incansável ARMADO (-2 PE • Usar ${combatOverrideAttr.toUpperCase()})`
-                      : `🏃 Armar Incansável (-2 PE • 1x/Cena → ${combatOverrideAttr.toUpperCase()})`}
-                  </button>
-                )
-              )}
-
-              {hasPrestezaAtletica && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (armCombatSkillOverride !== 'presteza_atletica') {
-                      if (onCheckResource && !onCheckResource(1, 'Presteza Atlética')) return;
-                      setArmCombatSkillOverride('presteza_atletica');
-                    } else {
-                      setArmCombatSkillOverride(null);
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                    armCombatSkillOverride === 'presteza_atletica'
-                      ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow-lg'
-                      : 'bg-zinc-900 hover:bg-amber-950 text-amber-300 border-amber-700/60'
-                  }`}
-                >
-                  {armCombatSkillOverride === 'presteza_atletica'
-                    ? `⚡ Presteza Atlética ARMADA (-1 PE • Usar ${combatOverrideAttr.toUpperCase()})`
-                    : `🤸 Armar Presteza Atlética (-1 PE → ${combatOverrideAttr.toUpperCase()})`}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-1">
           {safeData.skills.map((skill) => {
             const meta = ORDEM_SKILLS_METADATA.find((m) => m.id === skill.id);
@@ -776,37 +688,6 @@ export function OrdemSheet({
 
                       let rollMod = totalBonus;
                       let rollSuffix = '';
-                      let rollDiceCount = rawDiceCount;
-
-                      if (armCombatSkillOverride) {
-                        const overrideCost = armCombatSkillOverride === 'incansavel' ? 2 : 1;
-                        const extraSceneEffect: SceneEffect | undefined =
-                          armCombatSkillOverride === 'incansavel'
-                            ? {
-                                id: 'pwr-scene-incansavel',
-                                name: 'Incansável (Poder de Combatente)',
-                                source: '1x/Cena',
-                                description: 'Ação de investigação adicional usando FOR ou AGI nesta cena',
-                              }
-                            : undefined;
-
-                        if (
-                          onSpendResource &&
-                          !onSpendResource(overrideCost, extraSceneEffect)
-                        ) {
-                          setArmCombatSkillOverride(null);
-                          return;
-                        }
-                        const overrideAttrVal =
-                          combatOverrideAttr === 'for' ? effectiveFor : effectiveAgi;
-                        rollDiceCount = overrideAttrVal + extraDice;
-                        rollSuffix += ` [${
-                          armCombatSkillOverride === 'incansavel'
-                            ? 'Incansável'
-                            : 'Presteza Atlética'
-                        } (${combatOverrideAttr.toUpperCase()})]`;
-                        setArmCombatSkillOverride(null);
-                      }
 
                       if (armOriginBoost && originObj) {
                         const isEligible =
@@ -849,7 +730,7 @@ export function OrdemSheet({
                         }
                       }
 
-                      onRoll(`Perícia: ${skill.name}${rollSuffix}`, rollDiceCount, 20, rollMod);
+                      onRoll(`Perícia: ${skill.name}${rollSuffix}`, rawDiceCount, 20, rollMod);
                     }}
                     className={`px-2.5 py-1 border rounded text-xs font-mono font-bold transition cursor-pointer shrink-0 ${
                       isUntrainedLocked

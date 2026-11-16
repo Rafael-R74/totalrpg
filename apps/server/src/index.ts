@@ -106,6 +106,7 @@ io.on('connection', (socket) => {
       isSecret,
       fixedRolls,
       hasAfortunado,
+      attackDamagePayload,
     }) => {
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
@@ -154,6 +155,7 @@ io.on('connection', (socket) => {
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         isSecret: Boolean(isSecret),
         hasAfortunado: Boolean(hasAfortunado),
+        attackDamagePayload,
       };
 
       if (isSecret) {

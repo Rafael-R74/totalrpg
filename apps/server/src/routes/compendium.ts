@@ -40,6 +40,19 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
         });
       }
 
+      // Remove entradas legadas duplicadas/incorretas (Ataque Especial como poder avulso e Resistir a <Elemento> genérico)
+      await prisma.compendiumEntry.deleteMany({
+        where: {
+          system: 'ordem-paranormal',
+          name: {
+            in: [
+              'Ataque Especial (Combatente)',
+              'Resistir a <Elemento> (Poder Paranormal)',
+            ],
+          },
+        },
+      });
+
       // Garante que Poderes Paranormais já existentes no banco sejam migrados para a categoria 'paranormal_power'
       const paranormalNames = ORDEM_COMPENDIUM_ENTRIES.filter(
         (e) => e.category === 'paranormal_power'
