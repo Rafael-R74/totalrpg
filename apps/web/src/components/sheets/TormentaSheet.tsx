@@ -92,30 +92,12 @@ export function TormentaSheet({
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3 bg-zinc-900 p-4 rounded-xl border border-zinc-800">
         <div>
           <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">Raça</label>
-          {allowAttrEdit ? (
-            <input
-              type="text"
-              value={safeData.race}
-              onChange={(e) => onChange({ ...safeData, race: e.target.value })}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-sm text-white"
-            />
-          ) : (
-            <p className="text-sm font-semibold text-white">{safeData.race}</p>
-          )}
+          <p className="text-sm font-semibold text-white">{safeData.race}</p>
         </div>
 
         <div>
           <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">Classe</label>
-          {allowAttrEdit ? (
-            <input
-              type="text"
-              value={safeData.characterClass}
-              onChange={(e) => onChange({ ...safeData, characterClass: e.target.value })}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-sm text-white"
-            />
-          ) : (
-            <p className="text-sm font-semibold text-amber-400">{safeData.characterClass}</p>
-          )}
+          <p className="text-sm font-semibold text-amber-400">{safeData.characterClass}</p>
         </div>
 
         <div>
@@ -140,16 +122,7 @@ export function TormentaSheet({
 
         <div>
           <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">Origem</label>
-          {allowAttrEdit ? (
-            <input
-              type="text"
-              value={safeData.origin}
-              onChange={(e) => onChange({ ...safeData, origin: e.target.value })}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-sm text-white"
-            />
-          ) : (
-            <p className="text-sm font-semibold text-white">{safeData.origin}</p>
-          )}
+          <p className="text-sm font-semibold text-white">{safeData.origin}</p>
         </div>
 
         <div>

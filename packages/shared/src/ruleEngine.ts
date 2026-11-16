@@ -17,6 +17,8 @@ export interface ComputedBonuses {
   defense: number;
   attackBonus: number;
   damageBonus: number;
+  meleeDamageBonus: number;
+  firearmDamageBonus: number;
   loadLimit: number;
 }
 
@@ -38,6 +40,8 @@ export function calculateActiveBonuses(
     defense: 0,
     attackBonus: 0,
     damageBonus: 0,
+    meleeDamageBonus: 0,
+    firearmDamageBonus: 0,
     loadLimit: 0,
   };
 
@@ -68,10 +72,12 @@ export function calculateActiveBonuses(
     }
   }
 
-  // 2. Define o multiplicador de escalonamento (Nível em T20 ou Grau de NEX em Ordem)
+  // 2. Define o multiplicador de escalonamento (Nível em T20 ou Grau de NEX em Ordem: 99% = 20 graus)
   const multiplier =
     system === 'ordem-paranormal'
-      ? Math.max(1, Math.floor(levelOrNex / 5))
+      ? levelOrNex === 99
+        ? 20
+        : Math.max(1, Math.floor(levelOrNex / 5))
       : Math.max(1, levelOrNex);
 
   // 3. Processa cada modificador somando no alvo correspondente
@@ -113,7 +119,13 @@ export function calculateActiveBonuses(
         break;
 
       case 'damage_bonus':
-        result.damageBonus += finalValue;
+        if (key === 'melee' || key === 'corpo_a_corpo') {
+          result.meleeDamageBonus += finalValue;
+        } else if (key === 'firearm' || key === 'fogo') {
+          result.firearmDamageBonus += finalValue;
+        } else {
+          result.damageBonus += finalValue;
+        }
         break;
 
       case 'load_limit':
