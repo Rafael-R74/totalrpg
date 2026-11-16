@@ -51,6 +51,7 @@ export function CharacterWizardModal({
   const [ordemOriginId, setOrdemOriginId] = useState<string>('academico');
   const [amnesicoSkills, setAmnesicoSkills] = useState<string[]>(['percepcao', 'vontade']);
   const [cultistaPowerId, setCultistaPowerId] = useState<string>('ord-para-sang-sangue-ferro');
+  const [engenheiroFavItemId, setEngenheiroFavItemId] = useState<string>('ord-item-kit-pericia');
 
   const [ordemClassId, setOrdemClassId] = useState<
     'combatente' | 'especialista' | 'ocultista' | 'mundano'
@@ -71,6 +72,7 @@ export function CharacterWizardModal({
   const [chosenRitualIds, setChosenRitualIds] = useState<string[]>([]);
   const [ritualSearch, setRitualSearch] = useState<string>('');
   const [ritualElementFilter, setRitualElementFilter] = useState<string>('ALL');
+  const [showAmaldicoarElementPrompt, setShowAmaldicoarElementPrompt] = useState<boolean>(false);
 
   const [itemSearch, setItemSearch] = useState<string>('');
   const [itemCategoryFilter, setItemCategoryFilter] = useState<'ALL' | 0 | 1>('ALL');
@@ -203,29 +205,66 @@ export function CharacterWizardModal({
     []
   );
 
-  const recruitItems = useMemo(
+  const engenheiroEligibleItems = useMemo(
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter(
         (e) =>
           e.category === 'item' &&
-          (e.metadata?.categoryLevel ?? e.cost ?? 0) <= 1
+          !e.metadata?.damageFormula &&
+          (e.metadata?.categoryLevel ?? e.cost ?? 0) >= 1 &&
+          (e.metadata?.categoryLevel ?? e.cost ?? 0) <= 2
       ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     []
+  );
+
+  const getEffectiveRecruitItemCat = (entry: (typeof ORDEM_COMPENDIUM_ENTRIES)[number]) => {
+    const rawCat = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
+    if (
+      selectedOrdemOrigin.id === 'engenheiro' &&
+      !entry.metadata?.damageFormula &&
+      entry.id === engenheiroFavItemId
+    ) {
+      return Math.max(0, rawCat - 1);
+    }
+    return rawCat;
+  };
+
+  const recruitItems = useMemo(
+    () =>
+      ORDEM_COMPENDIUM_ENTRIES.filter((e) => {
+        if (e.category !== 'item') return false;
+        const effCat = getEffectiveRecruitItemCat(e);
+        return effCat <= 1;
+      }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [selectedOrdemOrigin.id, engenheiroFavItemId]
   );
 
   const selectedCat1Count = useMemo(() => {
     return Object.entries(chosenItemQuantities).reduce((acc, [id, qty]) => {
       if (qty <= 0) return acc;
       const entry = recruitItems.find((e) => e.id === id);
-      const cat = entry?.metadata?.categoryLevel ?? entry?.cost ?? 0;
-      return cat === 1 ? acc + qty : acc;
+      if (!entry) return acc;
+      const rawCat = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
+      const isFavTool =
+        selectedOrdemOrigin.id === 'engenheiro' &&
+        !entry.metadata?.damageFormula &&
+        entry.id === engenheiroFavItemId;
+      if (isFavTool) {
+        // Apenas a 1ª unidade da Ferramenta Favorita tem categoria reduzida em 1
+        const firstUnitCat = Math.max(0, rawCat - 1);
+        const otherUnitsCat = rawCat;
+        const firstCat1 = firstUnitCat === 1 ? 1 : 0;
+        const othersCat1 = otherUnitsCat === 1 ? Math.max(0, qty - 1) : 0;
+        return acc + firstCat1 + othersCat1;
+      }
+      return rawCat === 1 ? acc + qty : acc;
     }, 0);
-  }, [chosenItemQuantities, recruitItems]);
+  }, [chosenItemQuantities, recruitItems, selectedOrdemOrigin.id, engenheiroFavItemId]);
 
   const filteredRecruitItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase();
     return recruitItems.filter((item) => {
-      const cat = item.metadata?.categoryLevel ?? item.cost ?? 0;
+      const cat = getEffectiveRecruitItemCat(item);
       if (itemCategoryFilter !== 'ALL' && cat !== itemCategoryFilter) return false;
       if (!q) return true;
       return (
@@ -233,7 +272,7 @@ export function CharacterWizardModal({
         item.description.toLowerCase().includes(q)
       );
     });
-  }, [recruitItems, itemSearch, itemCategoryFilter]);
+  }, [recruitItems, itemSearch, itemCategoryFilter, selectedOrdemOrigin.id, engenheiroFavItemId]);
 
   // --- Memos Tormenta 20 ---
   const selectedT20Race = useMemo(
@@ -285,6 +324,10 @@ export function CharacterWizardModal({
   };
 
   const toggleRitualChoice = (ritualId: string) => {
+    if (ritualId === 'ord-rit-amaldicoar-arma') {
+      setShowAmaldicoarElementPrompt((prev) => !prev);
+      return;
+    }
     setChosenRitualIds((prev) => {
       if (prev.includes(ritualId)) return prev.filter((id) => id !== ritualId);
       if (prev.length >= 3) {
@@ -294,15 +337,27 @@ export function CharacterWizardModal({
     });
   };
 
+  const selectAmaldicoarArmaWithElement = (element: 'Sangue' | 'Morte' | 'Conhecimento' | 'Energia') => {
+    const compositeId = `ord-rit-amaldicoar-arma:${element}`;
+    setChosenRitualIds((prev) => {
+      if (prev.includes(compositeId)) return prev.filter((id) => id !== compositeId);
+      if (prev.length >= 3) {
+        return [...prev.slice(1), compositeId];
+      }
+      return [...prev, compositeId];
+    });
+    setShowAmaldicoarElementPrompt(false);
+  };
+
   const changeRecruitItemQty = (itemId: string, delta: number) => {
     const entry = recruitItems.find((e) => e.id === itemId);
     if (!entry) return;
-    const cat = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
+    const effCat = getEffectiveRecruitItemCat(entry);
 
     setChosenItemQuantities((prev) => {
       const currentQty = prev[itemId] || 0;
       const nextQty = Math.max(0, currentQty + delta);
-      if (delta > 0 && cat === 1 && selectedCat1Count >= 2) {
+      if (delta > 0 && effCat === 1 && selectedCat1Count >= 2) {
         return prev;
       }
       const next = { ...prev };
@@ -348,6 +403,8 @@ export function CharacterWizardModal({
             ? cultistaPowerId
             : undefined,
           chosenItems: chosenItemsArray,
+          favoriteToolItemId:
+            selectedOrdemOrigin.id === 'engenheiro' ? engenheiroFavItemId : undefined,
         });
 
         const created = await createCharacter(name.trim(), system, {
@@ -642,7 +699,7 @@ export function CharacterWizardModal({
                     {selectedOrdemOrigin.grantsParanormalPower && (
                       <div className="pt-2 border-t border-zinc-800 space-y-2">
                         <p className="text-xs font-bold text-purple-300">
-                          👁️ Vestígios do Outro Lado: Escolha seu 1º Poder Paranormal gratuito (você começa com metade da Sanidade normal da classe):
+                          👁️ Traços do Outro Lado: Escolha seu 1º Poder Paranormal gratuito (você começa com metade da Sanidade normal da classe):
                         </p>
                         <select
                           value={cultistaPowerId}
@@ -654,6 +711,29 @@ export function CharacterWizardModal({
                               {pw.name} — {pw.description.slice(0, 95)}...
                             </option>
                           ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Se for Engenheiro: Escolher o Item (Ferramenta Favorita) */}
+                    {selectedOrdemOrigin.id === 'engenheiro' && (
+                      <div className="pt-2 border-t border-zinc-800 space-y-2">
+                        <p className="text-xs font-bold text-emerald-300">
+                          🔧 Ferramenta Favorita (Engenheiro): Escolha um item (exceto armas) para contar como uma Categoria abaixo para você:
+                        </p>
+                        <select
+                          value={engenheiroFavItemId}
+                          onChange={(e) => setEngenheiroFavItemId(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-emerald-500/50 text-white text-xs"
+                        >
+                          {engenheiroEligibleItems.map((it) => {
+                            const rawCat = it.metadata?.categoryLevel ?? it.cost ?? 1;
+                            return (
+                              <option key={it.id} value={it.id}>
+                                {it.name} (Cat. {rawCat === 2 ? 'II → I' : 'I → 0'}) — {it.description.slice(0, 75)}
+                              </option>
+                            );
+                          })}
                         </select>
                       </div>
                     )}
@@ -1022,20 +1102,26 @@ export function CharacterWizardModal({
                         Nenhum ritual selecionado ainda. Clique nos cards abaixo para escolher 3 rituais!
                       </span>
                     ) : (
-                      chosenRitualIds.map((rId, idx) => {
-                        const rObj = firstCircleRituals.find((r) => r.id === rId);
+                      chosenRitualIds.map((rawId, idx) => {
+                        const [baseId, chosenEl] = rawId.split(':');
+                        const rObj = firstCircleRituals.find((r) => r.id === baseId);
                         if (!rObj) return null;
+                        const displayName = chosenEl
+                          ? `Amaldiçoar Arma — ${chosenEl} (1º Círculo)`
+                          : rObj.name;
                         return (
                           <span
-                            key={rId}
+                            key={rawId}
                             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-600 text-white text-xs font-extrabold shadow"
                           >
                             <span>
-                              {idx + 1}. {rObj.name}
+                              {idx + 1}. {displayName}
                             </span>
                             <button
                               type="button"
-                              onClick={() => toggleRitualChoice(rId)}
+                              onClick={() =>
+                                setChosenRitualIds((prev) => prev.filter((id) => id !== rawId))
+                              }
                               className="text-purple-200 hover:text-white font-black cursor-pointer"
                               title="Remover ritual"
                             >
@@ -1046,6 +1132,54 @@ export function CharacterWizardModal({
                       })
                     )}
                   </div>
+
+                  {showAmaldicoarElementPrompt && (
+                    <div className="p-4 rounded-xl bg-amber-950/40 border-2 border-amber-500 flex flex-col gap-3 animate-pulse">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-black uppercase text-amber-400">
+                            🔮 Escolha Obrigatória do Ritual
+                          </span>
+                          <h5 className="text-sm font-black text-white">
+                            De qual elemento você quer aprender &quot;Amaldiçoar Arma&quot;?
+                          </h5>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAmaldicoarElementPrompt(false)}
+                          className="text-xs text-zinc-400 hover:text-white px-2 py-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {(
+                          [
+                            { el: 'Sangue', icon: '🩸', color: 'bg-red-900/70 hover:bg-red-700 border-red-500 text-red-100' },
+                            { el: 'Morte', icon: '💀', color: 'bg-zinc-900 hover:bg-zinc-700 border-zinc-400 text-zinc-100' },
+                            { el: 'Conhecimento', icon: '👁️', color: 'bg-amber-900/70 hover:bg-amber-700 border-amber-400 text-amber-100' },
+                            { el: 'Energia', icon: '⚡', color: 'bg-purple-900/70 hover:bg-purple-700 border-purple-400 text-purple-100' },
+                          ] as const
+                        ).map((opt) => {
+                          const alreadyPicked = chosenRitualIds.includes(
+                            `ord-rit-amaldicoar-arma:${opt.el}`
+                          );
+                          return (
+                            <button
+                              key={opt.el}
+                              type="button"
+                              onClick={() => selectAmaldicoarArmaWithElement(opt.el)}
+                              className={`py-2.5 px-3 rounded-xl border font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${opt.color}`}
+                            >
+                              <span>{opt.icon}</span>
+                              <span>{opt.el}</span>
+                              {alreadyPicked && <span>(✓)</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-1.5">
                     {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
@@ -1066,8 +1200,16 @@ export function CharacterWizardModal({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
                     {filteredRituals.map((rit) => {
-                      const picked = chosenRitualIds.includes(rit.id);
-                      const pickedIndex = chosenRitualIds.indexOf(rit.id);
+                      const matchingIds = chosenRitualIds.filter(
+                        (id) => id === rit.id || id.startsWith(`${rit.id}:`)
+                      );
+                      const picked = matchingIds.length > 0;
+                      const pickedElements = matchingIds
+                        .map((id) => id.split(':')[1])
+                        .filter(Boolean);
+                      const pickedIndex = picked
+                        ? chosenRitualIds.indexOf(matchingIds[0])
+                        : -1;
                       return (
                         <button
                           key={rit.id}
@@ -1082,6 +1224,7 @@ export function CharacterWizardModal({
                           <div className="flex items-center justify-between gap-2 mb-1.5">
                             <span className="font-extrabold text-white text-xs">
                               {rit.name}
+                              {pickedElements.length > 0 && ` (${pickedElements.join(', ')})`}
                             </span>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-purple-300">
@@ -1329,7 +1472,12 @@ export function CharacterWizardModal({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto pr-1">
                   {filteredRecruitItems.map((item) => {
-                    const cat = item.metadata?.categoryLevel ?? item.cost ?? 0;
+                    const rawCat = item.metadata?.categoryLevel ?? item.cost ?? 0;
+                    const cat = getEffectiveRecruitItemCat(item);
+                    const isEngFav =
+                      selectedOrdemOrigin.id === 'engenheiro' &&
+                      !item.metadata?.damageFormula &&
+                      item.id === engenheiroFavItemId;
                     const qty = chosenItemQuantities[item.id] || 0;
                     const picked = qty > 0;
                     const canAddMore = cat === 0 || selectedCat1Count < 2;
@@ -1355,9 +1503,15 @@ export function CharacterWizardModal({
                                   : 'bg-amber-950 text-amber-300'
                               }`}
                             >
-                              Cat. {cat === 0 ? '0' : 'I'} • {item.metadata?.slots ?? 1} esp.
+                              Cat. {cat === 0 ? '0' : 'I'}
+                              {isEngFav ? ` (era ${rawCat === 2 ? 'II' : 'I'})` : ''} • {item.metadata?.slots ?? 1} esp.
                             </span>
                           </div>
+                          {isEngFav && (
+                            <span className="inline-block mb-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
+                              🔧 Ferramenta Favorita (-1 Cat.)
+                            </span>
+                          )}
                           <p className="text-[11px] text-zinc-400 line-clamp-2">
                             {item.description}
                           </p>
