@@ -108,6 +108,10 @@ io.on('connection', (socket) => {
       hasAfortunado,
       attackDamagePayload,
       forcaOpressoraPayload,
+      batchId,
+      batchRole,
+      batchShotNumber,
+      batchIsCrit,
     }) => {
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
@@ -158,6 +162,10 @@ io.on('connection', (socket) => {
         hasAfortunado: Boolean(hasAfortunado),
         attackDamagePayload,
         forcaOpressoraPayload,
+        batchId,
+        batchRole,
+        batchShotNumber,
+        batchIsCrit: Boolean(batchIsCrit),
       };
 
       if (isSecret) {

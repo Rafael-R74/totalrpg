@@ -19,7 +19,9 @@ import {
   boostCritRangeBySteps,
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
+  SegurarGatilhoPayload,
   parseCritRange,
+  classifyOrdemWeapon,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 
@@ -170,7 +172,8 @@ export function SheetExtras({
   const hasSegurarGatilho = abilities.some(
     (a) =>
       a.id === 'ord-pwr-comb-segurar-gatilho' ||
-      a.name.toLowerCase().includes('segurar o gatilho')
+      a.name.toLowerCase().includes('segurar o gatilho') ||
+      a.name.toLowerCase().includes('segurar gatilho')
   );
 
   // Trilhas de Combatente
@@ -229,11 +232,6 @@ export function SheetExtras({
       a.name.toLowerCase().includes('potência máxima') ||
       a.name.toLowerCase().includes('potencia maxima')
   );
-  const hasAtaqueExtra = abilities.some(
-    (a) =>
-      a.id === 'trail-operacoes_especiais-40' ||
-      a.name.toLowerCase().includes('ataque extra')
-  );
 
   function hasDedicatedControlElsewhere(ab: CharacterAbility): boolean {
     const lowerId = (ab.id || '').toLowerCase();
@@ -283,9 +281,7 @@ export function SheetExtras({
       lowerName.includes('tecnica sublime') ||
       lowerId === 'trail-guerreiro-65' ||
       lowerName.includes('força opressora') ||
-      lowerName.includes('forca opressora') ||
-      lowerId === 'trail-operacoes_especiais-40' ||
-      lowerName.includes('ataque extra')
+      lowerName.includes('forca opressora')
     ) {
       return true;
     }
@@ -351,11 +347,24 @@ export function SheetExtras({
   } | null>(null);
   const [armedGolpeDemolidor, setArmedGolpeDemolidor] = useState<boolean>(false);
   const [segurarGatilhoStep, setSegurarGatilhoStep] = useState<number>(1);
+  const [aimingByAttackId, setAimingByAttackId] = useState<Record<string, boolean>>({});
   const [secAmplo, setSecAmplo] = useState<boolean>(false);
   const [secDestruidor, setSecDestruidor] = useState<boolean>(false);
   const [secLetal, setSecLetal] = useState<0 | 1 | 2>(0);
   const [secPerfurante, setSecPerfurante] = useState<boolean>(false);
   const [combatTabFeedback, setCombatTabFeedback] = useState<string>('');
+
+  // Sincroniza passo de Segurar o Gatilho usado dentro do modal de lote
+  useEffect(() => {
+    function handleSgStepEvent(e: Event) {
+      const custom = e as CustomEvent<{ step?: number }>;
+      if (typeof custom.detail?.step === 'number') {
+        setSegurarGatilhoStep(custom.detail.step);
+      }
+    }
+    window.addEventListener('totalrpg:sg-step', handleSgStepEvent);
+    return () => window.removeEventListener('totalrpg:sg-step', handleSgStepEvent);
+  }, []);
 
   // Quando o turno do personagem chega na ordem de iniciativa da mesa, reseta o passo de Segurar o Gatilho e bônus residuais
   useEffect(() => {
@@ -474,43 +483,46 @@ export function SheetExtras({
 
       let newAtk: PreparedAttack | undefined = undefined;
       if (entry.metadata?.damageFormula) {
-        const lowerDesc = entry.description.toLowerCase();
-        const lowerName = entry.name.toLowerCase();
-        const isFirearm =
-          lowerDesc.includes('fogo') ||
-          (entry.metadata?.element || '').toLowerCase().includes('balístico');
-        const isDisparo =
-          !isFirearm &&
-          (lowerDesc.includes('arma de disparo') ||
-            lowerDesc.includes('munição: flechas') ||
-            lowerName.includes('arco') ||
-            lowerName.includes('besta') ||
-            lowerName.includes('balestra'));
-        const isMelee = !isFirearm && !isDisparo;
-        const isAgile = lowerDesc.includes('ágil') || lowerName.includes('ágil');
-        const skillId = isFirearm || isDisparo ? 'pontaria' : 'luta';
+        const classif = classifyOrdemWeapon(
+          entry.name,
+          entry.description,
+          undefined,
+          entry.metadata?.element
+        );
+        const pontariaSk =
+          system === 'ordem-paranormal' && ordemSheetData
+            ? ordemSheetData.skills.find((s) => s.id === 'pontaria')
+            : undefined;
+        const lutaSk =
+          system === 'ordem-paranormal' && ordemSheetData
+            ? ordemSheetData.skills.find((s) => s.id === 'luta')
+            : undefined;
+        const activeSkill = classif.isRanged ? pontariaSk : lutaSk;
+        const skillBonus = activeSkill
+          ? (activeSkill.trainingDegree || 0) + (activeSkill.otherModifier || 0)
+          : 0;
         const attrVal =
           system === 'ordem-paranormal' && ordemSheetData
-            ? isFirearm || isDisparo
+            ? classif.isRanged
               ? ordemSheetData.attributes.agi
-              : isAgile
+              : classif.isAgile
               ? Math.max(ordemSheetData.attributes.for, ordemSheetData.attributes.agi)
               : ordemSheetData.attributes.for
             : 1;
-        const skillObj =
-          system === 'ordem-paranormal' && ordemSheetData
-            ? ordemSheetData.skills.find((s) => s.id === skillId)
-            : undefined;
+
         newAtk = {
           id: Math.random().toString(36).substring(2, 9),
           name: entry.name,
           diceCount: Math.max(1, attrVal),
-          attackBonus: skillObj ? skillObj.trainingDegree + skillObj.otherModifier : 5,
+          attackBonus: skillBonus,
           damageFormula: entry.metadata.damageFormula,
           critRange: entry.metadata.critRange || '20/x2',
-          damageType: entry.metadata.element || 'Arma',
-          isMelee,
-          isFirearm,
+          damageType:
+            entry.metadata.element ||
+            (classif.isFirearm ? 'Balístico' : classif.isDisparo ? 'Perfuração' : 'Impacto'),
+          isMelee: classif.isMelee,
+          isFirearm: classif.isFirearm,
+          isDisparo: classif.isDisparo,
         };
       }
 
@@ -522,6 +534,7 @@ export function SheetExtras({
   function handleAddAttack(e: React.FormEvent) {
     e.preventDefault();
     if (!atkName.trim()) return;
+    const classif = classifyOrdemWeapon(atkName.trim());
     onUpdateAttacks([
       ...attacks,
       {
@@ -531,7 +544,10 @@ export function SheetExtras({
         attackBonus: atkBonus,
         damageFormula: atkDamage.trim() || '1d6',
         critRange: atkCrit.trim() || '20/x2',
-        damageType: 'Impacto',
+        damageType: classif.isFirearm ? 'Balístico' : classif.isDisparo ? 'Perfuração' : 'Impacto',
+        isMelee: classif.isMelee,
+        isFirearm: classif.isFirearm,
+        isDisparo: classif.isDisparo,
       },
     ]);
     setAtkName('');
@@ -1260,7 +1276,6 @@ export function SheetExtras({
                 Boolean(combateDefensivoAb) ||
                 Boolean(duasArmasAb) ||
                 hasGolpeDemolidor ||
-                hasAtaqueExtra ||
                 (hasArtistaMarcial && !hasUnarmedAttack);
               if (!showTacticalBar) return null;
 
@@ -1323,22 +1338,6 @@ export function SheetExtras({
                       </button>
                     )}
 
-                    {hasAtaqueExtra && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!onSpendResource(2)) return;
-                          setCombatTabFeedback(
-                            '⚡ Ataque Extra ativado (-2 PE)! Faça um ataque adicional neste turno.'
-                          );
-                          setTimeout(() => setCombatTabFeedback(''), 4000);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-zinc-900 hover:bg-amber-900/60 text-amber-200 border-amber-700/60 transition cursor-pointer"
-                      >
-                        ⚡ Ataque Extra (Op. Especiais -2 PE)
-                      </button>
-                    )}
-
                     {hasArtistaMarcial && !hasUnarmedAttack && (
                       <button
                         type="button"
@@ -1380,39 +1379,38 @@ export function SheetExtras({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {attacks.map((atk) => {
                 // Classificação de arma (corpo a corpo, arremesso, disparo, arma de fogo, ágil, desarmado)
+                const lowerAtkName = atk.name.toLowerCase();
                 const invMatch = inventory.find(
-                  (it) => it.name.toLowerCase() === atk.name.toLowerCase()
+                  (it) =>
+                    it.name.toLowerCase() === lowerAtkName ||
+                    lowerAtkName.includes(it.name.toLowerCase()) ||
+                    it.name.toLowerCase().includes(lowerAtkName)
                 );
                 const compMatch = compendiumEntries.find(
-                  (ce) => ce.category === 'item' && ce.name.toLowerCase() === atk.name.toLowerCase()
+                  (ce) =>
+                    ce.category === 'item' &&
+                    (ce.name.toLowerCase() === lowerAtkName ||
+                      lowerAtkName.includes(ce.name.toLowerCase()) ||
+                      ce.name.toLowerCase().includes(lowerAtkName))
                 );
                 const descLower = (invMatch?.description || compMatch?.description || '').toLowerCase();
-                const lowerAtkName = atk.name.toLowerCase();
                 const isUnarmed = Boolean(atk.isUnarmed || lowerAtkName.includes('desarmado'));
-                const isFirearm =
-                  atk.isFirearm !== undefined
-                    ? atk.isFirearm
-                    : descLower.includes('fogo') ||
-                      (atk.damageType || '').toLowerCase().includes('balístico');
-                const isDisparo =
-                  !isFirearm &&
-                  (descLower.includes('arma de disparo') ||
-                    descLower.includes('munição: flechas') ||
-                    lowerAtkName.includes('arco') ||
-                    lowerAtkName.includes('besta') ||
-                    lowerAtkName.includes('balestra'));
-                const isMelee = !isFirearm && !isDisparo;
-                const isThrown =
-                  descLower.includes('arremess') ||
-                  lowerAtkName.includes('arremess') ||
-                  lowerAtkName.includes('faca') ||
-                  lowerAtkName.includes('lança') ||
-                  lowerAtkName.includes('machadinha');
-                const isAgile =
-                  descLower.includes('ágil') ||
-                  lowerAtkName.includes('ágil') ||
-                  (isUnarmed && hasArtistaMarcial);
-                const isArcoComposto = lowerAtkName.includes('arco composto');
+
+                const weaponClass = classifyOrdemWeapon(
+                  atk.name,
+                  descLower,
+                  atk.isFirearm,
+                  atk.damageType,
+                  isUnarmed
+                );
+
+                const isFirearm = weaponClass.isFirearm;
+                const isDisparo = weaponClass.isDisparo;
+                const isRanged = weaponClass.isRanged;
+                const isMelee = weaponClass.isMelee;
+                const isThrown = weaponClass.isThrown;
+                const isAgile = weaponClass.isAgile || (isUnarmed && hasArtistaMarcial);
+                const isArcoComposto = weaponClass.isArcoComposto;
 
                 const isAniqFav =
                   hasAFavorita &&
@@ -1435,38 +1433,80 @@ export function SheetExtras({
                 const baseDamageDiceCount =
                   rawDmgParsed.count + golpePesadoExtraDice + maquinaMatarExtraDice;
 
-                // Dados de Ataque (d20): Armas ágeis/Artista Marcial usam max(FOR, AGI), corpo a corpo usa FOR, disparo/fogo usa AGI
+                // Perícias de Ataque em Ordem Paranormal: Pontaria para fogo/disparo, Luta para corpo a corpo
+                const pontariaSk = ordemSheetData?.skills.find((s) => s.id === 'pontaria');
+                const lutaSk = ordemSheetData?.skills.find((s) => s.id === 'luta');
+
+                const pontariaSkillBonus =
+                  (pontariaSk?.trainingDegree || 0) +
+                  (pontariaSk?.otherModifier || 0) +
+                  bonuses.skillBonusAll +
+                  (bonuses.skillBonus['pontaria'] || 0);
+
+                const lutaSkillBonus =
+                  (lutaSk?.trainingDegree || 0) +
+                  (lutaSk?.otherModifier || 0) +
+                  bonuses.skillBonusAll +
+                  (bonuses.skillBonus['luta'] || 0);
+
                 const meleeBaseAttr = isAgile ? Math.max(effFor, effAgi) : effFor;
+
+                // Dados de Ataque (d20):
+                // - Armas de fogo e de disparo usam Agilidade (effAgi) + bônus de dados de Pontaria
+                // - Armas corpo a corpo usam Força (ou Agilidade se ágil) + bônus de dados de Luta
                 const rawAttackDice = isOrdemSystem
-                  ? isFirearm || isDisparo
-                    ? Math.max(1, effAgi)
-                    : Math.max(1, meleeBaseAttr)
+                  ? isRanged
+                    ? effAgi + bonuses.skillDiceAll + (bonuses.skillDice['pontaria'] || 0)
+                    : meleeBaseAttr + bonuses.skillDiceAll + (bonuses.skillDice['luta'] || 0)
                   : atk.diceCount || 1;
                 const finalAttackDice = rawAttackDice + bonuses.attackDiceBonus;
 
-                // Modificador de Dano: Soma FOR (ou AGI se ágil) em armas corpo a corpo, armas de arremesso e arco composto!
+                // Bônus de Ataque (+X):
+                // - Armas de fogo e de disparo usam o teste de Pontaria
+                // - Armas corpo a corpo usam o teste de Luta
+                const workToolAtkBonus = atk.isWorkTool || invMatch?.isFavoriteTool ? 1 : 0;
+                const combatSkillBonus = isRanged ? pontariaSkillBonus : lutaSkillBonus;
+                const finalAttackBonus = isOrdemSystem
+                  ? combatSkillBonus + bonuses.attackBonus + workToolAtkBonus
+                  : atk.attackBonus + bonuses.attackBonus + workToolAtkBonus;
+
+                // Modificador de Dano:
+                // Em Ordem Paranormal:
+                // - Armas corpo a corpo somam FOR (ou AGI se ágil).
+                // - Armas de arremesso somam FOR.
+                // - Arco Composto soma FOR.
+                // - Armas de fogo e outras armas de disparo (arco simples, besta, balestra) NÃO somam força ao dano!
                 const specificTypeDamageBonus =
                   (isMelee ? bonuses.meleeDamageBonus : 0) +
                   (isFirearm ? bonuses.firearmDamageBonus : 0);
                 const tiroCerteiroBonus =
                   hasTiroCerteiro && (isDisparo || isThrown) ? effAgi : 0;
+                const workToolDmgBonus = atk.isWorkTool || invMatch?.isFavoriteTool ? 1 : 0;
+
                 const addsAttrToDamage = isOrdemSystem && (isMelee || isThrown || isArcoComposto);
                 const attrDamageMod =
                   addsAttrToDamage && rawDmgParsed.modifier === 0
-                    ? isAgile
+                    ? isAgile && isMelee
                       ? Math.max(effFor, effAgi)
                       : effFor
                     : 0;
 
-                const finalAttackBonus = atk.attackBonus + bonuses.attackBonus;
                 const finalDamageMod =
                   rawDmgParsed.modifier +
                   attrDamageMod +
                   bonuses.damageBonus +
                   specificTypeDamageBonus +
-                  tiroCerteiroBonus;
+                  tiroCerteiroBonus +
+                  workToolDmgBonus;
 
-                // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta
+                const isFuzilPrecisao =
+                  lowerAtkName.includes('fuzil de precisão') ||
+                  lowerAtkName.includes('fuzil de precisao') ||
+                  lowerAtkName.includes('sniper') ||
+                  descLower.includes('veterano em pontaria ao mirar');
+                const isAimingFuzil = Boolean(isFuzilPrecisao && aimingByAttackId[atk.id]);
+
+                // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta, Mirar (+5)
                 let critThreatSteps = 0;
                 if (hasTecnicaLetal && isMelee) critThreatSteps += 2;
                 if (isAniqFav && hasMaquinaMatar) critThreatSteps += 2;
@@ -1474,6 +1514,7 @@ export function SheetExtras({
                   if (secLetal === 1) critThreatSteps += 2;
                   if (secLetal === 2) critThreatSteps += 5;
                 }
+                if (isAimingFuzil) critThreatSteps += 5;
                 let effectiveCritRange = boostCritRangeBySteps(atk.critRange, critThreatSteps);
                 if (isAniqFav && hasTecnicaSecreta && secDestruidor) {
                   effectiveCritRange = boostCritMultiplier(effectiveCritRange, 1);
@@ -1507,7 +1548,6 @@ export function SheetExtras({
                 const appliedAeDmg = aeDmgInvest * aeMult;
                 const totalAeConfirmPe = aePeCostCalculated + tecnicaSecretaCost;
 
-                const lutaSk = ordemSheetData?.skills.find((s) => s.id === 'luta');
                 const foPayload: ForcaOpressoraRollPayload | undefined =
                   isOrdemSystem && hasForcaOpressora && isMelee
                     ? {
@@ -1534,6 +1574,35 @@ export function SheetExtras({
                     dmgSuffixTarget.push('Perfurante: Ignora 5 RD');
                   }
                   return `Técnica Secreta: ${effectsNames.join(', ')}`;
+                }
+
+                function buildSegurarGatilhoPayload(batchId: string): SegurarGatilhoPayload | undefined {
+                  if (!isOrdemSystem || !hasSegurarGatilho || !isFirearm) return undefined;
+                  return {
+                    enabled: true,
+                    batchId,
+                    shotIndex: 1,
+                    nextExtraShotStep: segurarGatilhoStep,
+                    weaponName: atk.name,
+                    baseAttackDice: finalAttackDice,
+                    baseAttackBonus: finalAttackBonus,
+                    baseDamageModifier: finalDamageMod,
+                    critThreatMin: critParsed.threatMin,
+                    critMultiplier: critParsed.multiplier,
+                    normalDiceCount: baseDamageDiceCount,
+                    critDiceCount: critBaseDamageDiceCount,
+                    dieSides: effectiveDamageSides,
+                    hasAtaqueEspecial,
+                    maxAeTotalBonus,
+                    aeMult,
+                    peTurnLimit,
+                    tecnicaSecretaCost,
+                    tecnicaSecretaAttackSuffix: buildTecnicaSecretaLabels([]),
+                    tecnicaSecretaDamageSuffix:
+                      isAniqFav && hasTecnicaSublime && secPerfurante
+                        ? 'Perfurante: Ignora 5 RD'
+                        : undefined,
+                  };
                 }
 
                 function handleRollDamage(isCrit: boolean) {
@@ -1607,6 +1676,16 @@ export function SheetExtras({
                               🏹 Tiro Certeiro (+{tiroCerteiroBonus})
                             </span>
                           )}
+                          {hasSegurarGatilho && isFirearm && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700/70">
+                              🔥 Segurar o Gatilho
+                            </span>
+                          )}
+                          {isAimingFuzil && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-600">
+                              🎯 Mirando (+5 Crít)
+                            </span>
+                          )}
                         </div>
                         <span className="text-[11px] font-mono text-zinc-500">
                           Crítico: {effectiveCritRange}
@@ -1639,11 +1718,41 @@ export function SheetExtras({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
+                        {isFuzilPrecisao && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAimingByAttackId((prev) => ({
+                                ...prev,
+                                [atk.id]: !prev[atk.id],
+                              }))
+                            }
+                            className={`px-2.5 py-1.5 rounded text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                              isAimingFuzil
+                                ? 'bg-emerald-600 text-white border-emerald-400 shadow'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-emerald-300 border-emerald-800/70'
+                            }`}
+                            title="Ação de movimento para Mirar com Fuzil de Precisão: concede +5 na margem de ameaça"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isAimingFuzil}
+                              readOnly
+                              className="pointer-events-none accent-emerald-300 w-3.5 h-3.5"
+                            />
+                            🎯 Mirar (+5 Crít)
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => {
                             const suffixParts: string[] = [];
                             const dmgSuffixParts: string[] = [];
+
+                            if (isAimingFuzil) {
+                              suffixParts.push('🎯 Mirando (+5 Crít)');
+                            }
 
                             if (tecnicaSecretaCost > 0) {
                               if (isOrdemSystem && tecnicaSecretaCost > peTurnLimit) {
@@ -1659,6 +1768,7 @@ export function SheetExtras({
 
                             setPendingSpecialDamageBonus(null);
 
+                            const batchId = `sg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
                             const labelSuffix =
                               suffixParts.length > 0 ? ` [${suffixParts.join(' • ')}]` : '';
                             onRoll(
@@ -1680,6 +1790,7 @@ export function SheetExtras({
                                     ? ` [${dmgSuffixParts.join(' • ')}]`
                                     : undefined,
                                 forcaOpressoraPayload: foPayload,
+                                segurarGatilhoPayload: buildSegurarGatilhoPayload(batchId),
                               }
                             );
                           }}
@@ -1748,55 +1859,6 @@ export function SheetExtras({
                               : displayedDmgMod
                             : ''}
                         </button>
-
-                        {hasSegurarGatilho && isFirearm && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const stepCost = segurarGatilhoStep * 2;
-                                if (stepCost > peTurnLimit) {
-                                  setCombatTabFeedback(
-                                    `⚠️ Segurar o Gatilho (${stepCost} PE) excede o Limite de PE/turno (${peTurnLimit} PE)!`
-                                  );
-                                  return;
-                                }
-                                if (!onSpendResource(stepCost)) return;
-                                onRoll(
-                                  `Segurar o Gatilho (${segurarGatilhoStep}º Extra • -${stepCost} PE): ${atk.name}`,
-                                  finalAttackDice,
-                                  20,
-                                  finalAttackBonus,
-                                  false,
-                                  {
-                                    weaponName: atk.name,
-                                    critThreatMin: critParsed.threatMin,
-                                    critMultiplier: critParsed.multiplier,
-                                    normalDiceCount: baseDamageDiceCount,
-                                    critDiceCount: critBaseDamageDiceCount,
-                                    dieSides: effectiveDamageSides,
-                                    damageModifier: finalDamageMod,
-                                  }
-                                );
-                                setSegurarGatilhoStep((s) => s + 1);
-                              }}
-                              className="px-2 py-1.5 bg-orange-950/70 hover:bg-orange-700 text-orange-300 hover:text-white border border-orange-700/70 rounded text-[11px] font-bold transition cursor-pointer"
-                              title="Ataque extra com a mesma arma de fogo (-2 PE acumulativos por ataque no turno)"
-                            >
-                              🔥 Gatilho (-{segurarGatilhoStep * 2} PE)
-                            </button>
-                            {!hasActiveInitiativeOrder && segurarGatilhoStep > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setSegurarGatilhoStep(1)}
-                                className="px-1.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-700 rounded text-[10px] font-bold cursor-pointer"
-                                title="Reiniciar contagem para novo turno (-2 PE)"
-                              >
-                                ↺
-                              </button>
-                            )}
-                          </div>
-                        )}
 
                         {allowInv && (
                           <button
@@ -1928,6 +1990,9 @@ export function SheetExtras({
                                 const suffixParts: string[] = [
                                   `Ataque Especial${aeMult > 1 ? ' [Potência Máxima 2x]' : ''} (${aeBonusDesc})`,
                                 ];
+                                if (isAimingFuzil) {
+                                  suffixParts.push('🎯 Mirando (+5 Crít)');
+                                }
                                 const dmgSuffixParts: string[] = [];
 
                                 if (appliedAeDmg > 0) {
@@ -1945,6 +2010,7 @@ export function SheetExtras({
                                 const tsLabel = buildTecnicaSecretaLabels(dmgSuffixParts);
                                 if (tsLabel) suffixParts.push(tsLabel);
 
+                                const batchId = `sg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
                                 const labelSuffix = ` [${suffixParts.join(' • ')}]`;
                                 setActiveAeAttackId(null);
                                 onRoll(
@@ -1966,6 +2032,7 @@ export function SheetExtras({
                                         ? ` [${dmgSuffixParts.join(' • ')}]`
                                         : undefined,
                                     forcaOpressoraPayload: foPayload,
+                                    segurarGatilhoPayload: buildSegurarGatilhoPayload(batchId),
                                   }
                                 );
                               }}

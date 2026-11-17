@@ -1681,7 +1681,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '1d12', critRange: '18/x2', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '1d12', critRange: '18/x2', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-revolver',
@@ -1691,7 +1691,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-caca',
@@ -1701,7 +1701,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d8', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d8', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   // --- Armas Táticas ---
   {
@@ -1862,7 +1862,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-espingarda',
@@ -1872,7 +1872,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '4d6', critRange: '20/x3', slots: 2, range: 'Curto' },
+    metadata: { damageFormula: '4d6', critRange: '20/x3', slots: 2, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-assalto',
@@ -1882,7 +1882,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
     modifiers: [],
-    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-precisao',
@@ -1892,7 +1892,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 3,
     modifiers: [],
-    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Longo' },
+    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Longo', element: 'Balístico' },
   },
   // --- Armas Pesadas ---
   {
@@ -1903,7 +1903,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
     modifiers: [],
-    metadata: { damageFormula: '2d12', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d12', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   {
     id: 'ord-item-lanca-chamas',

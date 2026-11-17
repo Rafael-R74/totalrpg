@@ -672,17 +672,17 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 40,
         name: 'Ataque Extra (Op. Especiais 40%)',
-        cost: 2,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 65,
         name: 'Surto de Adrenalina (Op. Especiais 65%)',
-        cost: 5,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
@@ -712,17 +712,17 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 40,
         name: 'Cai Dentro (Tropa de Choque 40%)',
-        cost: 1,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 65,
         name: 'Duro de Matar (Tropa de Choque 65%)',
-        cost: 2,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {

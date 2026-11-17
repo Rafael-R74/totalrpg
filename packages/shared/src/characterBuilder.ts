@@ -814,31 +814,18 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
 
     // Se for arma (possui damageFormula), cria ataque preparado automaticamente!
     if (itemEntry.metadata?.damageFormula) {
-      const lowerName = itemEntry.name.toLowerCase();
-      const lowerDesc = itemEntry.description.toLowerCase();
-      const isFirearm =
-        lowerName.includes('fogo') ||
-        lowerDesc.includes('fogo') ||
-        (itemEntry.metadata?.element || '').toLowerCase().includes('balístico');
-      const isDisparo =
-        lowerName.includes('disparo') ||
-        lowerDesc.includes('arma de disparo') ||
-        lowerName.includes('arco') ||
-        lowerName.includes('besta') ||
-        lowerName.includes('balestra');
-      const isRangedOnly = isFirearm || isDisparo;
-      const isMelee = !isRangedOnly;
-      const isAgile =
-        lowerName.includes('ágil') ||
-        lowerDesc.includes('arma ágil') ||
-        lowerDesc.includes('ágil');
-      const skillId = isRangedOnly ? 'pontaria' : 'luta';
-      const attrVal = isRangedOnly
+      const classif = classifyOrdemWeapon(
+        itemEntry.name,
+        itemEntry.description,
+        undefined,
+        itemEntry.metadata?.element
+      );
+      const attrVal = classif.isRanged
         ? input.attributes.agi
-        : isAgile
+        : classif.isAgile
         ? Math.max(input.attributes.for, input.attributes.agi)
         : input.attributes.for;
-      const skillBonus = allTrainedSet.has(skillId) ? 5 : 0;
+      const skillBonus = allTrainedSet.has(classif.skillId) ? 5 : 0;
 
       attacks.push({
         id: `atk-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
@@ -847,9 +834,12 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         attackBonus: skillBonus,
         damageFormula: itemEntry.metadata.damageFormula,
         critRange: itemEntry.metadata.critRange || '20/x2',
-        damageType: itemEntry.metadata.element || 'Físico',
-        isMelee,
-        isFirearm,
+        damageType:
+          itemEntry.metadata?.element ||
+          (classif.isFirearm ? 'Balístico' : classif.isDisparo ? 'Perfuração' : 'Impacto'),
+        isMelee: classif.isMelee,
+        isFirearm: classif.isFirearm,
+        isDisparo: classif.isDisparo,
       });
     }
   }
@@ -994,4 +984,149 @@ export function buildT20Character(input: BuildT20CharacterInput): {
   };
 
   return { vitals, sheetData, inventory: [], attacks: [] };
+}
+
+// ---------------------------------------------------------------------------
+// Classificação Canônica de Armas de Ordem Paranormal RPG
+// ---------------------------------------------------------------------------
+
+export interface OrdemWeaponClassification {
+  isFirearm: boolean;
+  isDisparo: boolean;
+  isRanged: boolean;
+  isMelee: boolean;
+  isThrown: boolean;
+  isAgile: boolean;
+  isArcoComposto: boolean;
+  skillId: 'pontaria' | 'luta';
+}
+
+export function classifyOrdemWeapon(
+  name: string,
+  description?: string,
+  explicitIsFirearm?: boolean,
+  damageType?: string,
+  isUnarmed?: boolean
+): OrdemWeaponClassification {
+  const nameLower = (name || '').toLowerCase();
+  const descLower = (description || '').toLowerCase();
+  const dmgLower = (damageType || '').toLowerCase();
+
+  const isDesarmado = Boolean(
+    isUnarmed ||
+    nameLower.includes('desarmado') ||
+    descLower.includes('ataque desarmado')
+  );
+
+  if (isDesarmado) {
+    return {
+      isFirearm: false,
+      isDisparo: false,
+      isRanged: false,
+      isMelee: true,
+      isThrown: false,
+      isAgile: true,
+      isArcoComposto: false,
+      skillId: 'luta',
+    };
+  }
+
+  // 1. Armas de Fogo
+  const firearmKeywords = [
+    'fogo',
+    'pistola',
+    'revólver',
+    'revolver',
+    'fuzil',
+    'sniper',
+    'submetralhadora',
+    'espingarda',
+    'escopeta',
+    'shotgun',
+    'rifle',
+    'carabina',
+    'metralhadora',
+    'bazuca',
+    'bazooka',
+    'lança-chamas',
+    'lanca-chamas',
+    'trabuco',
+    'garrucha',
+    'balístico',
+    'balistico',
+    'balas curtas',
+    'balas longas',
+    'cartuchos',
+  ];
+
+  const hasFirearmKeyword = firearmKeywords.some(
+    (kw) => nameLower.includes(kw) || descLower.includes(kw) || dmgLower.includes(kw)
+  );
+
+  const isFirearm = Boolean(explicitIsFirearm) || hasFirearmKeyword;
+
+  // 2. Armas de Disparo (à distância, mas não de fogo: arcos, bestas, balestras)
+  const disparoKeywords = [
+    'disparo',
+    'arma de disparo',
+    'arco',
+    'besta',
+    'balestra',
+    'flecha',
+    'flechas',
+    'virote',
+    'virotes',
+    'estilingue',
+    'funda',
+  ];
+
+  const isDisparo =
+    !isFirearm &&
+    disparoKeywords.some((kw) => nameLower.includes(kw) || descLower.includes(kw));
+
+  const isRanged = isFirearm || isDisparo;
+
+  // 3. Arma de Arremesso
+  const isThrown =
+    descLower.includes('arremess') ||
+    nameLower.includes('arremess') ||
+    nameLower.includes('faca') ||
+    nameLower.includes('lança') ||
+    nameLower.includes('lanca') ||
+    nameLower.includes('machadinha') ||
+    nameLower.includes('adaga') ||
+    nameLower.includes('dardo') ||
+    nameLower.includes('shuriken');
+
+  // 4. Melee (somente se NÃO for arma de fogo e NÃO for arma de disparo)
+  const isMelee = !isRanged;
+
+  // 5. Arma Ágil
+  const isAgile =
+    nameLower.includes('ágil') ||
+    nameLower.includes('agil') ||
+    descLower.includes('arma ágil') ||
+    descLower.includes('ágil') ||
+    descLower.includes('agil') ||
+    nameLower.includes('florete') ||
+    nameLower.includes('nunchaku') ||
+    nameLower.includes('katana') ||
+    nameLower.includes('punhal') ||
+    nameLower.includes('faca');
+
+  // 6. Arco Composto (única arma de disparo que soma Força no dano pelas regras oficiais)
+  const isArcoComposto = nameLower.includes('arco composto') || descLower.includes('arco composto');
+
+  const skillId: 'pontaria' | 'luta' = isRanged ? 'pontaria' : 'luta';
+
+  return {
+    isFirearm,
+    isDisparo,
+    isRanged,
+    isMelee,
+    isThrown,
+    isAgile,
+    isArcoComposto,
+    skillId,
+  };
 }
