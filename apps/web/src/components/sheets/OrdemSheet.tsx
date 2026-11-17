@@ -23,6 +23,11 @@ interface OrdemSheetProps {
   customSkills: SystemSkillDefinition[];
   abilities?: CharacterAbility[];
   isOverloaded?: boolean;
+  isMachucado?: boolean;
+  hasActiveInitiativeOrder?: boolean;
+  isMyTurnInCombat?: boolean;
+  currentRoundNumber?: number;
+  peSpentThisTurn?: number;
   isEditMode: boolean;
   canEditAttributes: boolean;
   canEditAbilities: boolean;
@@ -49,6 +54,11 @@ export function OrdemSheet({
   customSkills,
   abilities = [],
   isOverloaded = false,
+  isMachucado = false,
+  hasActiveInitiativeOrder = false,
+  isMyTurnInCombat = false,
+  currentRoundNumber = 1,
+  peSpentThisTurn = 0,
   isEditMode,
   canEditAttributes,
   canEditAbilities,
@@ -89,9 +99,11 @@ export function OrdemSheet({
   const allowAttrEdit = isEditMode && canEditAttributes;
   const allowSkillEdit = isEditMode && canEditAbilities;
 
+  const effectiveFor = safeData.attributes.for + (bonuses.attributes['for'] || 0);
   const effectiveAgi = safeData.attributes.agi + (bonuses.attributes['agi'] || 0);
   const effectiveInt = safeData.attributes.int + (bonuses.attributes['int'] || 0);
   const effectivePre = safeData.attributes.pre + (bonuses.attributes['pre'] || 0);
+  const effectiveVig = safeData.attributes.vig + (bonuses.attributes['vig'] || 0);
 
   const normOrigin = (safeData.origin || '').trim().toLowerCase();
   const originObj = ORDEM_ORIGINS.find(
@@ -108,9 +120,28 @@ export function OrdemSheet({
   const faroPistasUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-faro-pistas');
   const impostorUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-impostor');
 
-  // Defesa em Ordem Paranormal: 10 + AGI + Bônus - 5 se sobrecarregado
+  // Poderes de Tropa de Choque para indicadores e automação
+  const hasCascaGrossa = abilities.some(
+    (a) =>
+      a.id === 'trail-tropa_choque-10' ||
+      a.name.toLowerCase().includes('casca grossa')
+  );
+  const hasCaiDentro = abilities.some(
+    (a) =>
+      a.id === 'trail-tropa_choque-40' ||
+      a.name.toLowerCase().includes('cai dentro')
+  );
+  const hasInquebravel = abilities.some(
+    (a) =>
+      a.id === 'trail-tropa_choque-99' ||
+      a.name.toLowerCase().includes('inquebrável') ||
+      a.name.toLowerCase().includes('inquebravel')
+  );
+
+  // Defesa em Ordem Paranormal: 10 + AGI + Bônus (+5 Inquebrável se Machucado) - 5 se sobrecarregado
   const overloadPenalty = isOverloaded ? -5 : 0;
-  const totalDefense = 10 + effectiveAgi + bonuses.defense + overloadPenalty;
+  const inquebravelDefenseBonus = hasInquebravel && isMachucado ? 5 : 0;
+  const totalDefense = 10 + effectiveAgi + bonuses.defense + inquebravelDefenseBonus + overloadPenalty;
 
   // Limite de PE/turno e DT de Rituais automáticos (v1.3)
   const peLimitPerTurn = getOrdemPeLimit(safeData.nex, safeData.origin, abilities);
@@ -310,6 +341,7 @@ export function OrdemSheet({
               </span>
               <span className="text-[10px] text-zinc-500">
                 10 + AGI ({effectiveAgi}) {bonuses.defense ? `+ ${bonuses.defense}` : ''}
+                {inquebravelDefenseBonus ? ' + 5 (Inquebrável)' : ''}
                 {isOverloaded ? ' - 5 (Carga)' : ''}
               </span>
             </div>
@@ -322,13 +354,22 @@ export function OrdemSheet({
             </span>
           </div>
 
-          <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex items-center justify-between">
+          <div
+            className={`bg-zinc-950 border rounded-lg px-3 py-2 flex items-center justify-between ${
+              hasActiveInitiativeOrder && isMyTurnInCombat
+                ? 'border-amber-500 ring-1 ring-amber-500/40'
+                : 'border-zinc-800'
+            }`}
+          >
             <div>
               <span className="block text-[10px] uppercase font-bold text-amber-400">
                 ⚡ Limite de PE / Turno
+                {hasActiveInitiativeOrder && isMyTurnInCombat ? ` • ⚔️ SEU TURNO (Rod. ${currentRoundNumber})` : ''}
               </span>
               <span className="text-[10px] text-zinc-500">
-                Máx. de PE gasto por rodada
+                {hasActiveInitiativeOrder
+                  ? `Gasto neste turno: ${peSpentThisTurn} / ${peLimitPerTurn} PE`
+                  : 'Máx. de PE gasto por rodada'}
               </span>
             </div>
             <span className="text-xl font-black font-mono text-amber-300">
@@ -373,12 +414,29 @@ export function OrdemSheet({
           </div>
         </div>
 
-        {/* Indicadores Passivos Especiais da Origem (Teórico da Conspiração, etc.) */}
-        {isTeoricoConspiracao && (
+        {/* Indicadores Passivos Especiais (Origem / Tropa de Choque) */}
+        {(isTeoricoConspiracao || hasCascaGrossa || hasCaiDentro || hasInquebravel) && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/70 text-cyan-200 text-xs font-bold">
-              🧠 Eu Já Sabia (Teórico da Conspiração): Resistência a Dano Mental = {mentalResistance} (Intelecto)
-            </span>
+            {isTeoricoConspiracao && (
+              <span className="px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/70 text-cyan-200 text-xs font-bold">
+                🧠 Eu Já Sabia (Teórico da Conspiração): Resistência a Dano Mental = {mentalResistance} (Intelecto)
+              </span>
+            )}
+            {hasCascaGrossa && (
+              <span className="px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/70 text-amber-200 text-xs font-bold">
+                🛡️ Casca Grossa: Soma +{effectiveVig} (VIG) na RD ao Bloquear
+              </span>
+            )}
+            {hasCaiDentro && (
+              <span className="px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/70 text-amber-200 text-xs font-bold">
+                🛡️ DT Cai Dentro (Vontade): {10 + peLimitPerTurn + effectiveVig}
+              </span>
+            )}
+            {hasInquebravel && isMachucado && (
+              <span className="px-2.5 py-1 rounded-lg bg-red-950/80 border border-red-600/80 text-red-200 text-xs font-bold animate-pulse">
+                🩸 Inquebrável Ativo (Machucado): +5 na Defesa e RD 5 (Não fica indefeso se Morrendo)
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -667,7 +725,7 @@ export function OrdemSheet({
                           if (!originAbActive) {
                             rollMod += 5;
                           }
-                          rollSuffix = ` [${originObj.powerName} (Poder de ${originObj.name}) +5]`;
+                          rollSuffix += ` [${originObj.powerName} (Poder de ${originObj.name}) +5]`;
                           setArmOriginBoost(false);
                         }
                       }
