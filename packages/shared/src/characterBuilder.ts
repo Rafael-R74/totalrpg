@@ -217,12 +217,21 @@ export function getOrdemMaxLoad(
   effectiveInt: number,
   trailId?: string,
   nex?: number,
-  bonusSlots = 0
+  bonusSlots = 0,
+  abilities?: CharacterAbility[]
 ): number {
-  const attrTotal =
-    trailId === 'tecnico' && (nex ?? 5) >= 10
-      ? effectiveFor + effectiveInt
-      : effectiveFor;
+  const hasInventarioOtimizado =
+    (trailId === 'tecnico' && (nex ?? 5) >= 10) ||
+    Boolean(
+      abilities?.some(
+        (ab) =>
+          ab.id === 'trail-tecnico-10' ||
+          ab.id === 'versatility-tecnico-10' ||
+          ab.name.toLowerCase().includes('inventário otimizado') ||
+          ab.name.toLowerCase().includes('inventario otimizado')
+      )
+    );
+  const attrTotal = hasInventarioOtimizado ? effectiveFor + effectiveInt : effectiveFor;
   const baseSlots = attrTotal <= 0 ? 2 : attrTotal * 5;
   return Math.max(2, baseSlots + bonusSlots);
 }
