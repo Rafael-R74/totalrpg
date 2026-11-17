@@ -16,6 +16,7 @@ export interface ComputedBonuses {
   vitalMax: Record<string, number>;
   defense: number;
   attackBonus: number;
+  attackDiceBonus: number;
   damageBonus: number;
   meleeDamageBonus: number;
   firearmDamageBonus: number;
@@ -39,6 +40,7 @@ export function calculateActiveBonuses(
     vitalMax: {},
     defense: 0,
     attackBonus: 0,
+    attackDiceBonus: 0,
     damageBonus: 0,
     meleeDamageBonus: 0,
     firearmDamageBonus: 0,
@@ -101,6 +103,8 @@ export function calculateActiveBonuses(
       case 'skill_dice':
         if (key === 'all' || key === 'todas') {
           result.skillDiceAll += finalValue;
+        } else if (key === 'attack_all') {
+          result.attackDiceBonus += finalValue;
         } else {
           result.skillDice[key] = (result.skillDice[key] || 0) + finalValue;
         }
@@ -132,6 +136,24 @@ export function calculateActiveBonuses(
         result.loadLimit += finalValue;
         break;
     }
+  }
+
+  // Regra específica: Tanque de Guerra (Combatente, p. 26)
+  // Se possuir Tanque de Guerra ativo E estiver usando uma Proteção Pesada equipada, soma +2 na Defesa
+  const hasTanqueGuerra = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('tanque-guerra') ||
+        ab.name.toLowerCase().includes('tanque de guerra'))
+  );
+  const hasHeavyArmorEquipped = inventory.some(
+    (it) =>
+      it.isEquipped &&
+      (it.name.toLowerCase().includes('proteção pesada') ||
+        it.name.toLowerCase().includes('protecao pesada'))
+  );
+  if (hasTanqueGuerra && hasHeavyArmorEquipped) {
+    result.defense += 2;
   }
 
   return result;

@@ -148,6 +148,70 @@ export function boostCritRangeBySteps(critRange: string, steps: number): string 
   return clean;
 }
 
+export function boostCritMultiplier(critRange: string, extraMult: number): string {
+  if (!extraMult || extraMult <= 0) return critRange;
+  const clean = (critRange || '20/x2').trim();
+  const match = clean.match(/^(\d+)\s*\/\s*x(\d+)$/i);
+  if (match) {
+    return `${match[1]}/x${Number(match[2]) + extraMult}`;
+  }
+  const multOnly = clean.match(/^x(\d+)$/i);
+  if (multOnly) {
+    return `20/x${Number(multOnly[1]) + extraMult}`;
+  }
+  return clean;
+}
+
+export function parseCritRange(critRange: string): {
+  threatMin: number;
+  multiplier: number;
+} {
+  const clean = (critRange || '20/x2').trim();
+  const bothMatch = clean.match(/^(\d+)\s*\/\s*x(\d+)$/i);
+  if (bothMatch) {
+    return {
+      threatMin: Math.max(1, Math.min(20, Number(bothMatch[1]))),
+      multiplier: Math.max(2, Number(bothMatch[2])),
+    };
+  }
+  const multOnly = clean.match(/^x(\d+)$/i);
+  if (multOnly) {
+    return {
+      threatMin: 20,
+      multiplier: Math.max(2, Number(multOnly[1])),
+    };
+  }
+  const threatOnly = clean.match(/^(\d+)$/);
+  if (threatOnly) {
+    return {
+      threatMin: Math.max(1, Math.min(20, Number(threatOnly[1]))),
+      multiplier: 2,
+    };
+  }
+  return { threatMin: 20, multiplier: 2 };
+}
+
+export interface AtaqueEspecialTier {
+  peCost: number;
+  totalBonus: number; // 5, 10, 15 ou 20
+  minNex: number;
+}
+
+export function getOrdemAtaqueEspecialTiers(nex: number): AtaqueEspecialTier[] {
+  const all: AtaqueEspecialTier[] = [
+    { peCost: 2, totalBonus: 5, minNex: 5 },
+    { peCost: 3, totalBonus: 10, minNex: 25 },
+    { peCost: 4, totalBonus: 15, minNex: 55 },
+    { peCost: 5, totalBonus: 20, minNex: 85 },
+  ];
+  return all.filter((t) => nex >= t.minNex);
+}
+
+export function getOrdemAtaqueEspecialMaxTier(nex: number): AtaqueEspecialTier {
+  const tiers = getOrdemAtaqueEspecialTiers(nex);
+  return tiers[tiers.length - 1] || { peCost: 2, totalBonus: 5, minNex: 5 };
+}
+
 export function getOrdemMaxLoad(
   effectiveFor: number,
   effectiveInt: number,
@@ -175,14 +239,23 @@ export function checkOrdemPowerRequirements(
   const lowerReq = reqText.toLowerCase();
 
   // 1. Classe
-  if (lowerReq.includes('combatente') && sheetData.characterClass !== 'combatente') {
-    missing.push('Classe: Combatente');
-  }
-  if (lowerReq.includes('especialista') && sheetData.characterClass !== 'especialista') {
-    missing.push('Classe: Especialista');
-  }
-  if (lowerReq.includes('ocultista') && sheetData.characterClass !== 'ocultista') {
-    missing.push('Classe: Ocultista');
+  if (lowerReq.includes('combatente ou especialista')) {
+    if (
+      sheetData.characterClass !== 'combatente' &&
+      sheetData.characterClass !== 'especialista'
+    ) {
+      missing.push('Classe: Combatente ou Especialista');
+    }
+  } else {
+    if (lowerReq.includes('combatente') && sheetData.characterClass !== 'combatente') {
+      missing.push('Classe: Combatente');
+    }
+    if (lowerReq.includes('especialista') && sheetData.characterClass !== 'especialista') {
+      missing.push('Classe: Especialista');
+    }
+    if (lowerReq.includes('ocultista') && sheetData.characterClass !== 'ocultista') {
+      missing.push('Classe: Ocultista');
+    }
   }
 
   // 2. NEX mínimo (ex: "NEX 30%", "NEX 45%", "NEX 60%")
@@ -228,7 +301,17 @@ export function checkOrdemPowerRequirements(
     { token: 'ocultismo', skillId: 'ocultismo', label: 'Treinado em Ocultismo' },
   ];
   if (lowerReq.includes('treinado')) {
+    if (lowerReq.includes('luta ou pontaria')) {
+      const lutaSk = sheetData.skills.find((s) => s.id === 'luta');
+      const pontSk = sheetData.skills.find((s) => s.id === 'pontaria');
+      if ((!lutaSk || lutaSk.trainingDegree < 5) && (!pontSk || pontSk.trainingDegree < 5)) {
+        missing.push('Treinado em Luta ou Pontaria');
+      }
+    }
     for (const sc of skillChecks) {
+      if (lowerReq.includes('luta ou pontaria') && (sc.skillId === 'luta' || sc.skillId === 'pontaria')) {
+        continue;
+      }
       if (lowerReq.includes(sc.token)) {
         const sk = sheetData.skills.find((s) => s.id === sc.skillId);
         if (!sk || sk.trainingDegree < 5) {
@@ -731,18 +814,18 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
 
     // Se for arma (possui damageFormula), cria ataque preparado automaticamente!
     if (itemEntry.metadata?.damageFormula) {
-      const lowerDesc = itemEntry.description.toLowerCase();
-      const isFirearm =
-        lowerDesc.includes('fogo') ||
-        (itemEntry.metadata?.element || '').toLowerCase().includes('balístico');
-      const isRanged =
-        isFirearm ||
-        lowerDesc.includes('disparo') ||
-        (itemEntry.metadata?.range && itemEntry.metadata.range !== 'Corpo a Corpo');
-      const isMelee = !isRanged;
-      const skillId = isRanged ? 'pontaria' : 'luta';
-      const attrVal = isRanged ? input.attributes.agi : input.attributes.for;
-      const skillBonus = allTrainedSet.has(skillId) ? 5 : 0;
+      const classif = classifyOrdemWeapon(
+        itemEntry.name,
+        itemEntry.description,
+        undefined,
+        itemEntry.metadata?.element
+      );
+      const attrVal = classif.isRanged
+        ? input.attributes.agi
+        : classif.isAgile
+        ? Math.max(input.attributes.for, input.attributes.agi)
+        : input.attributes.for;
+      const skillBonus = allTrainedSet.has(classif.skillId) ? 5 : 0;
 
       attacks.push({
         id: `atk-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
@@ -751,9 +834,12 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         attackBonus: skillBonus,
         damageFormula: itemEntry.metadata.damageFormula,
         critRange: itemEntry.metadata.critRange || '20/x2',
-        damageType: itemEntry.metadata.element || 'Físico',
-        isMelee,
-        isFirearm,
+        damageType:
+          itemEntry.metadata?.element ||
+          (classif.isFirearm ? 'Balístico' : classif.isDisparo ? 'Perfuração' : 'Impacto'),
+        isMelee: classif.isMelee,
+        isFirearm: classif.isFirearm,
+        isDisparo: classif.isDisparo,
       });
     }
   }
@@ -898,4 +984,149 @@ export function buildT20Character(input: BuildT20CharacterInput): {
   };
 
   return { vitals, sheetData, inventory: [], attacks: [] };
+}
+
+// ---------------------------------------------------------------------------
+// Classificação Canônica de Armas de Ordem Paranormal RPG
+// ---------------------------------------------------------------------------
+
+export interface OrdemWeaponClassification {
+  isFirearm: boolean;
+  isDisparo: boolean;
+  isRanged: boolean;
+  isMelee: boolean;
+  isThrown: boolean;
+  isAgile: boolean;
+  isArcoComposto: boolean;
+  skillId: 'pontaria' | 'luta';
+}
+
+export function classifyOrdemWeapon(
+  name: string,
+  description?: string,
+  explicitIsFirearm?: boolean,
+  damageType?: string,
+  isUnarmed?: boolean
+): OrdemWeaponClassification {
+  const nameLower = (name || '').toLowerCase();
+  const descLower = (description || '').toLowerCase();
+  const dmgLower = (damageType || '').toLowerCase();
+
+  const isDesarmado = Boolean(
+    isUnarmed ||
+    nameLower.includes('desarmado') ||
+    descLower.includes('ataque desarmado')
+  );
+
+  if (isDesarmado) {
+    return {
+      isFirearm: false,
+      isDisparo: false,
+      isRanged: false,
+      isMelee: true,
+      isThrown: false,
+      isAgile: true,
+      isArcoComposto: false,
+      skillId: 'luta',
+    };
+  }
+
+  // 1. Armas de Fogo
+  const firearmKeywords = [
+    'fogo',
+    'pistola',
+    'revólver',
+    'revolver',
+    'fuzil',
+    'sniper',
+    'submetralhadora',
+    'espingarda',
+    'escopeta',
+    'shotgun',
+    'rifle',
+    'carabina',
+    'metralhadora',
+    'bazuca',
+    'bazooka',
+    'lança-chamas',
+    'lanca-chamas',
+    'trabuco',
+    'garrucha',
+    'balístico',
+    'balistico',
+    'balas curtas',
+    'balas longas',
+    'cartuchos',
+  ];
+
+  const hasFirearmKeyword = firearmKeywords.some(
+    (kw) => nameLower.includes(kw) || descLower.includes(kw) || dmgLower.includes(kw)
+  );
+
+  const isFirearm = Boolean(explicitIsFirearm) || hasFirearmKeyword;
+
+  // 2. Armas de Disparo (à distância, mas não de fogo: arcos, bestas, balestras)
+  const disparoKeywords = [
+    'disparo',
+    'arma de disparo',
+    'arco',
+    'besta',
+    'balestra',
+    'flecha',
+    'flechas',
+    'virote',
+    'virotes',
+    'estilingue',
+    'funda',
+  ];
+
+  const isDisparo =
+    !isFirearm &&
+    disparoKeywords.some((kw) => nameLower.includes(kw) || descLower.includes(kw));
+
+  const isRanged = isFirearm || isDisparo;
+
+  // 3. Arma de Arremesso
+  const isThrown =
+    descLower.includes('arremess') ||
+    nameLower.includes('arremess') ||
+    nameLower.includes('faca') ||
+    nameLower.includes('lança') ||
+    nameLower.includes('lanca') ||
+    nameLower.includes('machadinha') ||
+    nameLower.includes('adaga') ||
+    nameLower.includes('dardo') ||
+    nameLower.includes('shuriken');
+
+  // 4. Melee (somente se NÃO for arma de fogo e NÃO for arma de disparo)
+  const isMelee = !isRanged;
+
+  // 5. Arma Ágil
+  const isAgile =
+    nameLower.includes('ágil') ||
+    nameLower.includes('agil') ||
+    descLower.includes('arma ágil') ||
+    descLower.includes('ágil') ||
+    descLower.includes('agil') ||
+    nameLower.includes('florete') ||
+    nameLower.includes('nunchaku') ||
+    nameLower.includes('katana') ||
+    nameLower.includes('punhal') ||
+    nameLower.includes('faca');
+
+  // 6. Arco Composto (única arma de disparo que soma Força no dano pelas regras oficiais)
+  const isArcoComposto = nameLower.includes('arco composto') || descLower.includes('arco composto');
+
+  const skillId: 'pontaria' | 'luta' = isRanged ? 'pontaria' : 'luta';
+
+  return {
+    isFirearm,
+    isDisparo,
+    isRanged,
+    isMelee,
+    isThrown,
+    isAgile,
+    isArcoComposto,
+    skillId,
+  };
 }

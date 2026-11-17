@@ -29,7 +29,10 @@ export interface PreparedAttack {
   damageType: string;    // Ex: "Corte", "Balístico", "Sangue"
   isMelee?: boolean;
   isFirearm?: boolean;
+  isDisparo?: boolean;
   isWorkTool?: boolean;  // Operário — Ferramenta de Trabalho (+1 ataque, +1 dano, +1 margem de ameaça)
+  isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita
+  isUnarmed?: boolean;             // Artista Marcial — Ataque Desarmado
 }
 
 // Molde de itens
@@ -43,13 +46,59 @@ export interface RPGItem {
   imageUrl?: string;
   description?: string;
   isEquipped?: boolean;
-  isFavoriteTool?: boolean;    // Engenheiro — Ferramenta Favorita (-1 Categoria, exceto armas)
-  ignorePatentLimit?: boolean; // Criminoso — O Crime Compensa (isento do limite de patente)
+  isFavoriteTool?: boolean;        // Engenheiro — Ferramenta Favorita (-1 Categoria, exceto armas)
+  ignorePatentLimit?: boolean;     // Criminoso — O Crime Compensa (isento do limite de patente)
+  isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita (-I / -II / -III Categoria)
   modifiers?: RuleModifier[];
 }
 
 // Perfis de usuários
 export type UserRole = 'dm' | 'player' | 'spectator';
+
+// Payload de Força Opressora (Guerreiro 65%) vinculado a uma rolagem de dano corpo a corpo
+export interface ForcaOpressoraRollPayload {
+  lutaDiceCount: number;
+  lutaBonus: number;
+  weaponName: string;
+}
+
+// Payload de sequência de disparos da habilidade Segurar o Gatilho
+export interface SegurarGatilhoPayload {
+  enabled: boolean;
+  batchId: string;
+  shotIndex: number;
+  nextExtraShotStep: number; // 1 => 2 PE, 2 => 4 PE, 3 => 6 PE...
+  weaponName: string;
+  baseAttackDice: number;
+  baseAttackBonus: number;
+  baseDamageModifier: number;
+  critThreatMin: number;
+  critMultiplier: number;
+  normalDiceCount: number;
+  critDiceCount: number;
+  dieSides: number;
+  hasAtaqueEspecial: boolean;
+  maxAeTotalBonus: number;
+  aeMult: number;
+  peTurnLimit: number;
+  tecnicaSecretaCost?: number;
+  tecnicaSecretaAttackSuffix?: string;
+  tecnicaSecretaDamageSuffix?: string;
+}
+
+// Payload de dano vinculado a uma rolagem de acerto de arma (para botão direto de Dano / Dano Crítico no modal)
+export interface AttackDamageRollPayload {
+  weaponName: string;
+  critThreatMin: number;
+  critMultiplier: number;
+  normalDiceCount: number;
+  critDiceCount: number;
+  dieSides: number;
+  damageModifier: number;
+  damageLabelSuffix?: string;
+  forcaOpressoraPayload?: ForcaOpressoraRollPayload;
+  segurarGatilhoPayload?: SegurarGatilhoPayload;
+}
 
 // Rolagem de dados
 export interface DiceRollResult {
@@ -69,6 +118,12 @@ export interface DiceRollResult {
   isSecret?: boolean;
   hasAfortunado?: boolean;
   rerolledAfortunado?: boolean;
+  attackDamagePayload?: AttackDamageRollPayload;
+  forcaOpressoraPayload?: ForcaOpressoraRollPayload;
+  batchId?: string;
+  batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
+  batchShotNumber?: number;
+  batchIsCrit?: boolean;
 }
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
@@ -120,6 +175,12 @@ export interface ClientToServerEvents {
     isSecret?: boolean;
     fixedRolls?: number[];
     hasAfortunado?: boolean;
+    attackDamagePayload?: AttackDamageRollPayload;
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload;
+    batchId?: string;
+    batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
+    batchShotNumber?: number;
+    batchIsCrit?: boolean;
   }) => void;
   'character:sync': (payload: { campaignId: string; characterId: string }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;
