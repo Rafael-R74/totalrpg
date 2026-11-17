@@ -7,3 +7,4 @@ dist/
 .DS_Store
 apps/server/uploads/
 *.pdf
+.agents/
