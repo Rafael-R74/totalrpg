@@ -22,6 +22,7 @@ interface OrdemSheetProps {
   bonuses: ComputedBonuses;
   customSkills: SystemSkillDefinition[];
   abilities?: CharacterAbility[];
+  isInCampaign?: boolean;
   isOverloaded?: boolean;
   isMachucado?: boolean;
   hasActiveInitiativeOrder?: boolean;
@@ -53,6 +54,7 @@ export function OrdemSheet({
   bonuses,
   customSkills,
   abilities = [],
+  isInCampaign = false,
   isOverloaded = false,
   isMachucado = false,
   hasActiveInitiativeOrder = false,
@@ -117,8 +119,12 @@ export function OrdemSheet({
   const isTrabalhadorRural = originId === 'trabalhador_rural';
 
   const sceneEffects = safeData.sceneEffects || [];
-  const faroPistasUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-faro-pistas');
-  const impostorUsedInScene = sceneEffects.some((e) => e.id === 'orig-scene-impostor');
+  const faroPistasUsedInScene = Boolean(
+    isInCampaign && sceneEffects.some((e) => e.id === 'orig-scene-faro-pistas')
+  );
+  const impostorUsedInScene = Boolean(
+    isInCampaign && sceneEffects.some((e) => e.id === 'orig-scene-impostor')
+  );
 
   // Poderes de Tropa de Choque para indicadores e automação
   const hasCascaGrossa = abilities.some(
@@ -155,12 +161,6 @@ export function OrdemSheet({
       a.id === 'ord-pwr-esp-conhecimento-aplicado' ||
       a.name.toLowerCase().includes('conhecimento aplicado')
   );
-  const hasMaosRapidas = abilities.some(
-    (a) =>
-      a.id === 'ord-pwr-esp-maos-rapidas' ||
-      a.name.toLowerCase().includes('mãos rápidas') ||
-      a.name.toLowerCase().includes('maos rapidas')
-  );
   const hasPeritoExplosivos = abilities.some(
     (a) =>
       a.id === 'ord-pwr-esp-perito-explosivos' ||
@@ -177,8 +177,8 @@ export function OrdemSheet({
       a.id === 'trail-infiltrador-65' ||
       a.name.toLowerCase().includes('assassinar')
   );
-  const primeiraImpressaoUsedInScene = sceneEffects.some(
-    (e) => e.id === 'pwr-scene-primeira-impressao'
+  const primeiraImpressaoUsedInScene = Boolean(
+    isInCampaign && sceneEffects.some((e) => e.id === 'pwr-scene-primeira-impressao')
   );
 
   const [armedEcleticoDegree, setArmedEcleticoDegree] = useState<0 | 5 | 10 | 15>(0);
@@ -673,12 +673,17 @@ export function OrdemSheet({
                   if (impostorUsedInScene) return;
                   if (
                     onSpendResource &&
-                    !onSpendResource(2, {
-                      id: 'orig-scene-impostor',
-                      name: 'Impostor (Poder de Trambiqueiro)',
-                      source: '1x/Cena',
-                      description: 'Teste de perícia substituído por Enganação nesta cena',
-                    })
+                    !onSpendResource(
+                      2,
+                      isInCampaign
+                        ? {
+                            id: 'orig-scene-impostor',
+                            name: 'Impostor (Poder de Trambiqueiro)',
+                            source: '1x/Cena',
+                            description: 'Teste de perícia substituído por Enganação nesta cena',
+                          }
+                        : undefined
+                    )
                   ) {
                     return;
                   }
@@ -980,13 +985,7 @@ export function OrdemSheet({
                 suffixParts.push('🧠 Conhecimento Aplicado (INT)');
               }
 
-              // 3. Mãos Rápidas (Crime)
-              if (opts?.forceMaosRapidas && skill.id === 'crime') {
-                peToSpend += 1;
-                suffixParts.push('🧤 Mãos Rápidas (Ação Livre)');
-              }
-
-              // 4. Perito
+              // 3. Perito
               const usedPerito = Boolean((armPerito || opts?.forcePerito) && isPeritoSkill);
               if (usedPerito) {
                 const peritoDieResult = Math.floor(Math.random() * activePeritoDice) + 1;
@@ -995,18 +994,20 @@ export function OrdemSheet({
                 suffixParts.push(`🎓 Perito +1d${activePeritoDice}: +${peritoDieResult}`);
               }
 
-              // 5. Primeira Impressão (+2d20 na 1ª vez da cena)
+              // 4. Primeira Impressão (+2d20 na 1ª vez da cena)
               if (isPrimeiraImpressaoEligible) {
                 suffixParts.push('✨ Primeira Impressão +2d20');
-                sceneEffectToAdd = {
-                  id: 'pwr-scene-primeira-impressao',
-                  name: 'Primeira Impressão (Especialista)',
-                  source: '1x/Cena',
-                  description: '+2d20 usado no 1º teste social/intuição desta cena',
-                };
+                if (isInCampaign) {
+                  sceneEffectToAdd = {
+                    id: 'pwr-scene-primeira-impressao',
+                    name: 'Primeira Impressão (Especialista)',
+                    source: '1x/Cena',
+                    description: '+2d20 usado no 1º teste social/intuição desta cena',
+                  };
+                }
               }
 
-              // 6. Poder de Origem Armado
+              // 5. Poder de Origem Armado
               if (armOriginBoost && originObj) {
                 const isEligible =
                   (originId === 'academico' && skill.attribute === 'int') ||
@@ -1015,12 +1016,12 @@ export function OrdemSheet({
                     skill.id !== 'luta' &&
                     skill.id !== 'pontaria') ||
                   originId === 'executivo' ||
-                  (originId === 'investigador' && !faroPistasUsedInScene) ||
+                  (originId === 'investigador' && (!faroPistasUsedInScene || !isInCampaign)) ||
                   (originId === 'trabalhador_rural' &&
                     (skill.id === 'adestramento' || skill.id === 'sobrevivencia'));
 
                 if (isEligible) {
-                  if (originId === 'investigador') {
+                  if (originId === 'investigador' && isInCampaign) {
                     sceneEffectToAdd = {
                       id: 'orig-scene-faro-pistas',
                       name: 'Faro para Pistas (Poder de Investigador)',
@@ -1084,17 +1085,6 @@ export function OrdemSheet({
                       className="px-2 py-1 bg-blue-950/70 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-700/70 rounded text-[10px] font-mono font-bold transition cursor-pointer shrink-0"
                     >
                       🎓 +1d{activePeritoDice} (-{peritoCost} PE)
-                    </button>
-                  )}
-
-                  {skill.id === 'crime' && hasMaosRapidas && (
-                    <button
-                      type="button"
-                      onClick={() => handleExecuteSkillRoll({ forceMaosRapidas: true })}
-                      title="Mãos Rápidas: Faça um teste de Crime como ação livre gastando 1 PE"
-                      className="px-2 py-1 bg-emerald-950/70 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-700/70 rounded text-[10px] font-bold transition cursor-pointer shrink-0"
-                    >
-                      🧤 Mãos Rápidas (-1 PE)
                     </button>
                   )}
 

@@ -228,7 +228,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     category: 'power',
     name: 'Mãos Rápidas (Especialista)',
     description: 'Ao fazer um teste de Crime, você pode pagar 1 PE para fazê-lo como uma ação livre. Pré-requisitos: Agi 3, treinado em Crime.',
-    cost: 1,
+    cost: 0,
     modifiers: [],
     metadata: { requirements: 'Especialista, Agi 3, treinado em Crime' },
   },

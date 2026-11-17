@@ -1112,17 +1112,23 @@ export function SheetContainer({
     }
 
     if (originId === 'trambiqueiro') {
-      if (activeSceneEffects.some((e) => e.id === 'orig-scene-impostor')) {
+      const inCamp = Boolean(character?.campaignId);
+      if (inCamp && activeSceneEffects.some((e) => e.id === 'orig-scene-impostor')) {
         showHoverToast('🎭 Impostor só pode ser utilizado 1 vez por cena!');
         return;
       }
       if (
-        !handleSpendResource(2, {
-          id: 'orig-scene-impostor',
-          name: 'Impostor (Poder de Trambiqueiro)',
-          source: '1x/Cena',
-          description: 'Já utilizado nesta cena',
-        })
+        !handleSpendResource(
+          2,
+          inCamp
+            ? {
+                id: 'orig-scene-impostor',
+                name: 'Impostor (Poder de Trambiqueiro)',
+                source: '1x/Cena',
+                description: 'Já utilizado nesta cena',
+              }
+            : undefined
+        )
       ) {
         return;
       }
@@ -1136,7 +1142,7 @@ export function SheetContainer({
         (bonuses.skillBonus['enganacao'] || 0);
 
       triggerCharacterRoll(
-        'Teste de Enganação (Impostor -2 PE • 1x/Cena)',
+        `Teste de Enganação (Impostor -2 PE${inCamp ? ' • 1x/Cena' : ''})`,
         dice,
         20,
         mod
@@ -3498,6 +3504,7 @@ export function SheetContainer({
           bonuses={bonuses}
           customSkills={customSkills}
           abilities={characterAbilities}
+          isInCampaign={Boolean(character.campaignId)}
           isOverloaded={isCharacterOverloaded}
           isMachucado={isCharacterMachucado}
           isEditMode={isEditMode}
@@ -3656,6 +3663,10 @@ export function SheetContainer({
             ? (character.sheetData as OrdemSheetData)
             : undefined
         }
+        isInCampaign={Boolean(character.campaignId)}
+        campaignId={character.campaignId || undefined}
+        characterId={character.id}
+        characterName={character.name}
         bonuses={bonuses}
         compendiumEntries={compendiumEntries}
         isEditMode={isEditMode}
