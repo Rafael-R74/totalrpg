@@ -125,6 +125,9 @@ export function SheetExtras({
   const effAgi = isOrdemSystem
     ? (ordemSheetData!.attributes.agi || 0) + (bonuses.attributes['agi'] || 0)
     : 0;
+  const effInt = isOrdemSystem
+    ? (ordemSheetData!.attributes.int || 0) + (bonuses.attributes['int'] || 0)
+    : 0;
   const peTurnLimit = isOrdemSystem
     ? getOrdemPeLimit(ordemNex, ordemSheetData!.origin, abilities)
     : 20;
@@ -233,6 +236,51 @@ export function SheetExtras({
       a.name.toLowerCase().includes('potencia maxima')
   );
 
+  // Poderes e Trilhas de Especialista
+  const hasNinjaUrbano = abilities.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id === 'ord-pwr-esp-ninja-urbano' ||
+        a.name.toLowerCase().includes('ninja urbano'))
+  );
+  const hasMiraDeElite = abilities.some(
+    (a) =>
+      a.id === 'trail-atirador_elite-10' ||
+      a.name.toLowerCase().includes('mira de elite')
+  );
+  const hasDisparoLetal = abilities.some(
+    (a) =>
+      a.id === 'trail-atirador_elite-40' ||
+      a.name.toLowerCase().includes('disparo letal')
+  );
+  const hasAtirarParaMatar = abilities.some(
+    (a) =>
+      a.id === 'trail-atirador_elite-99' ||
+      a.name.toLowerCase().includes('atirar para matar')
+  );
+  const hasAtaqueFurtivo = abilities.some(
+    (a) =>
+      a.id === 'trail-infiltrador-10' ||
+      a.name.toLowerCase().includes('ataque furtivo')
+  );
+  const hasAssassinar = abilities.some(
+    (a) =>
+      a.id === 'trail-infiltrador-65' ||
+      a.name.toLowerCase().includes('assassinar')
+  );
+  const hasRemendao = abilities.some(
+    (a) =>
+      a.id === 'trail-tecnico-40' ||
+      a.name.toLowerCase().includes('remendão') ||
+      a.name.toLowerCase().includes('remendao')
+  );
+
+  const hasChosenUtilityBackpackItem = inventory.some((it) =>
+    Boolean(it.isUtilityBackpackItem)
+  );
+  const canChangeUtilityBackpackItem =
+    !hasChosenUtilityBackpackItem || (isEditMode && canEditInventory);
+
   function hasDedicatedControlElsewhere(ab: CharacterAbility): boolean {
     const lowerId = (ab.id || '').toLowerCase();
     const lowerName = (ab.name || '').toLowerCase();
@@ -282,6 +330,33 @@ export function SheetExtras({
       lowerId === 'trail-guerreiro-65' ||
       lowerName.includes('força opressora') ||
       lowerName.includes('forca opressora')
+    ) {
+      return true;
+    }
+
+    // Habilidades, Poderes e Trilhas de Especialista com controle dedicado em Perícias, Combate ou Botões Específicos
+    if (
+      lowerName.includes('eclético') ||
+      lowerName.includes('ecletico') ||
+      lowerName === 'perito' ||
+      (lowerName.includes('perito') && !lowerName.includes('explosivos')) ||
+      lowerName.includes('engenhosidade') ||
+      lowerId === 'ord-pwr-esp-conhecimento-aplicado' ||
+      lowerName.includes('conhecimento aplicado') ||
+      lowerId === 'ord-pwr-esp-maos-rapidas' ||
+      lowerName.includes('mãos rápidas') ||
+      lowerName.includes('maos rapidas') ||
+      lowerId === 'trail-atirador_elite-40' ||
+      lowerName.includes('disparo letal') ||
+      lowerId === 'trail-infiltrador-10' ||
+      lowerName.includes('ataque furtivo') ||
+      lowerId === 'trail-infiltrador-65' ||
+      lowerName.includes('assassinar') ||
+      lowerId === 'trail-medico_campo-10' ||
+      lowerName.includes('paramédico') ||
+      lowerName.includes('paramedico') ||
+      lowerId === 'trail-negociador-40' ||
+      lowerName.includes('discurso motivador')
     ) {
       return true;
     }
@@ -346,6 +421,9 @@ export function SheetExtras({
     dmgBonus: number;
   } | null>(null);
   const [armedGolpeDemolidor, setArmedGolpeDemolidor] = useState<boolean>(false);
+  const [armedAtaqueFurtivo, setArmedAtaqueFurtivo] = useState<boolean>(false);
+  const [armedAssassinar, setArmedAssassinar] = useState<boolean>(false);
+  const [disparoLetalByAttackId, setDisparoLetalByAttackId] = useState<Record<string, boolean>>({});
   const [segurarGatilhoStep, setSegurarGatilhoStep] = useState<number>(1);
   const [aimingByAttackId, setAimingByAttackId] = useState<Record<string, boolean>>({});
   const [secAmplo, setSecAmplo] = useState<boolean>(false);
@@ -372,6 +450,8 @@ export function SheetExtras({
       setSegurarGatilhoStep(1);
       setActiveAeAttackId(null);
       setPendingSpecialDamageBonus(null);
+      setArmedAtaqueFurtivo(false);
+      setArmedAssassinar(false);
     }
   }, [turnResetSignal]);
 
@@ -409,8 +489,34 @@ export function SheetExtras({
   const allowAb = isEditMode && canEditAbilities;
 
   const effectiveMaxSlots = maxLoadSlots + bonuses.loadLimit;
-  const currentLoad = inventory.reduce((acc, item) => acc + item.slots * (item.quantity || 1), 0);
+  const currentLoad = inventory.reduce((acc, item) => {
+    const qty = item.quantity || 1;
+    if (hasMochilaUtilidades && item.isUtilityBackpackItem) {
+      const reducedFirst = Math.max(0, item.slots - 1);
+      return acc + reducedFirst + item.slots * Math.max(0, qty - 1);
+    }
+    return acc + item.slots * qty;
+  }, 0);
   const isOverloaded = currentLoad > effectiveMaxSlots;
+
+  function isGeneralEquipment(it: RPGItem): boolean {
+    const lower = it.name.toLowerCase();
+    const isProtection =
+      lower.includes('proteção') ||
+      lower.includes('protecao') ||
+      lower.includes('escudo') ||
+      lower.includes('colete') ||
+      (it.modifiers || []).some((m) => m.targetType === 'defense');
+    if (isProtection) return false;
+    const isExplosiveOrHealing =
+      lower.includes('granada') ||
+      lower.includes('cicatrizante') ||
+      lower.includes('flashbang');
+    if (isExplosiveOrHealing) return true;
+    const isWeaponAttack = attacks.some((a) => a.name.toLowerCase() === lower);
+    if (isWeaponAttack) return false;
+    return true;
+  }
 
   const powerList = abilities.filter((ab) => ab.category !== 'ritual' && ab.category !== 'magia');
   const spellList = abilities.filter((ab) => ab.category === 'ritual' || ab.category === 'magia');
@@ -1265,17 +1371,24 @@ export function SheetExtras({
             </div>
           )}
 
-          {/* PAINEL TÁTICO DE COMBATENTE (Posturas e Ações de Combate) */}
+          {/* PAINEL TÁTICO DE COMBATE (Combatente & Especialista Infiltrador) */}
           {isOrdemSystem &&
             (() => {
               const unarmedDieSides = ordemNex >= 70 ? 10 : ordemNex >= 35 ? 8 : 6;
               const hasUnarmedAttack = attacks.some(
                 (a) => a.isUnarmed || a.name.toLowerCase().includes('desarmado')
               );
+              const furtivoBaseDice =
+                ordemNex >= 99 ? 4 : ordemNex >= 65 ? 3 : ordemNex >= 40 ? 2 : 1;
+              const effectiveFurtivoDice = armedAssassinar
+                ? furtivoBaseDice * 2
+                : furtivoBaseDice;
               const showTacticalBar =
                 Boolean(combateDefensivoAb) ||
                 Boolean(duasArmasAb) ||
                 hasGolpeDemolidor ||
+                hasAtaqueFurtivo ||
+                hasAssassinar ||
                 (hasArtistaMarcial && !hasUnarmedAttack);
               if (!showTacticalBar) return null;
 
@@ -1335,6 +1448,56 @@ export function SheetExtras({
                         {armedGolpeDemolidor
                           ? '🔨 Golpe Demolidor ARMADO (-1 PE → +2 dados no próx. dano)'
                           : '🔨 Armar Golpe Demolidor (-1 PE → +2 dados vs Objeto)'}
+                      </button>
+                    )}
+
+                    {hasAtaqueFurtivo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!armedAtaqueFurtivo && onCheckResource && !onCheckResource(1, 'Ataque Furtivo')) {
+                            return;
+                          }
+                          setArmedAtaqueFurtivo((prev) => !prev);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                          armedAtaqueFurtivo
+                            ? 'bg-purple-600 text-white border-purple-300 shadow animate-pulse'
+                            : 'bg-zinc-900 hover:bg-zinc-800 text-purple-300 border-purple-800/70'
+                        }`}
+                        title="1x/rodada contra alvo desprevenido ou flanqueado: gasta 1 PE para somar +Xd6 no próximo dano"
+                      >
+                        {armedAtaqueFurtivo
+                          ? `🥷 Ataque Furtivo ARMADO (-1 PE → +${effectiveFurtivoDice}d6 no próx. Dano)`
+                          : `🥷 Ataque Furtivo (-1 PE → +${effectiveFurtivoDice}d6 no próx. Dano)`}
+                      </button>
+                    )}
+
+                    {hasAssassinar && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!armedAssassinar && onCheckResource && !onCheckResource(3, 'Assassinar')) {
+                            return;
+                          }
+                          setArmedAssassinar((prev) => {
+                            const next = !prev;
+                            if (next && hasAtaqueFurtivo) {
+                              setArmedAtaqueFurtivo(true);
+                            }
+                            return next;
+                          });
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                          armedAssassinar
+                            ? 'bg-red-700 text-white border-red-300 shadow animate-pulse'
+                            : 'bg-zinc-900 hover:bg-zinc-800 text-red-300 border-red-800/70'
+                        }`}
+                        title="Analisa o alvo (ação de movimento, 3 PE): dobra os dados do Ataque Furtivo e exige Fortitude (DT Agi)"
+                      >
+                        {armedAssassinar
+                          ? `🗡️ Assassinar ARMADO (-3 PE → Furtivo ${furtivoBaseDice * 2}d6 + Fortitude DT ${10 + peTurnLimit + effAgi})`
+                          : `🗡️ Assassinar (-3 PE → Dobra Furtivo + Fortitude DT ${10 + peTurnLimit + effAgi})`}
                       </button>
                     )}
 
@@ -1476,6 +1639,19 @@ export function SheetExtras({
                 // - Armas de arremesso somam FOR.
                 // - Arco Composto soma FOR.
                 // - Armas de fogo e outras armas de disparo (arco simples, besta, balestra) NÃO somam força ao dano!
+                const usesLongBullets =
+                  isFirearm &&
+                  !lowerAtkName.includes('submetralhadora') &&
+                  (descLower.includes('balas longas') ||
+                    lowerAtkName.includes('fuzil') ||
+                    lowerAtkName.includes('sniper') ||
+                    lowerAtkName.includes('rifle') ||
+                    lowerAtkName.includes('carabina') ||
+                    lowerAtkName.includes('metralhadora'));
+                const miraDeEliteBonus = hasMiraDeElite && usesLongBullets ? effInt : 0;
+                const ninjaUrbanoBonus =
+                  hasNinjaUrbano && (isMelee || isDisparo) && !isFirearm && !isUnarmed ? 2 : 0;
+
                 const specificTypeDamageBonus =
                   (isMelee ? bonuses.meleeDamageBonus : 0) +
                   (isFirearm ? bonuses.firearmDamageBonus : 0);
@@ -1497,6 +1673,8 @@ export function SheetExtras({
                   bonuses.damageBonus +
                   specificTypeDamageBonus +
                   tiroCerteiroBonus +
+                  miraDeEliteBonus +
+                  ninjaUrbanoBonus +
                   workToolDmgBonus;
 
                 const isFuzilPrecisao =
@@ -1505,8 +1683,14 @@ export function SheetExtras({
                   lowerAtkName.includes('sniper') ||
                   descLower.includes('veterano em pontaria ao mirar');
                 const isAimingFuzil = Boolean(isFuzilPrecisao && aimingByAttackId[atk.id]);
+                const isDisparoLetalArmed = Boolean(
+                  hasDisparoLetal && isRanged && disparoLetalByAttackId[atk.id]
+                );
+                const isAtirarParaMatarActive = Boolean(
+                  isOrdemSystem && hasAtirarParaMatar && isFirearm
+                );
 
-                // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta, Mirar (+5)
+                // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta, Mirar (+5), Disparo Letal (+2)
                 let critThreatSteps = 0;
                 if (hasTecnicaLetal && isMelee) critThreatSteps += 2;
                 if (isAniqFav && hasMaquinaMatar) critThreatSteps += 2;
@@ -1515,6 +1699,7 @@ export function SheetExtras({
                   if (secLetal === 2) critThreatSteps += 5;
                 }
                 if (isAimingFuzil) critThreatSteps += 5;
+                if (isDisparoLetalArmed) critThreatSteps += 2;
                 let effectiveCritRange = boostCritRangeBySteps(atk.critRange, critThreatSteps);
                 if (isAniqFav && hasTecnicaSecreta && secDestruidor) {
                   effectiveCritRange = boostCritMultiplier(effectiveCritRange, 1);
@@ -1538,6 +1723,7 @@ export function SheetExtras({
                     (secDestruidor ? 2 : 0) +
                     (hasTecnicaSublime ? secLetal * 2 + (secPerfurante ? 2 : 0) : 0)
                   : 0;
+                const disparoLetalCost = isDisparoLetalArmed ? 1 : 0;
 
                 const isAeOpen = hasAtaqueEspecial && activeAeAttackId === atk.id;
                 const aeTotalInvested = aeAtkInvest + aeDmgInvest;
@@ -1546,7 +1732,8 @@ export function SheetExtras({
                 const aeMult = hasPotenciaMaxima && isMelee ? 2 : 1;
                 const appliedAeAtk = aeAtkInvest * aeMult;
                 const appliedAeDmg = aeDmgInvest * aeMult;
-                const totalAeConfirmPe = aePeCostCalculated + tecnicaSecretaCost;
+                const totalAeConfirmPe =
+                  aePeCostCalculated + tecnicaSecretaCost + disparoLetalCost;
 
                 const foPayload: ForcaOpressoraRollPayload | undefined =
                   isOrdemSystem && hasForcaOpressora && isMelee
@@ -1596,6 +1783,7 @@ export function SheetExtras({
                     maxAeTotalBonus,
                     aeMult,
                     peTurnLimit,
+                    maximizeCritDamage: isAtirarParaMatarActive,
                     tecnicaSecretaCost,
                     tecnicaSecretaAttackSuffix: buildTecnicaSecretaLabels([]),
                     tecnicaSecretaDamageSuffix:
@@ -1609,6 +1797,16 @@ export function SheetExtras({
                   let dmgDiceToUse = isCrit ? critBaseDamageDiceCount : baseDamageDiceCount;
                   let dmgModToUse = finalDamageMod;
                   const suffixParts: string[] = isCrit ? [`x${critParsed.multiplier}`] : [];
+                  let peToSpend = 0;
+
+                  if (armedGolpeDemolidor) peToSpend += 1;
+                  const useFurtivo = armedAtaqueFurtivo || armedAssassinar;
+                  if (armedAtaqueFurtivo) peToSpend += 1;
+                  if (armedAssassinar) peToSpend += 3;
+
+                  if (peToSpend > 0 && !onSpendResource(peToSpend)) {
+                    return;
+                  }
 
                   if (
                     pendingSpecialDamageBonus &&
@@ -1622,10 +1820,32 @@ export function SheetExtras({
                   }
 
                   if (armedGolpeDemolidor) {
-                    if (!onSpendResource(1)) return;
                     dmgDiceToUse += 2;
                     suffixParts.push('Golpe Demolidor +2 dados');
                     setArmedGolpeDemolidor(false);
+                  }
+
+                  if (useFurtivo) {
+                    const furtivoBase =
+                      ordemNex >= 99 ? 4 : ordemNex >= 65 ? 3 : ordemNex >= 40 ? 2 : 1;
+                    const furtivoDiceCount = armedAssassinar ? furtivoBase * 2 : furtivoBase;
+                    let furtivoSum = 0;
+                    for (let i = 0; i < furtivoDiceCount; i++) {
+                      furtivoSum += Math.floor(Math.random() * 6) + 1;
+                    }
+                    dmgModToUse += furtivoSum;
+                    const assassinarSuffix = armedAssassinar
+                      ? ` • 🗡️ Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
+                      : '';
+                    suffixParts.push(
+                      `🥷 Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
+                    );
+                    setArmedAtaqueFurtivo(false);
+                    setArmedAssassinar(false);
+                  }
+
+                  if (isCrit && isAtirarParaMatarActive) {
+                    suffixParts.push('💀 Atirar para Matar (Dano Máx.)');
                   }
 
                   if (isAniqFav && hasTecnicaSublime && secPerfurante) {
@@ -1640,7 +1860,18 @@ export function SheetExtras({
                     effectiveDamageSides,
                     dmgModToUse,
                     true,
-                    undefined,
+                    isCrit && isAtirarParaMatarActive
+                      ? {
+                          weaponName: atk.name,
+                          critThreatMin: 1,
+                          critMultiplier: critParsed.multiplier,
+                          normalDiceCount: baseDamageDiceCount,
+                          critDiceCount: critBaseDamageDiceCount,
+                          dieSides: effectiveDamageSides,
+                          damageModifier: dmgModToUse,
+                          maximizeCritDamage: true,
+                        }
+                      : undefined,
                     foPayload
                   );
                 }
@@ -1676,6 +1907,21 @@ export function SheetExtras({
                               🏹 Tiro Certeiro (+{tiroCerteiroBonus})
                             </span>
                           )}
+                          {miraDeEliteBonus > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700">
+                              🎯 Mira de Elite (+{miraDeEliteBonus} Dano)
+                            </span>
+                          )}
+                          {ninjaUrbanoBonus > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
+                              🥷 Ninja Urbano (+2 Dano)
+                            </span>
+                          )}
+                          {isAtirarParaMatarActive && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-200 border border-red-600">
+                              💀 Atirar p/ Matar (Crít. Máx.)
+                            </span>
+                          )}
                           {hasSegurarGatilho && isFirearm && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700/70">
                               🔥 Segurar o Gatilho
@@ -1684,6 +1930,11 @@ export function SheetExtras({
                           {isAimingFuzil && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-600">
                               🎯 Mirando (+5 Crít)
+                            </span>
+                          )}
+                          {isDisparoLetalArmed && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-600">
+                              🎯 Disparo Letal (+2 Crít)
                             </span>
                           )}
                         </div>
@@ -1744,6 +1995,32 @@ export function SheetExtras({
                           </button>
                         )}
 
+                        {hasDisparoLetal && isRanged && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDisparoLetalByAttackId((prev) => ({
+                                ...prev,
+                                [atk.id]: !prev[atk.id],
+                              }))
+                            }
+                            className={`px-2.5 py-1.5 rounded text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                              isDisparoLetalArmed
+                                ? 'bg-cyan-600 text-white border-cyan-300 shadow'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-cyan-300 border-cyan-800/70'
+                            }`}
+                            title="Ao Mirar, gaste 1 PE no ataque para aumentar +2 na margem de ameaça"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isDisparoLetalArmed}
+                              readOnly
+                              className="pointer-events-none accent-cyan-300 w-3.5 h-3.5"
+                            />
+                            🎯 Disparo Letal (-1 PE → +2 Crít)
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => {
@@ -1753,17 +2030,23 @@ export function SheetExtras({
                             if (isAimingFuzil) {
                               suffixParts.push('🎯 Mirando (+5 Crít)');
                             }
+                            if (isDisparoLetalArmed) {
+                              suffixParts.push('🎯 Disparo Letal (+2 Crít)');
+                            }
 
-                            if (tecnicaSecretaCost > 0) {
-                              if (isOrdemSystem && tecnicaSecretaCost > peTurnLimit) {
+                            const totalAttackPe = tecnicaSecretaCost + disparoLetalCost;
+                            if (totalAttackPe > 0) {
+                              if (isOrdemSystem && totalAttackPe > peTurnLimit) {
                                 setCombatTabFeedback(
-                                  `⚠️ Custo da Técnica Secreta (${tecnicaSecretaCost} PE) excede seu limite de ${peTurnLimit} PE/turno!`
+                                  `⚠️ Custo do ataque (${totalAttackPe} PE) excede seu limite de ${peTurnLimit} PE/turno!`
                                 );
                                 return;
                               }
-                              if (!onSpendResource(tecnicaSecretaCost)) return;
-                              const tsLabel = buildTecnicaSecretaLabels(dmgSuffixParts);
-                              if (tsLabel) suffixParts.push(tsLabel);
+                              if (!onSpendResource(totalAttackPe)) return;
+                              if (tecnicaSecretaCost > 0) {
+                                const tsLabel = buildTecnicaSecretaLabels(dmgSuffixParts);
+                                if (tsLabel) suffixParts.push(tsLabel);
+                              }
                             }
 
                             setPendingSpecialDamageBonus(null);
@@ -1785,6 +2068,7 @@ export function SheetExtras({
                                 critDiceCount: critBaseDamageDiceCount,
                                 dieSides: effectiveDamageSides,
                                 damageModifier: finalDamageMod,
+                                maximizeCritDamage: isAtirarParaMatarActive,
                                 damageLabelSuffix:
                                   dmgSuffixParts.length > 0
                                     ? ` [${dmgSuffixParts.join(' • ')}]`
@@ -1993,6 +2277,9 @@ export function SheetExtras({
                                 if (isAimingFuzil) {
                                   suffixParts.push('🎯 Mirando (+5 Crít)');
                                 }
+                                if (isDisparoLetalArmed) {
+                                  suffixParts.push('🎯 Disparo Letal (+2 Crít)');
+                                }
                                 const dmgSuffixParts: string[] = [];
 
                                 if (appliedAeDmg > 0) {
@@ -2027,6 +2314,7 @@ export function SheetExtras({
                                     critDiceCount: critBaseDamageDiceCount,
                                     dieSides: effectiveDamageSides,
                                     damageModifier: finalDamageMod + appliedAeDmg,
+                                    maximizeCritDamage: isAtirarParaMatarActive,
                                     damageLabelSuffix:
                                       dmgSuffixParts.length > 0
                                         ? ` [${dmgSuffixParts.join(' • ')}]`
@@ -2301,12 +2589,204 @@ export function SheetExtras({
                                 🧠 Analisar Ambiente (-2 PE → +INT Def/Resist na Cena)
                               </button>
                             )}
+                          {(ab.id === 'ord-pwr-esp-nerd' ||
+                            ab.name.toLowerCase().includes('nerd')) &&
+                            ordemSheetData && (() => {
+                              const nerdUsed = (ordemSheetData.sceneEffects || []).some(
+                                (e) => e.id === 'pwr-scene-nerd'
+                              );
+                              return nerdUsed ? (
+                                <span className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-500 rounded-lg text-xs font-bold whitespace-nowrap">
+                                  ✓ Nerd já usado nesta cena
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (
+                                      !onSpendResource(2, {
+                                        id: 'pwr-scene-nerd',
+                                        name: 'Nerd (Especialista)',
+                                        source: '1x/Cena',
+                                        description:
+                                          'Teste de Atualidades (DT 20) realizado nesta cena',
+                                      })
+                                    ) {
+                                      return;
+                                    }
+                                    const atuSk = ordemSheetData.skills.find(
+                                      (s) => s.id === 'atualidades'
+                                    );
+                                    const atuDice =
+                                      effInt +
+                                      bonuses.skillDiceAll +
+                                      (bonuses.skillDice['atualidades'] || 0);
+                                    const atuMod =
+                                      (atuSk?.trainingDegree || 0) +
+                                      (atuSk?.otherModifier || 0) +
+                                      bonuses.skillBonusAll +
+                                      (bonuses.skillBonus['atualidades'] || 0);
+                                    onRoll(
+                                      'Nerd — Atualidades (DT 20 • 1x/Cena)',
+                                      atuDice,
+                                      20,
+                                      atuMod
+                                    );
+                                  }}
+                                  className="px-3 py-1.5 bg-blue-950/70 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                >
+                                  🤓 Testar Atualidades DT 20 (-2 PE • 1x/Cena)
+                                </button>
+                              );
+                            })()}
+                          {(ab.id === 'trail-medico_campo-10' ||
+                            ab.name.toLowerCase().includes('paramédico') ||
+                            ab.name.toLowerCase().includes('paramedico')) &&
+                            isOrdemSystem && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {([
+                                  { dice: 2, cost: 2, minNex: 10 },
+                                  { dice: 3, cost: 3, minNex: 40 },
+                                  { dice: 4, cost: 4, minNex: 65 },
+                                  { dice: 5, cost: 5, minNex: 99 },
+                                ] as const)
+                                  .filter((t) => ordemNex >= t.minNex)
+                                  .map((t) => (
+                                    <button
+                                      key={t.dice}
+                                      type="button"
+                                      onClick={() => {
+                                        if (!onSpendResource(t.cost)) return;
+                                        onRoll(
+                                          `Paramédico — Cura (${t.dice}d10 PV • -${t.cost} PE)`,
+                                          t.dice,
+                                          10,
+                                          0,
+                                          true
+                                        );
+                                      }}
+                                      className="px-2.5 py-1.5 bg-emerald-950/70 hover:bg-emerald-700 text-emerald-200 hover:text-white border border-emerald-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                    >
+                                      🚑 Curar {t.dice}d10 PV (-{t.cost} PE)
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+                          {(ab.id === 'trail-negociador-40' ||
+                            ab.name.toLowerCase().includes('discurso motivador')) &&
+                            isOrdemSystem && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {ab.isActive ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onUpdateAbilities(
+                                        abilities.map((a) =>
+                                          a.id === ab.id ? { ...a, isActive: false } : a
+                                        )
+                                      )
+                                    }
+                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white border border-amber-300 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow"
+                                  >
+                                    📢 Discurso Ativo (+
+                                    {ab.modifiers?.[0]?.value || 1}d20 Perícias) • Encerrar
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (
+                                          !onSpendResource(4, {
+                                            id: 'pwr-scene-discurso-motivador',
+                                            name: 'Discurso Motivador (Negociador 40%)',
+                                            source: 'Cena',
+                                            description:
+                                              '+1d20 em testes de perícia para você e aliados na cena',
+                                          })
+                                        ) {
+                                          return;
+                                        }
+                                        onUpdateAbilities(
+                                          abilities.map((a) =>
+                                            a.id === ab.id
+                                              ? {
+                                                  ...a,
+                                                  isActive: true,
+                                                  modifiers: [
+                                                    {
+                                                      id: 'tr-neg-40',
+                                                      targetType: 'skill_dice',
+                                                      targetKey: 'all',
+                                                      value: 1,
+                                                    },
+                                                  ],
+                                                }
+                                              : a
+                                          )
+                                        );
+                                        setAbilityUseFeedback(
+                                          '📢 Discurso Motivador ativado (-4 PE): +1d20 em todas as perícias na cena!'
+                                        );
+                                      }}
+                                      className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                    >
+                                      📢 Discurso Motivador (+1d20 Perícias • -4 PE)
+                                    </button>
+                                    {ordemNex >= 65 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (
+                                            !onSpendResource(8, {
+                                              id: 'pwr-scene-discurso-motivador',
+                                              name: 'Discurso Motivador 65%+ (Negociador)',
+                                              source: 'Cena',
+                                              description:
+                                                '+2d20 em testes de perícia para você e aliados na cena',
+                                            })
+                                          ) {
+                                            return;
+                                          }
+                                          onUpdateAbilities(
+                                            abilities.map((a) =>
+                                              a.id === ab.id
+                                                ? {
+                                                    ...a,
+                                                    isActive: true,
+                                                    modifiers: [
+                                                      {
+                                                        id: 'tr-neg-40',
+                                                        targetType: 'skill_dice',
+                                                        targetKey: 'all',
+                                                        value: 2,
+                                                      },
+                                                    ],
+                                                  }
+                                                : a
+                                            )
+                                          );
+                                          setAbilityUseFeedback(
+                                            '📢 Discurso Motivador 65%+ ativado (-8 PE): +2d20 em todas as perícias na cena!'
+                                          );
+                                        }}
+                                        className="px-3 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                      >
+                                        📢 Discurso 65%+ (+2d20 Perícias • -8 PE)
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
                           {!isPassive &&
                             !hasDedicatedControlElsewhere(ab) &&
                             !(
                               ab.id === 'ord-pwr-comb-sentido-tatico' ||
                               ab.name.toLowerCase().includes('sentido tático') ||
-                              ab.name.toLowerCase().includes('sentido tatico')
+                              ab.name.toLowerCase().includes('sentido tatico') ||
+                              ab.id === 'ord-pwr-esp-nerd' ||
+                              ab.name.toLowerCase().includes('nerd')
                             ) && (
                             <button
                               type="button"
@@ -2384,21 +2864,23 @@ export function SheetExtras({
                 for (const it of inventory) {
                   const rawCat = it.category || 0;
                   const qty = it.quantity || 1;
-                  const reduction = it.isFavoriteTool
-                    ? 1
-                    : it.isAniquiladorFavorite && aniquiladorCatReduction > 0
-                    ? aniquiladorCatReduction
-                    : 0;
-                  if (reduction > 0) {
-                    const reducedCat = Math.max(0, rawCat - reduction);
-                    if (reducedCat >= 1 && reducedCat <= 4) {
-                      counts[reducedCat as 1 | 2 | 3 | 4] += 1;
+                  const remendaoRed = hasRemendao && isGeneralEquipment(it) ? 1 : 0;
+                  const singleUnitRed =
+                    (it.isFavoriteTool ? 1 : 0) +
+                    (hasMochilaUtilidades && it.isUtilityBackpackItem ? 1 : 0) +
+                    (it.isAniquiladorFavorite && aniquiladorCatReduction > 0
+                      ? aniquiladorCatReduction
+                      : 0);
+
+                  const firstUnitCat = Math.max(0, rawCat - remendaoRed - singleUnitRed);
+                  if (firstUnitCat >= 1 && firstUnitCat <= 4) {
+                    counts[firstUnitCat as 1 | 2 | 3 | 4] += 1;
+                  }
+                  if (qty > 1) {
+                    const otherUnitsCat = Math.max(0, rawCat - remendaoRed);
+                    if (otherUnitsCat >= 1 && otherUnitsCat <= 4) {
+                      counts[otherUnitsCat as 1 | 2 | 3 | 4] += qty - 1;
                     }
-                    if (qty > 1 && rawCat >= 1 && rawCat <= 4) {
-                      counts[rawCat as 1 | 2 | 3 | 4] += qty - 1;
-                    }
-                  } else if (rawCat >= 1 && rawCat <= 4) {
-                    counts[rawCat as 1 | 2 | 3 | 4] += qty;
                   }
                 }
                 return (
@@ -2464,7 +2946,12 @@ export function SheetExtras({
                         </span>
                         <p className="text-base font-bold text-white truncate">{item.name}</p>
                         <span className="text-[11px] font-mono text-zinc-500">
-                          ({item.slots * (item.quantity || 1)} esp.)
+                          {hasMochilaUtilidades && item.isUtilityBackpackItem
+                            ? `(${
+                                Math.max(0, item.slots - 1) +
+                                item.slots * Math.max(0, (item.quantity || 1) - 1)
+                              } esp.)`
+                            : `(${item.slots * (item.quantity || 1)} esp.)`}
                         </span>
                         {system === 'ordem-paranormal' && (
                           allowInv ? (
@@ -2499,6 +2986,18 @@ export function SheetExtras({
                             🔧 Ferramenta Favorita (-1 Cat.)
                           </span>
                         )}
+                        {hasMochilaUtilidades && item.isUtilityBackpackItem && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700">
+                            🎒 Mochila de Utilidades (-1 Cat., -1 Esp.)
+                          </span>
+                        )}
+                        {hasRemendao &&
+                          isGeneralEquipment(item) &&
+                          (item.category || 0) > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700">
+                              🛠️ Remendão (-I Cat.)
+                            </span>
+                          )}
                         {item.isAniquiladorFavorite && aniquiladorCatReduction > 0 && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-700">
                             🗡️ A Favorita (-{aniquiladorCatReduction} Cat.)
@@ -2520,7 +3019,7 @@ export function SheetExtras({
                           Equipado / Em mãos
                         </label>
 
-                        {(originId === 'engenheiro' || hasMochilaUtilidades) &&
+                        {originId === 'engenheiro' &&
                           !attacks.some(
                             (a) => a.name.toLowerCase() === item.name.toLowerCase()
                           ) && (
@@ -2539,6 +3038,29 @@ export function SheetExtras({
                                 }
                               />
                               🔧 Ferramenta Favorita (-1 Cat.)
+                            </label>
+                          )}
+
+                        {hasMochilaUtilidades &&
+                          canChangeUtilityBackpackItem &&
+                          !attacks.some(
+                            (a) => a.name.toLowerCase() === item.name.toLowerCase()
+                          ) && (
+                            <label className="flex items-center gap-1.5 text-[11px] text-blue-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.isUtilityBackpackItem)}
+                                onChange={() =>
+                                  onUpdateInventory(
+                                    inventory.map((i) => ({
+                                      ...i,
+                                      isUtilityBackpackItem:
+                                        i.id === item.id ? !i.isUtilityBackpackItem : false,
+                                    }))
+                                  )
+                                }
+                              />
+                              🎒 Mochila de Utilidades (-1 Cat., -1 Esp.)
                             </label>
                           )}
 

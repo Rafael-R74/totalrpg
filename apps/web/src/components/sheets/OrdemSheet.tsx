@@ -138,6 +138,77 @@ export function OrdemSheet({
       a.name.toLowerCase().includes('inquebravel')
   );
 
+  // Habilidades e Poderes de Especialista
+  const isEspecialista = safeData.characterClass === 'especialista';
+  const hasEcletico =
+    isEspecialista ||
+    abilities.some(
+      (a) =>
+        a.name.toLowerCase().includes('eclético') ||
+        a.name.toLowerCase().includes('ecletico')
+    );
+  const hasPerito =
+    isEspecialista ||
+    abilities.some((a) => a.name.toLowerCase().includes('perito'));
+  const hasConhecimentoAplicado = abilities.some(
+    (a) =>
+      a.id === 'ord-pwr-esp-conhecimento-aplicado' ||
+      a.name.toLowerCase().includes('conhecimento aplicado')
+  );
+  const hasMaosRapidas = abilities.some(
+    (a) =>
+      a.id === 'ord-pwr-esp-maos-rapidas' ||
+      a.name.toLowerCase().includes('mãos rápidas') ||
+      a.name.toLowerCase().includes('maos rapidas')
+  );
+  const hasPeritoExplosivos = abilities.some(
+    (a) =>
+      a.id === 'ord-pwr-esp-perito-explosivos' ||
+      a.name.toLowerCase().includes('perito em explosivos')
+  );
+  const hasPrimeiraImpressao = abilities.some(
+    (a) =>
+      a.id === 'ord-pwr-esp-primeira-impressao' ||
+      a.name.toLowerCase().includes('primeira impressão') ||
+      a.name.toLowerCase().includes('primeira impressao')
+  );
+  const hasAssassinar = abilities.some(
+    (a) =>
+      a.id === 'trail-infiltrador-65' ||
+      a.name.toLowerCase().includes('assassinar')
+  );
+  const primeiraImpressaoUsedInScene = sceneEffects.some(
+    (e) => e.id === 'pwr-scene-primeira-impressao'
+  );
+
+  const [armedEcleticoDegree, setArmedEcleticoDegree] = useState<0 | 5 | 10 | 15>(0);
+  const maxPeritoTierDice: 6 | 8 | 10 | 12 =
+    safeData.nex >= 85 ? 12 : safeData.nex >= 55 ? 10 : safeData.nex >= 25 ? 8 : 6;
+  const [selectedPeritoTierDice, setSelectedPeritoTierDice] = useState<6 | 8 | 10 | 12>(
+    maxPeritoTierDice
+  );
+  const [armPerito, setArmPerito] = useState(false);
+  const [armConhecimentoAplicado, setArmConhecimentoAplicado] = useState(false);
+
+  const peritoTierList: Array<{ dice: 6 | 8 | 10 | 12; cost: number; minNex: number }> = [
+    { dice: 6, cost: 2, minNex: 5 },
+    { dice: 8, cost: 3, minNex: 25 },
+    { dice: 10, cost: 4, minNex: 55 },
+    { dice: 12, cost: 5, minNex: 85 },
+  ];
+  const activePeritoDice: 6 | 8 | 10 | 12 =
+    selectedPeritoTierDice <= maxPeritoTierDice ? selectedPeritoTierDice : maxPeritoTierDice;
+  const peritoCost =
+    peritoTierList.find((t) => t.dice === activePeritoDice)?.cost ?? 2;
+  const ecleticoCost =
+    armedEcleticoDegree === 15
+      ? 6
+      : armedEcleticoDegree === 10
+      ? 4
+      : armedEcleticoDegree === 5
+      ? 2
+      : 0;
+
   // Defesa em Ordem Paranormal: 10 + AGI + Bônus (+5 Inquebrável se Machucado) - 5 se sobrecarregado
   const overloadPenalty = isOverloaded ? -5 : 0;
   const inquebravelDefenseBonus = hasInquebravel && isMachucado ? 5 : 0;
@@ -414,8 +485,13 @@ export function OrdemSheet({
           </div>
         </div>
 
-        {/* Indicadores Passivos Especiais (Origem / Tropa de Choque) */}
-        {(isTeoricoConspiracao || hasCascaGrossa || hasCaiDentro || hasInquebravel) && (
+        {/* Indicadores Passivos Especiais (Origem / Tropa de Choque / Especialista) */}
+        {(isTeoricoConspiracao ||
+          hasCascaGrossa ||
+          hasCaiDentro ||
+          hasInquebravel ||
+          hasPeritoExplosivos ||
+          hasAssassinar) && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {isTeoricoConspiracao && (
               <span className="px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/70 text-cyan-200 text-xs font-bold">
@@ -430,6 +506,16 @@ export function OrdemSheet({
             {hasCaiDentro && (
               <span className="px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/70 text-amber-200 text-xs font-bold">
                 🛡️ DT Cai Dentro (Vontade): {10 + peLimitPerTurn + effectiveVig}
+              </span>
+            )}
+            {hasPeritoExplosivos && (
+              <span className="px-2.5 py-1 rounded-lg bg-orange-950/70 border border-orange-700/70 text-orange-200 text-xs font-bold">
+                💣 DT Explosivos (Perito em Explosivos): {10 + peLimitPerTurn + effectiveAgi + effectiveInt} (Exclui até {Math.max(0, effectiveInt)} alvo(s))
+              </span>
+            )}
+            {hasAssassinar && (
+              <span className="px-2.5 py-1 rounded-lg bg-red-950/70 border border-red-700/70 text-red-200 text-xs font-bold">
+                🗡️ DT Assassinar (Fortitude): {10 + peLimitPerTurn + effectiveAgi}
               </span>
             )}
             {hasInquebravel && isMachucado && (
@@ -648,23 +734,327 @@ export function OrdemSheet({
           </div>
         )}
 
+        {/* Painel de Automação do Especialista na Seção de Perícias (Eclético, Perito e Conhecimento Aplicado) */}
+        {(hasEcletico || hasPerito || hasConhecimentoAplicado) && (
+          <div className="mb-3 p-3.5 rounded-xl bg-blue-950/20 border border-blue-800/40 flex flex-col gap-3">
+            {/* A. Eclético + Engenhosidade & Conhecimento Aplicado */}
+            {(hasEcletico || hasConhecimentoAplicado) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {hasEcletico && (
+                  <>
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-300 mr-1">
+                      ⚡ Eclético{safeData.nex >= 40 ? ' / Engenhosidade' : ''}:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setArmedEcleticoDegree((prev) => (prev === 5 ? 0 : 5))
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        armedEcleticoDegree === 5
+                          ? 'bg-blue-600 text-white border-blue-300 shadow'
+                          : 'bg-zinc-900 hover:bg-blue-950 text-blue-200 border-blue-800/70'
+                      }`}
+                    >
+                      Treinado (+5 • -2 PE)
+                    </button>
+                    {safeData.nex >= 40 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setArmedEcleticoDegree((prev) => (prev === 10 ? 0 : 10))
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                          armedEcleticoDegree === 10
+                            ? 'bg-blue-600 text-white border-blue-300 shadow'
+                            : 'bg-zinc-900 hover:bg-blue-950 text-blue-200 border-blue-800/70'
+                        }`}
+                      >
+                        Veterano (+10 • -4 PE)
+                      </button>
+                    )}
+                    {safeData.nex >= 75 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setArmedEcleticoDegree((prev) => (prev === 15 ? 0 : 15))
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                          armedEcleticoDegree === 15
+                            ? 'bg-blue-600 text-white border-blue-300 shadow'
+                            : 'bg-zinc-900 hover:bg-blue-950 text-blue-200 border-blue-800/70'
+                        }`}
+                      >
+                        Expert (+15 • -6 PE)
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {hasConhecimentoAplicado && (
+                  <button
+                    type="button"
+                    onClick={() => setArmConhecimentoAplicado((prev) => !prev)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                      armConhecimentoAplicado
+                        ? 'bg-cyan-600 text-white border-cyan-300 shadow'
+                        : 'bg-zinc-900 hover:bg-cyan-950 text-cyan-200 border-cyan-800/70'
+                    }`}
+                    title="Muda o atributo-base da próxima perícia (exceto Luta e Pontaria) para Intelecto por 2 PE"
+                  >
+                    🧠 Conhecimento Aplicado (-2 PE → Usar INT [{effectiveInt}d20])
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* B. Perito (Seleção das 2 Perícias + Dado Extra) */}
+            {hasPerito && (() => {
+              const currentPeritoIds = safeData.peritoSkills || [];
+              const canEditPerito = currentPeritoIds.length < 2 || allowSkillEdit;
+              const eligiblePeritoSkills = safeData.skills.filter(
+                (s) => s.trainingDegree > 0 && s.id !== 'luta' && s.id !== 'pontaria'
+              );
+              const availableTiers = peritoTierList.filter((t) => safeData.nex >= t.minNex);
+
+              return (
+                <div className="flex flex-col gap-2 pt-2 border-t border-blue-900/40">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-300">
+                        🎓 Perito ({currentPeritoIds.length}/2):
+                      </span>
+                      {availableTiers.map((t) => (
+                        <button
+                          key={t.dice}
+                          type="button"
+                          onClick={() => setSelectedPeritoTierDice(t.dice)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border transition cursor-pointer ${
+                            activePeritoDice === t.dice
+                              ? 'bg-blue-700 text-white border-blue-400'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white'
+                          }`}
+                        >
+                          +1d{t.dice} (-{t.cost} PE)
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setArmPerito((prev) => !prev)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        armPerito
+                          ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow'
+                          : 'bg-zinc-900 hover:bg-blue-950 text-blue-200 border-blue-800/70'
+                      }`}
+                    >
+                      {armPerito
+                        ? `🎓 Perito ARMADO (+1d${activePeritoDice} • -${peritoCost} PE)`
+                        : `🎓 Armar Perito (+1d${activePeritoDice} • -${peritoCost} PE)`}
+                    </button>
+                  </div>
+
+                  {canEditPerito ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] text-zinc-400 mr-1">
+                        Escolha até 2 perícias treinadas (exceto Luta/Pontaria):
+                      </span>
+                      {eligiblePeritoSkills.length === 0 ? (
+                        <span className="text-[10px] text-amber-400">
+                          Nenhuma perícia treinada elegível encontrada.
+                        </span>
+                      ) : (
+                        eligiblePeritoSkills.map((sk) => {
+                          const selected = currentPeritoIds.includes(sk.id);
+                          const disabled = !selected && currentPeritoIds.length >= 2;
+                          return (
+                            <button
+                              key={sk.id}
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => {
+                                const nextList = selected
+                                  ? currentPeritoIds.filter((id) => id !== sk.id)
+                                  : [...currentPeritoIds, sk.id];
+                                onChange({ ...safeData, peritoSkills: nextList });
+                              }}
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold border transition cursor-pointer ${
+                                selected
+                                  ? 'bg-blue-600 text-white border-blue-300'
+                                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-blue-700 disabled:opacity-35 disabled:cursor-not-allowed'
+                              }`}
+                            >
+                              {selected ? '✓ ' : '+ '}
+                              {sk.name}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400">
+                      <span>Perícias escolhidas:</span>
+                      {currentPeritoIds.map((pid) => {
+                        const sk = safeData.skills.find((s) => s.id === pid);
+                        return (
+                          <span
+                            key={pid}
+                            className="px-2 py-0.5 rounded bg-blue-950/70 text-blue-200 border border-blue-800 font-bold"
+                          >
+                            🎓 {sk?.name || pid}
+                          </span>
+                        );
+                      })}
+                      <span className="text-[10px] text-zinc-500">
+                        (Ative o Modo Edição para trocar)
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-1">
           {safeData.skills.map((skill) => {
             const meta = ORDEM_SKILLS_METADATA.find((m) => m.id === skill.id);
+            const canUseConhecimentoAplicadoHere =
+              armConhecimentoAplicado && skill.id !== 'luta' && skill.id !== 'pontaria';
+            const attrForSkill = canUseConhecimentoAplicadoHere ? 'int' : skill.attribute;
             const baseAttr =
-              safeData.attributes[skill.attribute] +
-              (bonuses.attributes[skill.attribute] || 0);
+              safeData.attributes[attrForSkill] +
+              (bonuses.attributes[attrForSkill] || 0);
             const extraDice = bonuses.skillDiceAll + (bonuses.skillDice[skill.id] || 0);
-            const rawDiceCount = baseAttr + extraDice;
+            const isPrimeiraImpressaoEligible =
+              hasPrimeiraImpressao &&
+              !primeiraImpressaoUsedInScene &&
+              ['diplomacia', 'enganacao', 'intimidacao', 'intuicao'].includes(skill.id);
+            const rawDiceCount =
+              baseAttr + extraDice + (isPrimeiraImpressaoEligible ? 2 : 0);
 
             const autoBonus = bonuses.skillBonusAll + (bonuses.skillBonus[skill.id] || 0);
             const loadSkillPenalty = meta?.armorPenalty && isOverloaded ? -5 : 0;
+            const effectiveTraining =
+              armedEcleticoDegree > 0 && skill.trainingDegree < armedEcleticoDegree
+                ? armedEcleticoDegree
+                : skill.trainingDegree;
             const totalBonus =
-              skill.trainingDegree + skill.otherModifier + autoBonus + loadSkillPenalty;
+              effectiveTraining + skill.otherModifier + autoBonus + loadSkillPenalty;
 
             const isUntrainedLocked =
-              Boolean(meta?.trainedOnly) && skill.trainingDegree === 0;
+              Boolean(meta?.trainedOnly) && effectiveTraining === 0;
             const isPeritoSkill = (safeData.peritoSkills || []).includes(skill.id);
+
+            function handleExecuteSkillRoll(opts?: {
+              forcePerito?: boolean;
+              forceMaosRapidas?: boolean;
+            }) {
+              if (
+                isUntrainedLocked &&
+                safeData.characterClass !== 'especialista' &&
+                !window.confirm(
+                  `A perícia "${skill.name}" é Somente Treinada (p. 41) e você é Destreinado nela. Deseja rolar mesmo assim?`
+                )
+              ) {
+                return;
+              }
+
+              let rollMod = totalBonus;
+              let peToSpend = 0;
+              const suffixParts: string[] = [];
+              let sceneEffectToAdd: SceneEffect | undefined = undefined;
+
+              // 1. Eclético / Engenhosidade
+              const usedEcletico =
+                armedEcleticoDegree > 0 && skill.trainingDegree < armedEcleticoDegree;
+              if (usedEcletico) {
+                peToSpend += ecleticoCost;
+                suffixParts.push(`⚡ Eclético +${armedEcleticoDegree}`);
+              }
+
+              // 2. Conhecimento Aplicado
+              if (canUseConhecimentoAplicadoHere) {
+                peToSpend += 2;
+                suffixParts.push('🧠 Conhecimento Aplicado (INT)');
+              }
+
+              // 3. Mãos Rápidas (Crime)
+              if (opts?.forceMaosRapidas && skill.id === 'crime') {
+                peToSpend += 1;
+                suffixParts.push('🧤 Mãos Rápidas (Ação Livre)');
+              }
+
+              // 4. Perito
+              const usedPerito = Boolean((armPerito || opts?.forcePerito) && isPeritoSkill);
+              if (usedPerito) {
+                const peritoDieResult = Math.floor(Math.random() * activePeritoDice) + 1;
+                rollMod += peritoDieResult;
+                peToSpend += peritoCost;
+                suffixParts.push(`🎓 Perito +1d${activePeritoDice}: +${peritoDieResult}`);
+              }
+
+              // 5. Primeira Impressão (+2d20 na 1ª vez da cena)
+              if (isPrimeiraImpressaoEligible) {
+                suffixParts.push('✨ Primeira Impressão +2d20');
+                sceneEffectToAdd = {
+                  id: 'pwr-scene-primeira-impressao',
+                  name: 'Primeira Impressão (Especialista)',
+                  source: '1x/Cena',
+                  description: '+2d20 usado no 1º teste social/intuição desta cena',
+                };
+              }
+
+              // 6. Poder de Origem Armado
+              if (armOriginBoost && originObj) {
+                const isEligible =
+                  (originId === 'academico' && skill.attribute === 'int') ||
+                  (originId === 'atleta' &&
+                    (skill.attribute === 'for' || skill.attribute === 'agi') &&
+                    skill.id !== 'luta' &&
+                    skill.id !== 'pontaria') ||
+                  originId === 'executivo' ||
+                  (originId === 'investigador' && !faroPistasUsedInScene) ||
+                  (originId === 'trabalhador_rural' &&
+                    (skill.id === 'adestramento' || skill.id === 'sobrevivencia'));
+
+                if (isEligible) {
+                  if (originId === 'investigador') {
+                    sceneEffectToAdd = {
+                      id: 'orig-scene-faro-pistas',
+                      name: 'Faro para Pistas (Poder de Investigador)',
+                      source: '1x/Cena',
+                      description: '+5 usado em teste para procurar pistas nesta cena',
+                    };
+                  }
+                  peToSpend += originObj.powerCost;
+                  const originAbActive = abilities.some(
+                    (a) => a.id === `orig-${originId}` && a.isActive !== false
+                  );
+                  if (!originAbActive) {
+                    rollMod += 5;
+                  }
+                  suffixParts.push(`${originObj.powerName} (Poder de ${originObj.name}) +5`);
+                }
+              }
+
+              if ((peToSpend > 0 || sceneEffectToAdd) && onSpendResource) {
+                if (!onSpendResource(peToSpend, sceneEffectToAdd)) {
+                  setArmOriginBoost(false);
+                  return;
+                }
+              }
+
+              if (usedEcletico) setArmedEcleticoDegree(0);
+              if (canUseConhecimentoAplicadoHere) setArmConhecimentoAplicado(false);
+              if (usedPerito) setArmPerito(false);
+              if (armOriginBoost) setArmOriginBoost(false);
+
+              const rollSuffix =
+                suffixParts.length > 0 ? ` [${suffixParts.join(' • ')}]` : '';
+              onRoll(`Perícia: ${skill.name}${rollSuffix}`, rawDiceCount, 20, rollMod);
+            }
 
             return (
               <div
@@ -675,63 +1065,7 @@ export function OrdemSheet({
                 <div className="flex items-center gap-2 min-w-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (
-                        isUntrainedLocked &&
-                        safeData.characterClass !== 'especialista' &&
-                        !window.confirm(
-                          `A perícia "${skill.name}" é Somente Treinada (p. 41) e você é Destreinado nela. Deseja rolar mesmo assim?`
-                        )
-                      ) {
-                        return;
-                      }
-
-                      let rollMod = totalBonus;
-                      let rollSuffix = '';
-
-                      if (armOriginBoost && originObj) {
-                        const isEligible =
-                          (originId === 'academico' && skill.attribute === 'int') ||
-                          (originId === 'atleta' &&
-                            (skill.attribute === 'for' || skill.attribute === 'agi') &&
-                            skill.id !== 'luta' &&
-                            skill.id !== 'pontaria') ||
-                          originId === 'executivo' ||
-                          (originId === 'investigador' && !faroPistasUsedInScene) ||
-                          (originId === 'trabalhador_rural' &&
-                            (skill.id === 'adestramento' || skill.id === 'sobrevivencia'));
-
-                        if (isEligible) {
-                          const extraSceneEffect: SceneEffect | undefined =
-                            originId === 'investigador'
-                              ? {
-                                  id: 'orig-scene-faro-pistas',
-                                  name: 'Faro para Pistas (Poder de Investigador)',
-                                  source: '1x/Cena',
-                                  description: '+5 usado em teste para procurar pistas nesta cena',
-                                }
-                              : undefined;
-
-                          if (
-                            onSpendResource &&
-                            !onSpendResource(originObj.powerCost, extraSceneEffect)
-                          ) {
-                            setArmOriginBoost(false);
-                            return;
-                          }
-                          const originAbActive = abilities.some(
-                            (a) => a.id === `orig-${originId}` && a.isActive !== false
-                          );
-                          if (!originAbActive) {
-                            rollMod += 5;
-                          }
-                          rollSuffix += ` [${originObj.powerName} (Poder de ${originObj.name}) +5]`;
-                          setArmOriginBoost(false);
-                        }
-                      }
-
-                      onRoll(`Perícia: ${skill.name}${rollSuffix}`, rawDiceCount, 20, rollMod);
-                    }}
+                    onClick={() => handleExecuteSkillRoll()}
                     className={`px-2.5 py-1 border rounded text-xs font-mono font-bold transition cursor-pointer shrink-0 ${
                       isUntrainedLocked
                         ? 'bg-zinc-900/50 text-zinc-500 border-zinc-800 hover:border-amber-600 hover:text-amber-300'
@@ -741,6 +1075,28 @@ export function OrdemSheet({
                     🎲 {rawDiceCount <= 0 ? '2d20(menor)' : `${rawDiceCount}d20`}
                     {totalBonus >= 0 ? `+${totalBonus}` : totalBonus}
                   </button>
+
+                  {isPeritoSkill && hasPerito && (
+                    <button
+                      type="button"
+                      onClick={() => handleExecuteSkillRoll({ forcePerito: true })}
+                      title={`Rolar ${skill.name} somando Perito +1d${activePeritoDice} (-${peritoCost} PE)`}
+                      className="px-2 py-1 bg-blue-950/70 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-700/70 rounded text-[10px] font-mono font-bold transition cursor-pointer shrink-0"
+                    >
+                      🎓 +1d{activePeritoDice} (-{peritoCost} PE)
+                    </button>
+                  )}
+
+                  {skill.id === 'crime' && hasMaosRapidas && (
+                    <button
+                      type="button"
+                      onClick={() => handleExecuteSkillRoll({ forceMaosRapidas: true })}
+                      title="Mãos Rápidas: Faça um teste de Crime como ação livre gastando 1 PE"
+                      className="px-2 py-1 bg-emerald-950/70 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-700/70 rounded text-[10px] font-bold transition cursor-pointer shrink-0"
+                    >
+                      🧤 Mãos Rápidas (-1 PE)
+                    </button>
+                  )}
 
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1">
@@ -780,11 +1136,19 @@ export function OrdemSheet({
                           🎓 Perito
                         </span>
                       )}
+                      {isPrimeiraImpressaoEligible && (
+                        <span
+                          className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700"
+                          title="Primeira Impressão: +2d20 no primeiro teste social/intuição da cena"
+                        >
+                          ✨ 1ª Impressão (+2d20)
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] uppercase font-mono text-zinc-500">
-                        {skill.attribute.toUpperCase()}
+                        {attrForSkill.toUpperCase()}
                       </span>
                       {(autoBonus !== 0 || extraDice !== 0) && (
                         <span className="text-[10px] font-mono text-emerald-400">

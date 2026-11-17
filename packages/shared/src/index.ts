@@ -47,6 +47,7 @@ export interface RPGItem {
   description?: string;
   isEquipped?: boolean;
   isFavoriteTool?: boolean;        // Engenheiro — Ferramenta Favorita (-1 Categoria, exceto armas)
+  isUtilityBackpackItem?: boolean; // Especialista — Mochila de Utilidades (-I Categoria e -1 Espaço)
   ignorePatentLimit?: boolean;     // Criminoso — O Crime Compensa (isento do limite de patente)
   isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita (-I / -II / -III Categoria)
   modifiers?: RuleModifier[];
@@ -81,6 +82,7 @@ export interface SegurarGatilhoPayload {
   maxAeTotalBonus: number;
   aeMult: number;
   peTurnLimit: number;
+  maximizeCritDamage?: boolean;
   tecnicaSecretaCost?: number;
   tecnicaSecretaAttackSuffix?: string;
   tecnicaSecretaDamageSuffix?: string;
@@ -95,6 +97,7 @@ export interface AttackDamageRollPayload {
   critDiceCount: number;
   dieSides: number;
   damageModifier: number;
+  maximizeCritDamage?: boolean;
   damageLabelSuffix?: string;
   forcaOpressoraPayload?: ForcaOpressoraRollPayload;
   segurarGatilhoPayload?: SegurarGatilhoPayload;

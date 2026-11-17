@@ -355,6 +355,7 @@ export default function App() {
             critDiceCount: sg.critDiceCount,
             dieSides: sg.dieSides,
             damageModifier: sg.baseDamageModifier + aeDmgBonus,
+            maximizeCritDamage: sg.maximizeCritDamage,
             damageLabelSuffix:
               dmgSuffixParts.length > 0 ? ` [${dmgSuffixParts.join(' • ')}]` : undefined,
             segurarGatilhoPayload: {
@@ -397,10 +398,16 @@ export default function App() {
             const isCrit = keptNatural >= p.critThreatMin;
             const shotNum = atkRoll.batchShotNumber || p.segurarGatilhoPayload?.shotIndex || 1;
             const suffix = p.damageLabelSuffix || '';
-            const label = isCrit
-              ? `💥 Dano Crítico (${shotNum}º Disp. • x${p.critMultiplier}): ${p.weaponName}${suffix}`
-              : `Dano (${shotNum}º Disp.): ${p.weaponName}${suffix}`;
             const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
+            const maxCritSuffix =
+              isCrit && p.maximizeCritDamage ? ' [💀 Atirar p/ Matar: Dano Máx.]' : '';
+            const label = isCrit
+              ? `💥 Dano Crítico (${shotNum}º Disp. • x${p.critMultiplier}): ${p.weaponName}${suffix}${maxCritSuffix}`
+              : `Dano (${shotNum}º Disp.): ${p.weaponName}${suffix}`;
+            const fixedRolls =
+              isCrit && p.maximizeCritDamage
+                ? Array(Math.max(1, diceCount)).fill(p.dieSides)
+                : undefined;
 
             triggerRoll(
               atkRoll.characterName,
@@ -412,7 +419,7 @@ export default function App() {
               atkRoll.isSecret,
               false,
               atkRoll.characterId,
-              undefined,
+              fixedRolls,
               atkRoll.hasAfortunado,
               p,
               p.forcaOpressoraPayload,
@@ -429,10 +436,16 @@ export default function App() {
           const p = rollResult.attackDamagePayload;
           if (!p) return;
           const suffix = p.damageLabelSuffix || '';
-          const label = isCrit
-            ? `💥 Dano Crítico [x${p.critMultiplier}]: ${p.weaponName}${suffix}`
-            : `Dano: ${p.weaponName}${suffix}`;
           const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
+          const maxCritSuffix =
+            isCrit && p.maximizeCritDamage ? ' [💀 Atirar p/ Matar: Dano Máx.]' : '';
+          const label = isCrit
+            ? `💥 Dano Crítico [x${p.critMultiplier}]: ${p.weaponName}${suffix}${maxCritSuffix}`
+            : `Dano: ${p.weaponName}${suffix}`;
+          const fixedRolls =
+            isCrit && p.maximizeCritDamage
+              ? Array(Math.max(1, diceCount)).fill(p.dieSides)
+              : undefined;
           triggerRoll(
             rollResult.characterName,
             rollResult.system,
@@ -443,7 +456,7 @@ export default function App() {
             rollResult.isSecret,
             false,
             rollResult.characterId,
-            undefined,
+            fixedRolls,
             rollResult.hasAfortunado,
             undefined,
             p.forcaOpressoraPayload

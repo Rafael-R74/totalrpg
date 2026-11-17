@@ -254,17 +254,26 @@ export function SheetContainer({
                 }
               }
             }
-            // Sincroniza poderes de Combatente já existentes com as novas regras automáticas do motor
-            const officialCombatPower = ORDEM_COMPENDIUM_ENTRIES.find(
-              (ce) =>
-                ce.id.startsWith('ord-pwr-comb-') &&
-                ce.name.toLowerCase() === ab.name.trim().toLowerCase()
-            );
-            if (officialCombatPower) {
+            // Sincroniza habilidades iniciais de Especialista (Eclético e Perito) já existentes
+            const lowerAbName = ab.name.trim().toLowerCase();
+            if (lowerAbName === 'eclético' || lowerAbName === 'ecletico' || lowerAbName === 'perito') {
               return {
                 ...ab,
-                cost: officialCombatPower.cost,
-                modifiers: officialCombatPower.modifiers || [],
+                cost: 0,
+                isActive: true,
+              };
+            }
+            // Sincroniza poderes de Combatente e Especialista já existentes com as novas regras automáticas do motor
+            const officialClassPower = ORDEM_COMPENDIUM_ENTRIES.find(
+              (ce) =>
+                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
+                ce.name.toLowerCase() === lowerAbName
+            );
+            if (officialClassPower) {
+              return {
+                ...ab,
+                cost: officialClassPower.cost,
+                modifiers: officialClassPower.modifiers || [],
               };
             }
             // Sincroniza poderes de Origem de fichas já criadas com as definições oficiais v1.3
@@ -307,17 +316,17 @@ export function SheetContainer({
             );
           })
           .map((entry) => {
-            const officialCombat = ORDEM_COMPENDIUM_ENTRIES.find(
+            const officialClassEntry = ORDEM_COMPENDIUM_ENTRIES.find(
               (ce) =>
-                ce.id.startsWith('ord-pwr-comb-') &&
+                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
                 ce.name.toLowerCase() === entry.name.toLowerCase()
             );
-            return officialCombat
+            return officialClassEntry
               ? {
                   ...entry,
-                  cost: officialCombat.cost,
-                  modifiers: officialCombat.modifiers,
-                  metadata: officialCombat.metadata,
+                  cost: officialClassEntry.cost,
+                  modifiers: officialClassEntry.modifiers,
+                  metadata: officialClassEntry.metadata,
                 }
               : entry;
           });
@@ -1199,13 +1208,27 @@ export function SheetContainer({
 
   const maxLoadSlots =
     character.system === 'ordem-paranormal'
-      ? getOrdemMaxLoad(strengthVal, intellectVal, rawSheet.trail, levelOrNex, 0)
+      ? getOrdemMaxLoad(
+          strengthVal,
+          intellectVal,
+          rawSheet.trail,
+          levelOrNex,
+          0,
+          characterAbilities
+        )
       : 10 + Math.max(0, strengthVal * 2);
 
-  const currentLoadSlots = (character.inventory || []).reduce(
-    (acc, item) => acc + item.slots * (item.quantity || 1),
-    0
+  const hasMochilaUtilidadesSheet = characterAbilities.some((ab) =>
+    ab.name.toLowerCase().includes('mochila de utilidades')
   );
+  const currentLoadSlots = (character.inventory || []).reduce((acc, item) => {
+    const qty = item.quantity || 1;
+    if (hasMochilaUtilidadesSheet && item.isUtilityBackpackItem) {
+      const reducedFirst = Math.max(0, item.slots - 1);
+      return acc + reducedFirst + item.slots * Math.max(0, qty - 1);
+    }
+    return acc + item.slots * qty;
+  }, 0);
   const isCharacterOverloaded =
     currentLoadSlots > maxLoadSlots + bonuses.loadLimit;
 
@@ -1352,6 +1375,12 @@ export function SheetContainer({
             });
           }
         }
+        if (
+          trail.id === 'atirador_elite' &&
+          !nextProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+        ) {
+          nextProficiencies.push('Armas de fogo (balas longas)');
+        }
       }
     }
 
@@ -1374,6 +1403,12 @@ export function SheetContainer({
             isActive: p10.cost === 0,
             modifiers: p10.modifiers || [],
           });
+          if (
+            versTrail.id === 'atirador_elite' &&
+            !nextProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+          ) {
+            nextProficiencies.push('Armas de fogo (balas longas)');
+          }
         }
       } else {
         const pEntry =
@@ -1427,6 +1462,19 @@ export function SheetContainer({
               !nextProficiencies.some((p) => p.toLowerCase().includes('armas pesadas'))
             ) {
               nextProficiencies.push('Armas pesadas');
+            }
+            if (
+              (lowerPowerName.includes('balística avançada') ||
+                lowerPowerName.includes('balistica avancada')) &&
+              !nextProficiencies.some((p) => p.toLowerCase().includes('armas táticas de fogo'))
+            ) {
+              nextProficiencies.push('Armas táticas de fogo');
+            }
+            if (
+              lowerPowerName.includes('ninja urbano') &&
+              !nextProficiencies.some((p) => p.toLowerCase().includes('corpo a corpo e de disparo'))
+            ) {
+              nextProficiencies.push('Armas táticas corpo a corpo e de disparo');
             }
             if (
               (lowerPowerName.includes('proteção pesada') ||
@@ -3678,7 +3726,11 @@ export function SheetContainer({
           _isDamage,
           attackDamagePayload,
           forcaOpressoraPayload
-        ) =>
+        ) => {
+          const fixedRolls =
+            _isDamage && attackDamagePayload?.maximizeCritDamage
+              ? Array(Math.max(1, count)).fill(sides)
+              : undefined;
           triggerCharacterRoll(
             label,
             count,
@@ -3686,11 +3738,11 @@ export function SheetContainer({
             mod,
             false,
             false,
-            undefined,
-            attackDamagePayload,
+            fixedRolls,
+            _isDamage ? undefined : attackDamagePayload,
             forcaOpressoraPayload
-          )
-        }
+          );
+        }}
       />
     </div>
   );
