@@ -30,7 +30,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     category: 'power',
     name: 'Ataque de Oportunidade (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    cost: 1,
+    cost: 0,
     modifiers: [],
     metadata: { execution: 'Reação', requirements: 'Combatente' },
   },
@@ -41,7 +41,11 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Combater com Duas Armas (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-duas-armas', targetType: 'skill_dice', targetKey: 'luta', value: -1 }],
+    modifiers: [
+      { id: 'm-duas-armas-atk', targetType: 'skill_dice', targetKey: 'attack_all', value: -1 },
+      { id: 'm-duas-armas-luta', targetType: 'skill_dice', targetKey: 'luta', value: -1 },
+      { id: 'm-duas-armas-pont', targetType: 'skill_dice', targetKey: 'pontaria', value: -1 },
+    ],
     metadata: { requirements: 'Combatente, Agi 3, treinado em Luta ou Pontaria' },
   },
   {
@@ -51,7 +55,12 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Combate Defensivo (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-comb-def', targetType: 'defense', targetKey: 'defense', value: 5 }],
+    modifiers: [
+      { id: 'm-comb-def-def', targetType: 'defense', targetKey: 'defense', value: 5 },
+      { id: 'm-comb-def-atk', targetType: 'skill_dice', targetKey: 'attack_all', value: -1 },
+      { id: 'm-comb-def-luta', targetType: 'skill_dice', targetKey: 'luta', value: -1 },
+      { id: 'm-comb-def-pont', targetType: 'skill_dice', targetKey: 'pontaria', value: -1 },
+    ],
     metadata: { requirements: 'Combatente, Int 2' },
   },
   {
@@ -80,7 +89,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     category: 'power',
     name: 'Incansável (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    cost: 2,
+    cost: 0,
     modifiers: [],
     metadata: { requirements: 'Combatente' },
   },
@@ -90,7 +99,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     category: 'power',
     name: 'Presteza Atlética (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    cost: 1,
+    cost: 0,
     modifiers: [],
     metadata: { requirements: 'Combatente' },
   },
@@ -146,7 +155,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Sentido Tático (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
-    modifiers: [{ id: 'm-sent-tat', targetType: 'defense', targetKey: 'defense', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, Int 2, treinado em Percepção e Tática' },
   },
   {
@@ -156,7 +165,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Tanque de Guerra (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-tanque', targetType: 'defense', targetKey: 'defense', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, Proteção Pesada' },
   },
   {
@@ -166,7 +175,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     name: 'Tiro Certeiro (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 0,
-    modifiers: [{ id: 'm-tiro-cert', targetType: 'damage_bonus', targetKey: 'all', value: 2 }],
+    modifiers: [],
     metadata: { requirements: 'Combatente, treinado em Pontaria' },
   },
   {
@@ -175,7 +184,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     category: 'power',
     name: 'Tiro de Cobertura (Combatente)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    cost: 1,
+    cost: 0,
     modifiers: [],
     metadata: { requirements: 'Combatente' },
   },
@@ -1672,7 +1681,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '1d12', critRange: '18/x2', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '1d12', critRange: '18/x2', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-revolver',
@@ -1682,7 +1691,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-caca',
@@ -1692,7 +1701,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d8', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d8', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   // --- Armas Táticas ---
   {
@@ -1853,7 +1862,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-espingarda',
@@ -1863,7 +1872,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '4d6', critRange: '20/x3', slots: 2, range: 'Curto' },
+    metadata: { damageFormula: '4d6', critRange: '20/x3', slots: 2, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-assalto',
@@ -1873,7 +1882,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
     modifiers: [],
-    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-precisao',
@@ -1883,7 +1892,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 3,
     modifiers: [],
-    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Longo' },
+    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Longo', element: 'Balístico' },
   },
   // --- Armas Pesadas ---
   {
@@ -1894,7 +1903,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     cost: 2,
     modifiers: [],
-    metadata: { damageFormula: '2d12', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d12', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   {
     id: 'ord-item-lanca-chamas',

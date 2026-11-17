@@ -132,6 +132,16 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
   >({});
   const [allRevealedCountdown, setAllRevealedCountdown] = useState<boolean>(false);
 
+  const [batchSpotlight, setBatchSpotlight] = useState<{
+    batchId: string;
+    characterName: string;
+    weaponName: string;
+    attackRolls: DiceRollResult[];
+    damageRolls: DiceRollResult[];
+  } | null>(null);
+  const [spinningBatchRollIds, setSpinningBatchRollIds] = useState<Record<string, boolean>>({});
+  const batchCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Referências e Níveis de Adaptação (0 = Tamanho Natural; só sobe se scrollHeight > clientHeight)
   const playersGridRef = useRef<HTMLDivElement | null>(null);
   const threatsGridRef = useRef<HTMLDivElement | null>(null);
@@ -219,6 +229,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
 
     monitorSocket.on('combat:initiativeRequested', () => {
       setSpotlightRoll(null);
+      setBatchSpotlight(null);
       setInitiativeEntries({});
       setAllRevealedCountdown(false);
       setIsInitiativeModalOpen(true);
@@ -250,10 +261,64 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
         return;
       }
 
+      if (newRoll.batchId) {
+        setSpotlightRoll(null);
+        setSpinningBatchRollIds((prev) => ({ ...prev, [newRoll.id]: true }));
+        setTimeout(() => {
+          setSpinningBatchRollIds((prev) => {
+            const next = { ...prev };
+            delete next[newRoll.id];
+            return next;
+          });
+        }, 700);
+
+        setBatchSpotlight((prev) => {
+          const isDamage = newRoll.batchRole === 'segurar_gatilho_damage';
+          const upsert = (arr: DiceRollResult[]) => {
+            const idx = arr.findIndex((r) => r.id === newRoll.id);
+            if (idx >= 0) {
+              const copy = [...arr];
+              copy[idx] = newRoll;
+              return copy;
+            }
+            return [...arr, newRoll];
+          };
+
+          if (prev && prev.batchId === newRoll.batchId) {
+            return {
+              ...prev,
+              attackRolls: isDamage ? prev.attackRolls : upsert(prev.attackRolls),
+              damageRolls: isDamage ? upsert(prev.damageRolls) : prev.damageRolls,
+            };
+          }
+
+          return {
+            batchId: newRoll.batchId!,
+            characterName: newRoll.characterName,
+            weaponName: newRoll.attackDamagePayload?.weaponName || newRoll.label,
+            attackRolls: isDamage ? [] : [newRoll],
+            damageRolls: isDamage ? [newRoll] : [],
+          };
+        });
+
+        if (batchCloseTimerRef.current) {
+          clearTimeout(batchCloseTimerRef.current);
+        }
+        const closeDelay = newRoll.batchRole === 'segurar_gatilho_damage' ? 7500 : 12000;
+        batchCloseTimerRef.current = setTimeout(() => {
+          setBatchSpotlight(null);
+        }, closeDelay);
+        return;
+      }
+
+      setBatchSpotlight(null);
       setSpotlightRoll(newRoll);
     });
 
     return () => {
+      if (batchCloseTimerRef.current) {
+        clearTimeout(batchCloseTimerRef.current);
+      }
       monitorSocket.off('character:updated');
       monitorSocket.off('monitor:updated');
       monitorSocket.off('combat:initiativeRequested');
@@ -592,6 +657,136 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
           </div>
         </div>
       )}
+
+      {/* MODAL ESPECIAL 4: SEQUÊNCIA DE DISPAROS / SEGURAR O GATILHO EM LOTE */}
+      {batchSpotlight && !isInitiativeModalOpen && (() => {
+        const isDamagePhase = batchSpotlight.damageRolls.length > 0;
+        const rollsToShow = isDamagePhase ? batchSpotlight.damageRolls : batchSpotlight.attackRolls;
+        const totalDamageSum = batchSpotlight.damageRolls.reduce((acc, r) => acc + r.total, 0);
+
+        return (
+          <div
+            onClick={() => setBatchSpotlight(null)}
+            className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-6 backdrop-blur-md"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-zinc-900 border-2 border-orange-500 rounded-3xl max-w-5xl w-full p-8 shadow-2xl flex flex-col gap-6"
+            >
+              <div className="text-center">
+                <span className="text-xs font-mono uppercase tracking-widest text-orange-400 font-extrabold">
+                  {isDamagePhase
+                    ? `💥 Rolagens de Dano • ${batchSpotlight.characterName}`
+                    : `🔥 Sequência de Disparos • ${batchSpotlight.characterName}`}
+                </span>
+                <h2 className="text-3xl font-extrabold text-white mt-1">
+                  {batchSpotlight.weaponName}
+                </h2>
+              </div>
+
+              <div
+                className={`grid gap-4 ${
+                  rollsToShow.length === 1
+                    ? 'grid-cols-1 max-w-md mx-auto w-full'
+                    : rollsToShow.length === 2
+                    ? 'grid-cols-1 sm:grid-cols-2'
+                    : 'grid-cols-2 sm:grid-cols-3'
+                }`}
+              >
+                {rollsToShow.map((r, idx) => {
+                  const isSpinning = Boolean(spinningBatchRollIds[r.id]);
+                  const shotNum = r.batchShotNumber || idx + 1;
+                  const isZeroPenalty = r.formula.includes('2d20 (menor)');
+                  const keptNatural = isZeroPenalty ? Math.min(...r.rolls) : Math.max(...r.rolls);
+                  const isCrit = isDamagePhase
+                    ? Boolean(r.batchIsCrit)
+                    : Boolean(
+                        r.attackDamagePayload && keptNatural >= r.attackDamagePayload.critThreatMin
+                      );
+
+                  return (
+                    <div
+                      key={r.id}
+                      className={`p-5 rounded-2xl border-2 flex flex-col items-center text-center justify-between gap-3 transition-all ${
+                        isSpinning
+                          ? 'bg-zinc-950 border-amber-400 animate-pulse'
+                          : isCrit
+                          ? 'bg-red-950/35 border-red-500 shadow-lg shadow-red-950/40'
+                          : 'bg-zinc-950 border-amber-500/80 shadow-lg shadow-amber-950/30'
+                      }`}
+                    >
+                      <div className="w-full flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono uppercase font-extrabold text-amber-400">
+                          #{shotNum}º Disparo
+                        </span>
+                        {!isSpinning && (
+                          <span
+                            className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${
+                              isCrit
+                                ? 'bg-red-600 text-white'
+                                : 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                            }`}
+                          >
+                            {isCrit ? '💥 Crítico!' : isDamagePhase ? '🩸 Dano' : '🎯 Acerto'}
+                          </span>
+                        )}
+                      </div>
+
+                      {isSpinning ? (
+                        <div className="py-5 flex flex-col items-center gap-2">
+                          <span className="text-5xl animate-bounce">🎲</span>
+                          <span className="text-xs font-mono text-amber-400 font-bold">
+                            Girando dados...
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 w-full">
+                          <div
+                            className={`w-24 h-24 rounded-2xl bg-zinc-900 border-2 flex flex-col items-center justify-center shadow-inner ${
+                              isCrit ? 'border-red-500' : 'border-amber-400'
+                            }`}
+                          >
+                            <span className="text-[10px] uppercase text-zinc-500 font-bold">
+                              {isDamagePhase ? 'Dano' : 'Total'}
+                            </span>
+                            <span className="text-4xl font-mono font-extrabold text-white">
+                              {r.total}
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-mono text-zinc-400">
+                            {r.formula} → [{r.rolls.join(', ')}]
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {isDamagePhase && (
+                <div className="bg-red-950/70 border-2 border-red-500 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xl">
+                  <div className="text-center sm:text-left">
+                    <span className="text-xs font-mono uppercase tracking-widest text-red-300 font-extrabold block">
+                      💥 Soma Total de {batchSpotlight.damageRolls.length} Disparo(s)
+                    </span>
+                    <span className="text-sm font-mono text-zinc-200">
+                      {batchSpotlight.damageRolls.map((d) => d.total).join(' + ')} = {totalDamageSum}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-sm font-black uppercase tracking-wider text-red-200">
+                      DANO TOTAL:
+                    </span>
+                    <span className="text-5xl font-mono font-black text-white">
+                      {totalDamageSum}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 1. TOPO DO 2º MONITOR: TÍTULO DA CENA + BARRA DE ORDEM DE TURNOS */}
       <header className="px-6 py-3 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md flex flex-col gap-2.5 shrink-0">
