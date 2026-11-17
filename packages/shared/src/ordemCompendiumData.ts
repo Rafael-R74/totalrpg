@@ -228,7 +228,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     category: 'power',
     name: 'Mãos Rápidas (Especialista)',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-    cost: 1,
+    cost: 0,
     modifiers: [],
     metadata: { requirements: 'Especialista, Agi 3, treinado em Crime' },
   },

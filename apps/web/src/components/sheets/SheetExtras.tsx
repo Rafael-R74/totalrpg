@@ -24,10 +24,15 @@ import {
   classifyOrdemWeapon,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
+import { applyCampaignSceneEffect, fetchCampaignTradeTargets } from '../../services/api';
 
 interface SheetExtrasProps {
   system: SystemId;
   ordemSheetData?: OrdemSheetData;
+  isInCampaign?: boolean;
+  campaignId?: string;
+  characterId?: string;
+  characterName?: string;
   bonuses: ComputedBonuses;
   compendiumEntries: CompendiumEntryData[];
   isEditMode: boolean;
@@ -79,6 +84,10 @@ function parseDiceFormula(formula: string): { count: number; sides: number; modi
 export function SheetExtras({
   system,
   ordemSheetData,
+  isInCampaign = false,
+  campaignId,
+  characterId,
+  characterName,
   bonuses,
   compendiumEntries,
   isEditMode,
@@ -431,6 +440,178 @@ export function SheetExtras({
   const [secLetal, setSecLetal] = useState<0 | 1 | 2>(0);
   const [secPerfurante, setSecPerfurante] = useState<boolean>(false);
   const [combatTabFeedback, setCombatTabFeedback] = useState<string>('');
+
+  // Estados para seleção de alvos do Discurso Motivador (Negociador)
+  const [isDiscursoModalOpen, setIsDiscursoModalOpen] = useState(false);
+  const [discursoBonusDice, setDiscursoBonusDice] = useState<1 | 2>(1);
+  const [discursoPeCost, setDiscursoPeCost] = useState<number>(4);
+  const [discursoAllies, setDiscursoAllies] = useState<Array<{ id: string; name: string; username?: string }>>([]);
+  const [selectedDiscursoCharIds, setSelectedDiscursoCharIds] = useState<Record<string, boolean>>({});
+  const [isLoadingDiscursoAllies, setIsLoadingDiscursoAllies] = useState(false);
+
+  async function handleOpenDiscursoModal(dice: 1 | 2, pe: number) {
+    setDiscursoBonusDice(dice);
+    setDiscursoPeCost(pe);
+    if (isInCampaign && campaignId) {
+      setIsLoadingDiscursoAllies(true);
+      setIsDiscursoModalOpen(true);
+      try {
+        const data = await fetchCampaignTradeTargets(campaignId);
+        const list = (data.characters || []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          username: c.owner?.username,
+        }));
+        if (characterId && !list.some((c) => c.id === characterId)) {
+          list.unshift({
+            id: characterId,
+            name: characterName || 'Você',
+            username: 'Você',
+          });
+        }
+        setDiscursoAllies(list);
+        const initialSel: Record<string, boolean> = {};
+        for (const ally of list) {
+          initialSel[ally.id] = true;
+        }
+        setSelectedDiscursoCharIds(initialSel);
+      } catch (err: any) {
+        setAbilityUseFeedback(`Erro ao buscar aliados: ${err.message}`);
+      } finally {
+        setIsLoadingDiscursoAllies(false);
+      }
+    } else {
+      applyDiscursoLocally(dice, pe);
+    }
+  }
+
+  function applyDiscursoLocally(dice: 1 | 2, pe: number) {
+    if (
+      !onSpendResource(pe, {
+        id: 'pwr-scene-discurso-motivador',
+        name: `Discurso Motivador (${dice === 2 ? '65%+' : 'Negociador'})`,
+        source: 'Cena',
+        description: `+${dice}d20 em testes de perícia nesta cena`,
+        modifiers: [
+          {
+            id: 'mod-discurso-motivador',
+            targetType: 'skill_dice',
+            targetKey: 'all',
+            value: dice,
+          },
+        ],
+      })
+    ) {
+      return;
+    }
+    onUpdateAbilities(
+      abilities.map((a) =>
+        a.id === 'trail-negociador-40' || a.name.toLowerCase().includes('discurso motivador')
+          ? {
+              ...a,
+              isActive: true,
+              modifiers: [
+                {
+                  id: 'tr-neg-40',
+                  targetType: 'skill_dice',
+                  targetKey: 'all',
+                  value: dice,
+                },
+              ],
+            }
+          : a
+      )
+    );
+    setAbilityUseFeedback(`📢 Discurso Motivador ativado (-${pe} PE): +${dice}d20 em todas as perícias na cena!`);
+  }
+
+  async function handleConfirmDiscursoInCampaign() {
+    const chosenIds = Object.keys(selectedDiscursoCharIds).filter(
+      (id) => selectedDiscursoCharIds[id]
+    );
+    if (chosenIds.length === 0) {
+      alert('Selecione ao menos um personagem para receber o Discurso Motivador.');
+      return;
+    }
+    if (!onSpendResource(discursoPeCost)) {
+      return;
+    }
+    const effect: SceneEffect = {
+      id: 'pwr-scene-discurso-motivador',
+      name: `Discurso Motivador (${discursoBonusDice === 2 ? '65%+' : 'Negociador'})`,
+      source: 'Cena',
+      description: `+${discursoBonusDice}d20 em testes de perícia nesta cena (Orador: ${characterName || 'Negociador'})`,
+      modifiers: [
+        {
+          id: 'mod-discurso-motivador',
+          targetType: 'skill_dice',
+          targetKey: 'all',
+          value: discursoBonusDice,
+        },
+      ],
+    };
+
+    if (campaignId) {
+      try {
+        await applyCampaignSceneEffect(campaignId, chosenIds, effect);
+      } catch (err: any) {
+        console.error('Erro ao sincronizar Discurso Motivador na campanha:', err);
+      }
+    }
+
+    if (characterId && chosenIds.includes(characterId)) {
+      onUpdateAbilities(
+        abilities.map((a) =>
+          a.id === 'trail-negociador-40' || a.name.toLowerCase().includes('discurso motivador')
+            ? {
+                ...a,
+                isActive: true,
+                modifiers: effect.modifiers,
+              }
+            : a
+        )
+      );
+    } else {
+      onUpdateAbilities(
+        abilities.map((a) =>
+          a.id === 'trail-negociador-40' || a.name.toLowerCase().includes('discurso motivador')
+            ? {
+                ...a,
+                isActive: true,
+              }
+            : a
+        )
+      );
+    }
+
+    setIsDiscursoModalOpen(false);
+    setAbilityUseFeedback(
+      `📢 Discurso Motivador ativado para ${chosenIds.length} personagem(ns) (+${discursoBonusDice}d20 em perícias até o fim da cena)!`
+    );
+  }
+
+  async function handleEndDiscursoMotivador(abId: string) {
+    if (isInCampaign && campaignId) {
+      try {
+        const allIds = discursoAllies.map((a) => a.id);
+        const idsToClear = allIds.length > 0 ? allIds : (characterId ? [characterId] : []);
+        if (idsToClear.length > 0) {
+          await applyCampaignSceneEffect(
+            campaignId,
+            idsToClear,
+            undefined,
+            'pwr-scene-discurso-motivador'
+          );
+        }
+      } catch (err: any) {
+        console.error('Erro ao encerrar Discurso Motivador:', err);
+      }
+    }
+    onUpdateAbilities(
+      abilities.map((a) => (a.id === abId ? { ...a, isActive: false } : a))
+    );
+    setAbilityUseFeedback('📢 Discurso Motivador encerrado.');
+  }
 
   // Sincroniza passo de Segurar o Gatilho usado dentro do modal de lote
   useEffect(() => {
@@ -1292,6 +1473,135 @@ export function SheetExtras({
         </div>
       )}
 
+      {/* MODAL DE SELEÇÃO DE ALVOS DO DISCURSO MOTIVADOR (NEGOCIADOR) */}
+      {isDiscursoModalOpen && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-amber-600/70 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[85vh]">
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold">
+                  Trilha: Negociador • Alcance Curto
+                </span>
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  📢 Discurso Motivador (+{discursoBonusDice}d20)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDiscursoModalOpen(false)}
+                className="text-zinc-400 hover:text-white text-sm font-bold px-2.5 py-1 bg-zinc-800 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-300">
+              Você gasta <strong className="text-amber-400">{discursoPeCost} PE</strong> para inspirar seus companheiros com palavras de encorajamento.
+              Escolha quais personagens em alcance curto receberão o bônus de{' '}
+              <strong className="text-amber-300">+{discursoBonusDice}d20</strong> em todos os testes de perícia até o fim da cena:
+            </p>
+
+            {isLoadingDiscursoAllies ? (
+              <div className="py-8 text-center text-xs text-zinc-400">
+                Carregando aliados da mesa...
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400">
+                    Alvos Selecionados ({Object.values(selectedDiscursoCharIds).filter(Boolean).length})
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const all: Record<string, boolean> = {};
+                        discursoAllies.forEach((a) => (all[a.id] = true));
+                        setSelectedDiscursoCharIds(all);
+                      }}
+                      className="text-[10px] text-amber-400 hover:underline cursor-pointer"
+                    >
+                      Marcar Todos
+                    </button>
+                    <span className="text-zinc-600">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDiscursoCharIds({})}
+                      className="text-[10px] text-zinc-400 hover:underline cursor-pointer"
+                    >
+                      Desmarcar Todos
+                    </button>
+                  </div>
+                </div>
+
+                {discursoAllies.map((ally) => {
+                  const isChecked = Boolean(selectedDiscursoCharIds[ally.id]);
+                  const isSelf = ally.id === characterId;
+                  return (
+                    <label
+                      key={ally.id}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition ${
+                        isChecked
+                          ? 'bg-amber-950/40 border-amber-500/70 text-white'
+                          : 'bg-zinc-950/70 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) =>
+                            setSelectedDiscursoCharIds((prev) => ({
+                              ...prev,
+                              [ally.id]: e.target.checked,
+                            }))
+                          }
+                          className="accent-amber-500 w-4 h-4 rounded cursor-pointer"
+                        />
+                        <div className="truncate">
+                          <span className="text-xs font-bold block truncate">
+                            {ally.name} {isSelf && <span className="text-amber-400 font-bold">(Você)</span>}
+                          </span>
+                          {ally.username && !isSelf && (
+                            <span className="text-[10px] text-zinc-500">
+                              Jogador: {ally.username}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-amber-300 shrink-0">
+                        +{discursoBonusDice}d20
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800 mt-auto">
+              <button
+                type="button"
+                onClick={() => setIsDiscursoModalOpen(false)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={
+                  isLoadingDiscursoAllies ||
+                  Object.values(selectedDiscursoCharIds).filter(Boolean).length === 0
+                }
+                onClick={handleConfirmDiscursoInCampaign}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black cursor-pointer shadow-lg shadow-amber-950/50"
+              >
+                📢 Confirmar Discurso (-{discursoPeCost} PE)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* BARRA DE SUB-ABAS COM BOTÃO DE ADICIONAR NA EXTREMA DIREITA */}
       <div className="flex flex-wrap justify-between items-center border-b border-zinc-800 gap-4 pb-2">
         <div className="flex flex-wrap gap-6">
@@ -1732,8 +2042,14 @@ export function SheetExtras({
                 const aeMult = hasPotenciaMaxima && isMelee ? 2 : 1;
                 const appliedAeAtk = aeAtkInvest * aeMult;
                 const appliedAeDmg = aeDmgInvest * aeMult;
+                const furtivoPeCostPreview = (armedAtaqueFurtivo ? 1 : 0) + (armedAssassinar ? 3 : 0);
+                const golpeDemolidorCostPreview = armedGolpeDemolidor ? 1 : 0;
                 const totalAeConfirmPe =
-                  aePeCostCalculated + tecnicaSecretaCost + disparoLetalCost;
+                  aePeCostCalculated +
+                  tecnicaSecretaCost +
+                  disparoLetalCost +
+                  furtivoPeCostPreview +
+                  golpeDemolidorCostPreview;
 
                 const foPayload: ForcaOpressoraRollPayload | undefined =
                   isOrdemSystem && hasForcaOpressora && isMelee
@@ -2034,7 +2350,15 @@ export function SheetExtras({
                               suffixParts.push('🎯 Disparo Letal (+2 Crít)');
                             }
 
-                            const totalAttackPe = tecnicaSecretaCost + disparoLetalCost;
+                            let extraDiceFromGolpe = 0;
+                            let extraDmgFromFurtivo = 0;
+                            let furtivoPe = 0;
+                            if (armedAtaqueFurtivo) furtivoPe += 1;
+                            if (armedAssassinar) furtivoPe += 3;
+                            const golpeDemolidorCost = armedGolpeDemolidor ? 1 : 0;
+
+                            const totalAttackPe =
+                              tecnicaSecretaCost + disparoLetalCost + furtivoPe + golpeDemolidorCost;
                             if (totalAttackPe > 0) {
                               if (isOrdemSystem && totalAttackPe > peTurnLimit) {
                                 setCombatTabFeedback(
@@ -2047,6 +2371,35 @@ export function SheetExtras({
                                 const tsLabel = buildTecnicaSecretaLabels(dmgSuffixParts);
                                 if (tsLabel) suffixParts.push(tsLabel);
                               }
+                            }
+
+                            if (armedGolpeDemolidor) {
+                              extraDiceFromGolpe = 2;
+                              dmgSuffixParts.push('🔨 Golpe Demolidor +2 dados');
+                              suffixParts.push('🔨 Golpe Demolidor +2 dados');
+                              setArmedGolpeDemolidor(false);
+                            }
+
+                            if (armedAtaqueFurtivo || armedAssassinar) {
+                              const furtivoBase =
+                                ordemNex >= 99 ? 4 : ordemNex >= 65 ? 3 : ordemNex >= 40 ? 2 : 1;
+                              const furtivoDiceCount = armedAssassinar ? furtivoBase * 2 : furtivoBase;
+                              let furtivoSum = 0;
+                              for (let i = 0; i < furtivoDiceCount; i++) {
+                                furtivoSum += Math.floor(Math.random() * 6) + 1;
+                              }
+                              extraDmgFromFurtivo = furtivoSum;
+                              const assassinarSuffix = armedAssassinar
+                                ? ` • 🗡️ Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
+                                : '';
+                              dmgSuffixParts.push(
+                                `🥷 Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
+                              );
+                              suffixParts.push(
+                                `🥷 Ataque Furtivo +${furtivoDiceCount}d6 (+${furtivoSum})`
+                              );
+                              setArmedAtaqueFurtivo(false);
+                              setArmedAssassinar(false);
                             }
 
                             setPendingSpecialDamageBonus(null);
@@ -2064,10 +2417,10 @@ export function SheetExtras({
                                 weaponName: atk.name,
                                 critThreatMin: critParsed.threatMin,
                                 critMultiplier: critParsed.multiplier,
-                                normalDiceCount: baseDamageDiceCount,
-                                critDiceCount: critBaseDamageDiceCount,
+                                normalDiceCount: baseDamageDiceCount + extraDiceFromGolpe,
+                                critDiceCount: critBaseDamageDiceCount + extraDiceFromGolpe,
                                 dieSides: effectiveDamageSides,
-                                damageModifier: finalDamageMod,
+                                damageModifier: finalDamageMod + extraDmgFromFurtivo,
                                 maximizeCritDamage: isAtirarParaMatarActive,
                                 damageLabelSuffix:
                                   dmgSuffixParts.length > 0
@@ -2262,7 +2615,24 @@ export function SheetExtras({
                               disabled={aeTotalInvested <= 0}
                               onClick={() => {
                                 if (aeTotalInvested <= 0) return;
-                                if (!onSpendResource(totalAeConfirmPe)) return;
+
+                                let extraDiceFromGolpe = 0;
+                                let extraDmgFromFurtivo = 0;
+                                let furtivoPe = 0;
+                                if (armedAtaqueFurtivo) furtivoPe += 1;
+                                if (armedAssassinar) furtivoPe += 3;
+                                const golpeDemolidorCost = armedGolpeDemolidor ? 1 : 0;
+                                const totalAeConfirmPeWithExtras =
+                                  totalAeConfirmPe + furtivoPe + golpeDemolidorCost;
+
+                                if (isOrdemSystem && totalAeConfirmPeWithExtras > peTurnLimit) {
+                                  setCombatTabFeedback(
+                                    `⚠️ Custo total (${totalAeConfirmPeWithExtras} PE) excede seu limite de ${peTurnLimit} PE/turno!`
+                                  );
+                                  return;
+                                }
+
+                                if (!onSpendResource(totalAeConfirmPeWithExtras)) return;
                                 updateAeInvestment(aeAtkInvest, aeDmgInvest);
 
                                 const aeBonusDesc = [
@@ -2286,9 +2656,41 @@ export function SheetExtras({
                                   dmgSuffixParts.push(
                                     `Ataque Especial${aeMult > 1 ? ' 2x' : ''} +${appliedAeDmg} Dano`
                                   );
+                                }
+
+                                if (armedGolpeDemolidor) {
+                                  extraDiceFromGolpe = 2;
+                                  dmgSuffixParts.push('🔨 Golpe Demolidor +2 dados');
+                                  suffixParts.push('🔨 Golpe Demolidor +2 dados');
+                                  setArmedGolpeDemolidor(false);
+                                }
+
+                                if (armedAtaqueFurtivo || armedAssassinar) {
+                                  const furtivoBase =
+                                    ordemNex >= 99 ? 4 : ordemNex >= 65 ? 3 : ordemNex >= 40 ? 2 : 1;
+                                  const furtivoDiceCount = armedAssassinar ? furtivoBase * 2 : furtivoBase;
+                                  let furtivoSum = 0;
+                                  for (let i = 0; i < furtivoDiceCount; i++) {
+                                    furtivoSum += Math.floor(Math.random() * 6) + 1;
+                                  }
+                                  extraDmgFromFurtivo = furtivoSum;
+                                  const assassinarSuffix = armedAssassinar
+                                    ? ` • 🗡️ Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
+                                    : '';
+                                  dmgSuffixParts.push(
+                                    `🥷 Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
+                                  );
+                                  suffixParts.push(
+                                    `🥷 Ataque Furtivo +${furtivoDiceCount}d6 (+${furtivoSum})`
+                                  );
+                                  setArmedAtaqueFurtivo(false);
+                                  setArmedAssassinar(false);
+                                }
+
+                                if (appliedAeDmg > 0 || extraDmgFromFurtivo > 0) {
                                   setPendingSpecialDamageBonus({
                                     attackId: atk.id,
-                                    dmgBonus: appliedAeDmg,
+                                    dmgBonus: appliedAeDmg + extraDmgFromFurtivo,
                                   });
                                 } else {
                                   setPendingSpecialDamageBonus(null);
@@ -2310,10 +2712,10 @@ export function SheetExtras({
                                     weaponName: atk.name,
                                     critThreatMin: critParsed.threatMin,
                                     critMultiplier: critParsed.multiplier,
-                                    normalDiceCount: baseDamageDiceCount,
-                                    critDiceCount: critBaseDamageDiceCount,
+                                    normalDiceCount: baseDamageDiceCount + extraDiceFromGolpe,
+                                    critDiceCount: critBaseDamageDiceCount + extraDiceFromGolpe,
                                     dieSides: effectiveDamageSides,
-                                    damageModifier: finalDamageMod + appliedAeDmg,
+                                    damageModifier: finalDamageMod + appliedAeDmg + extraDmgFromFurtivo,
                                     maximizeCritDamage: isAtirarParaMatarActive,
                                     damageLabelSuffix:
                                       dmgSuffixParts.length > 0
@@ -2592,8 +2994,11 @@ export function SheetExtras({
                           {(ab.id === 'ord-pwr-esp-nerd' ||
                             ab.name.toLowerCase().includes('nerd')) &&
                             ordemSheetData && (() => {
-                              const nerdUsed = (ordemSheetData.sceneEffects || []).some(
-                                (e) => e.id === 'pwr-scene-nerd'
+                              const nerdUsed = Boolean(
+                                isInCampaign &&
+                                  (ordemSheetData.sceneEffects || []).some(
+                                    (e) => e.id === 'pwr-scene-nerd'
+                                  )
                               );
                               return nerdUsed ? (
                                 <span className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-500 rounded-lg text-xs font-bold whitespace-nowrap">
@@ -2604,13 +3009,18 @@ export function SheetExtras({
                                   type="button"
                                   onClick={() => {
                                     if (
-                                      !onSpendResource(2, {
-                                        id: 'pwr-scene-nerd',
-                                        name: 'Nerd (Especialista)',
-                                        source: '1x/Cena',
-                                        description:
-                                          'Teste de Atualidades (DT 20) realizado nesta cena',
-                                      })
+                                      !onSpendResource(
+                                        2,
+                                        isInCampaign
+                                          ? {
+                                              id: 'pwr-scene-nerd',
+                                              name: 'Nerd (Especialista)',
+                                              source: '1x/Cena',
+                                              description:
+                                                'Teste de Atualidades (DT 20) realizado nesta cena',
+                                            }
+                                          : undefined
+                                      )
                                     ) {
                                       return;
                                     }
@@ -2635,7 +3045,7 @@ export function SheetExtras({
                                   }}
                                   className="px-3 py-1.5 bg-blue-950/70 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                 >
-                                  🤓 Testar Atualidades DT 20 (-2 PE • 1x/Cena)
+                                  🤓 Testar Atualidades DT 20 (-2 PE{isInCampaign ? ' • 1x/Cena' : ''})
                                 </button>
                               );
                             })()}
@@ -2679,13 +3089,7 @@ export function SheetExtras({
                                 {ab.isActive ? (
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      onUpdateAbilities(
-                                        abilities.map((a) =>
-                                          a.id === ab.id ? { ...a, isActive: false } : a
-                                        )
-                                      )
-                                    }
+                                    onClick={() => handleEndDiscursoMotivador(ab.id)}
                                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white border border-amber-300 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow"
                                   >
                                     📢 Discurso Ativo (+
@@ -2695,40 +3099,7 @@ export function SheetExtras({
                                   <>
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        if (
-                                          !onSpendResource(4, {
-                                            id: 'pwr-scene-discurso-motivador',
-                                            name: 'Discurso Motivador (Negociador 40%)',
-                                            source: 'Cena',
-                                            description:
-                                              '+1d20 em testes de perícia para você e aliados na cena',
-                                          })
-                                        ) {
-                                          return;
-                                        }
-                                        onUpdateAbilities(
-                                          abilities.map((a) =>
-                                            a.id === ab.id
-                                              ? {
-                                                  ...a,
-                                                  isActive: true,
-                                                  modifiers: [
-                                                    {
-                                                      id: 'tr-neg-40',
-                                                      targetType: 'skill_dice',
-                                                      targetKey: 'all',
-                                                      value: 1,
-                                                    },
-                                                  ],
-                                                }
-                                              : a
-                                          )
-                                        );
-                                        setAbilityUseFeedback(
-                                          '📢 Discurso Motivador ativado (-4 PE): +1d20 em todas as perícias na cena!'
-                                        );
-                                      }}
+                                      onClick={() => handleOpenDiscursoModal(1, 4)}
                                       className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                     >
                                       📢 Discurso Motivador (+1d20 Perícias • -4 PE)
@@ -2736,40 +3107,7 @@ export function SheetExtras({
                                     {ordemNex >= 65 && (
                                       <button
                                         type="button"
-                                        onClick={() => {
-                                          if (
-                                            !onSpendResource(8, {
-                                              id: 'pwr-scene-discurso-motivador',
-                                              name: 'Discurso Motivador 65%+ (Negociador)',
-                                              source: 'Cena',
-                                              description:
-                                                '+2d20 em testes de perícia para você e aliados na cena',
-                                            })
-                                          ) {
-                                            return;
-                                          }
-                                          onUpdateAbilities(
-                                            abilities.map((a) =>
-                                              a.id === ab.id
-                                                ? {
-                                                    ...a,
-                                                    isActive: true,
-                                                    modifiers: [
-                                                      {
-                                                        id: 'tr-neg-40',
-                                                        targetType: 'skill_dice',
-                                                        targetKey: 'all',
-                                                        value: 2,
-                                                      },
-                                                    ],
-                                                  }
-                                                : a
-                                            )
-                                          );
-                                          setAbilityUseFeedback(
-                                            '📢 Discurso Motivador 65%+ ativado (-8 PE): +2d20 em todas as perícias na cena!'
-                                          );
-                                        }}
+                                        onClick={() => handleOpenDiscursoModal(2, 8)}
                                         className="px-3 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                       >
                                         📢 Discurso 65%+ (+2d20 Perícias • -8 PE)
