@@ -42,6 +42,7 @@ export default function App() {
 
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
   const [activeRollModal, setActiveRollModal] = useState<DiceRollResult | null>(null);
+  const [activeBatchRolls, setActiveBatchRolls] = useState<DiceRollResult[]>([]);
 
   const [receivedLootModal, setReceivedLootModal] = useState<{
     item: RPGItem;
@@ -91,7 +92,32 @@ export default function App() {
       setRollHistory((prev) => [newRoll, ...prev]);
 
       if (newRoll.rollerUserId === currentUser.id) {
-        setActiveRollModal(newRoll);
+        if (newRoll.batchId) {
+          setActiveBatchRolls((prev) => {
+            if (newRoll.rerolledAfortunado) {
+              const idx = prev.findIndex((r) => r.id === newRoll.id);
+              if (idx >= 0) {
+                const copy = [...prev];
+                copy[idx] = newRoll;
+                return copy;
+              }
+            }
+            if (prev.length > 0 && prev[0].batchId === newRoll.batchId) {
+              if (prev.some((r) => r.id === newRoll.id)) return prev;
+              return [...prev, newRoll];
+            }
+            return [newRoll];
+          });
+          setActiveRollModal((prevModal) => {
+            if (prevModal && prevModal.batchId === newRoll.batchId) {
+              return prevModal.id === newRoll.id ? newRoll : prevModal;
+            }
+            return newRoll;
+          });
+        } else {
+          setActiveBatchRolls([]);
+          setActiveRollModal(newRoll);
+        }
       }
     });
 
@@ -214,9 +240,24 @@ export default function App() {
     fixedRolls?: number[],
     hasAfortunado?: boolean,
     attackDamagePayload?: AttackDamageRollPayload,
-    forcaOpressoraPayload?: ForcaOpressoraRollPayload
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload,
+    batchMeta?: {
+      batchId: string;
+      batchRole: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
+      batchShotNumber: number;
+      batchIsCrit?: boolean;
+    }
   ) {
     if (!activeRoomId || !currentUser) return;
+    const effectiveBatchMeta =
+      batchMeta ||
+      (attackDamagePayload?.segurarGatilhoPayload?.enabled
+        ? {
+            batchId: attackDamagePayload.segurarGatilhoPayload.batchId,
+            batchRole: 'segurar_gatilho_attack' as const,
+            batchShotNumber: attackDamagePayload.segurarGatilhoPayload.shotIndex,
+          }
+        : undefined);
     socket.emit('dice:roll', {
       campaignId: activeRoomId,
       rollerUserId: currentUser.id,
@@ -233,6 +274,7 @@ export default function App() {
       hasAfortunado,
       attackDamagePayload,
       forcaOpressoraPayload,
+      ...(effectiveBatchMeta || {}),
     });
   }
 
@@ -254,13 +296,133 @@ export default function App() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-7xl mx-auto flex flex-col gap-6">
       <DiceRollModal
         roll={activeRollModal}
-        onClose={() => setActiveRollModal(null)}
+        batchRolls={activeBatchRolls}
+        onClose={() => {
+          setActiveRollModal(null);
+          setActiveBatchRolls([]);
+        }}
         onRerollOne={(rollResult, dieIndex) => {
           if (!activeRoomId) return;
           socket.emit('dice:rerollOne', {
             campaignId: activeRoomId,
             rollResult,
             dieIndex,
+          });
+        }}
+        onTriggerSegurarGatilhoShot={(
+          baseRoll,
+          shotNumber,
+          extraPeCost,
+          aeAtkBonus,
+          aeDmgBonus,
+          nextStepAfterShot
+        ) => {
+          const sg = baseRoll.attackDamagePayload?.segurarGatilhoPayload;
+          if (!sg) return false;
+          if (sheetSpendResourceRef.current && !sheetSpendResourceRef.current(extraPeCost)) {
+            return false;
+          }
+          window.dispatchEvent(
+            new CustomEvent('totalrpg:sg-step', { detail: { step: nextStepAfterShot } })
+          );
+
+          const suffixParts: string[] = [`Segurar o Gatilho (${shotNumber}º Disparo)`];
+          const dmgSuffixParts: string[] = [];
+          if (aeAtkBonus > 0 || aeDmgBonus > 0) {
+            const aeStr = [
+              aeAtkBonus > 0 ? `+${aeAtkBonus} Atq` : '',
+              aeDmgBonus > 0 ? `+${aeDmgBonus} Dano` : '',
+            ]
+              .filter(Boolean)
+              .join(' / ');
+            suffixParts.push(`Ataque Especial (${aeStr})`);
+            if (aeDmgBonus > 0) {
+              dmgSuffixParts.push(`Ataque Especial +${aeDmgBonus} Dano`);
+            }
+          }
+          if (sg.tecnicaSecretaAttackSuffix) {
+            suffixParts.push(sg.tecnicaSecretaAttackSuffix);
+          }
+          if (sg.tecnicaSecretaDamageSuffix) {
+            dmgSuffixParts.push(sg.tecnicaSecretaDamageSuffix);
+          }
+
+          const nextAttackPayload: AttackDamageRollPayload = {
+            weaponName: sg.weaponName,
+            critThreatMin: sg.critThreatMin,
+            critMultiplier: sg.critMultiplier,
+            normalDiceCount: sg.normalDiceCount,
+            critDiceCount: sg.critDiceCount,
+            dieSides: sg.dieSides,
+            damageModifier: sg.baseDamageModifier + aeDmgBonus,
+            damageLabelSuffix:
+              dmgSuffixParts.length > 0 ? ` [${dmgSuffixParts.join(' • ')}]` : undefined,
+            segurarGatilhoPayload: {
+              ...sg,
+              shotIndex: shotNumber,
+              nextExtraShotStep: nextStepAfterShot,
+            },
+          };
+
+          triggerRoll(
+            baseRoll.characterName,
+            baseRoll.system,
+            `Acerto: ${sg.weaponName} [${suffixParts.join(' • ')}]`,
+            sg.baseAttackDice,
+            20,
+            sg.baseAttackBonus + aeAtkBonus,
+            baseRoll.isSecret,
+            false,
+            baseRoll.characterId,
+            undefined,
+            baseRoll.hasAfortunado,
+            nextAttackPayload,
+            undefined,
+            {
+              batchId: sg.batchId,
+              batchRole: 'segurar_gatilho_attack',
+              batchShotNumber: shotNumber,
+            }
+          );
+          return true;
+        }}
+        onTriggerSegurarGatilhoDamageBatch={(selectedAttackRolls) => {
+          selectedAttackRolls.forEach((atkRoll) => {
+            const p = atkRoll.attackDamagePayload;
+            if (!p) return;
+            const isZeroPenalty = atkRoll.formula.includes('2d20 (menor)');
+            const keptNatural = isZeroPenalty
+              ? Math.min(...atkRoll.rolls)
+              : Math.max(...atkRoll.rolls);
+            const isCrit = keptNatural >= p.critThreatMin;
+            const shotNum = atkRoll.batchShotNumber || p.segurarGatilhoPayload?.shotIndex || 1;
+            const suffix = p.damageLabelSuffix || '';
+            const label = isCrit
+              ? `💥 Dano Crítico (${shotNum}º Disp. • x${p.critMultiplier}): ${p.weaponName}${suffix}`
+              : `Dano (${shotNum}º Disp.): ${p.weaponName}${suffix}`;
+            const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
+
+            triggerRoll(
+              atkRoll.characterName,
+              atkRoll.system,
+              label,
+              diceCount,
+              p.dieSides,
+              p.damageModifier,
+              atkRoll.isSecret,
+              false,
+              atkRoll.characterId,
+              undefined,
+              atkRoll.hasAfortunado,
+              p,
+              p.forcaOpressoraPayload,
+              {
+                batchId: atkRoll.batchId || p.segurarGatilhoPayload!.batchId,
+                batchRole: 'segurar_gatilho_damage',
+                batchShotNumber: shotNum,
+                batchIsCrit: isCrit,
+              }
+            );
           });
         }}
         onRollDamage={(rollResult, isCrit) => {

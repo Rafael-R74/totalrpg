@@ -672,17 +672,17 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 40,
         name: 'Ataque Extra (Op. Especiais 40%)',
-        cost: 2,
+        cost: 0,
         description: 'Uma vez por rodada, quando faz um ataque, você pode gastar 2 PE para fazer um ataque adicional.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 65,
         name: 'Surto de Adrenalina (Op. Especiais 65%)',
-        cost: 5,
+        cost: 0,
         description: 'Uma vez por rodada, você pode gastar 5 PE para realizar uma ação padrão ou de movimento adicional.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
@@ -712,17 +712,17 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 40,
         name: 'Cai Dentro (Tropa de Choque 40%)',
-        cost: 1,
+        cost: 0,
         description: 'Sempre que um oponente em alcance curto ataca um aliado, gaste reação e 1 PE para forçá-lo a testar Vontade (DT Vig); se falhar, deve atacar você.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 65,
         name: 'Duro de Matar (Tropa de Choque 65%)',
-        cost: 2,
+        cost: 0,
         description: 'Ao sofrer dano não paranormal (ou paranormal a partir de NEX 85%), gaste reação e 2 PE para reduzir esse dano à metade.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {

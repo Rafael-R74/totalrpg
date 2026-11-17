@@ -1681,7 +1681,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma de fogo semiautomática comum entre policiais e agentes. Usa balas curtas. Categoria I.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '1d12', critRange: '18/x2', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '1d12', critRange: '18/x2', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-revolver',
@@ -1691,7 +1691,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma de fogo confiável de alto impacto crítico. Usa balas curtas. Categoria I.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-caca',
@@ -1701,7 +1701,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma de fogo longa de alcance médio. Usa balas longas. Categoria I.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d8', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d8', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   // --- Armas Táticas ---
   {
@@ -1862,7 +1862,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma de fogo automática empunhada com uma mão. Usa balas curtas. Categoria I.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto' },
+    metadata: { damageFormula: '2d6', critRange: '19/x3', slots: 1, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-espingarda',
@@ -1872,7 +1872,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma de fogo devastadora em alcance curto. Usa cartuchos. Categoria I.',
     cost: 1,
     modifiers: [],
-    metadata: { damageFormula: '4d6', critRange: '20/x3', slots: 2, range: 'Curto' },
+    metadata: { damageFormula: '4d6', critRange: '20/x3', slots: 2, range: 'Curto', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-assalto',
@@ -1882,7 +1882,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma de fogo militar automática de alcance médio. Usa balas longas. Categoria II.',
     cost: 2,
     modifiers: [],
-    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   {
     id: 'ord-item-fuzil-precisao',
@@ -1892,7 +1892,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma militar para disparos longos (Veterano em Pontaria ao mirar ganha +5 na margem de ameaça). Categoria III.',
     cost: 3,
     modifiers: [],
-    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Longo' },
+    metadata: { damageFormula: '2d10', critRange: '19/x3', slots: 2, range: 'Longo', element: 'Balístico' },
   },
   // --- Armas Pesadas ---
   {
@@ -1903,7 +1903,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     description: 'Arma automática pesada (exige For 4 ou apoiar em tripé). Usa balas longas. Categoria II.',
     cost: 2,
     modifiers: [],
-    metadata: { damageFormula: '2d12', critRange: '19/x3', slots: 2, range: 'Médio' },
+    metadata: { damageFormula: '2d12', critRange: '19/x3', slots: 2, range: 'Médio', element: 'Balístico' },
   },
   {
     id: 'ord-item-lanca-chamas',
