@@ -13,6 +13,10 @@ import {
   checkOrdemPowerRequirements,
   parseOrdemRitualForms,
   OrdemRitualCastForm,
+  findOrdemRitualDef,
+  getOrdemRitualDT,
+  getOrdemRitualPeLimit,
+  getOrdemCircleBaseCost,
   getOrdemPeLimit,
   getOrdemAtaqueEspecialMaxTier,
   boostCritMultiplier,
@@ -60,7 +64,17 @@ interface SheetExtrasProps {
     attackDamagePayload?: AttackDamageRollPayload,
     forcaOpressoraPayload?: ForcaOpressoraRollPayload
   ) => void;
-  onCastOrdemRitual?: (ritual: CharacterAbility, form: OrdemRitualCastForm) => void;
+  onCastOrdemRitual?: (
+    ritual: CharacterAbility,
+    form: OrdemRitualCastForm,
+    castOptions?: {
+      usePoderDoFlagelo?: boolean;
+      camuflar?: boolean;
+      ampliar?: boolean;
+      acelerar?: boolean;
+    }
+  ) => void;
+  onGrantTempPe?: (amount: number, label?: string) => void;
   onTriggerOriginSpecial?: (originId: string) => void;
   vislumbresSuccessPending?: boolean;
   onRollVislumbresPe?: () => void;
@@ -79,6 +93,54 @@ function parseDiceFormula(formula: string): { count: number; sides: number; modi
     sides: parseInt(match[2], 10),
     modifier: match[3] ? parseInt(match[3], 10) : 0,
   };
+}
+
+function rollRitualWeaponDamageExtras(
+  isMelee: boolean,
+  sceneEffects: SceneEffect[]
+): { totalBonus: number; labels: string[] } {
+  let totalBonus = 0;
+  const labels: string[] = [];
+
+  for (const ef of sceneEffects) {
+    const lowerName = (ef.name || '').toLowerCase();
+    const lowerDesc = `${ef.name || ''} ${ef.description || ''}`.toLowerCase();
+
+    if (lowerName.includes('amaldiçoar arma') || lowerName.includes('amaldicoar arma')) {
+      const dice = lowerDesc.includes('verdadeiro')
+        ? 4
+        : lowerDesc.includes('discente')
+        ? 2
+        : 1;
+      let sum = 0;
+      for (let i = 0; i < dice; i++) {
+        sum += Math.floor(Math.random() * 6) + 1;
+      }
+      totalBonus += sum;
+      labels.push(`🔮 Amaldiçoar Arma +${dice}d6: +${sum}`);
+    } else if (
+      isMelee &&
+      lowerName.includes('chamas do caos') &&
+      (lowerDesc.includes('chamejar') || lowerDesc.includes('+1d6'))
+    ) {
+      const roll = Math.floor(Math.random() * 6) + 1;
+      totalBonus += roll;
+      labels.push(`🔥 Chamas do Caos +1d6: +${roll}`);
+    } else if (
+      isMelee &&
+      lowerName.includes('descarnar') &&
+      (lowerDesc.includes('verdadeiro') || lowerDesc.includes('4d8'))
+    ) {
+      let sum = 0;
+      for (let i = 0; i < 4; i++) {
+        sum += Math.floor(Math.random() * 8) + 1;
+      }
+      totalBonus += sum;
+      labels.push(`🩸 Descarnar (Verd.) +4d8: +${sum}`);
+    }
+  }
+
+  return { totalBonus, labels };
 }
 
 export function SheetExtras({
@@ -108,6 +170,7 @@ export function SheetExtras({
   onSpendResource,
   onRoll,
   onCastOrdemRitual,
+  onGrantTempPe,
   onTriggerOriginSpecial,
   vislumbresSuccessPending,
   onRollVislumbresPe,
@@ -121,6 +184,12 @@ export function SheetExtras({
     (o) => o.id === normOrigin || o.name.toLowerCase() === normOrigin
   );
   const originId = originObj?.id || '';
+  const hasFerramentasParanormais = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id === 'ord-pwr-ocu-ferramentas-paranormais' ||
+        ab.name.toLowerCase().includes('ferramentas paranormais'))
+  );
   const hasMochilaUtilidades = abilities.some((ab) =>
     ab.name.toLowerCase().includes('mochila de utilidades')
   );
@@ -290,6 +359,12 @@ export function SheetExtras({
   const canChangeUtilityBackpackItem =
     !hasChosenUtilityBackpackItem || (isEditMode && canEditInventory);
 
+  const hasChosenParanormalTool = inventory.some((it) =>
+    Boolean(it.isParanormalTool)
+  );
+  const canChangeParanormalTool =
+    !hasChosenParanormalTool || (isEditMode && canEditInventory);
+
   function hasDedicatedControlElsewhere(ab: CharacterAbility): boolean {
     const lowerId = (ab.id || '').toLowerCase();
     const lowerName = (ab.name || '').toLowerCase();
@@ -365,6 +440,51 @@ export function SheetExtras({
       lowerName.includes('paramédico') ||
       lowerName.includes('paramedico') ||
       lowerId === 'trail-negociador-40' ||
+      lowerId === 'ord-pwr-ocu-camuflar-ocultismo' ||
+      lowerId === 'ord-pwr-ocu-especialista-elemento' ||
+      lowerId === 'ord-pwr-ocu-ferramentas-paranormais' ||
+      lowerId === 'ord-pwr-ocu-fluxo-poder' ||
+      lowerId === 'ord-pwr-ocu-mestre-elemento' ||
+      lowerId === 'ord-pwr-ocu-ritual-potente' ||
+      lowerId === 'ord-pwr-ocu-ritual-predileto' ||
+      lowerId === 'ord-pwr-ocu-tatuagem-ritualistica' ||
+      lowerId === 'ord-pwr-ocu-intuicao-paranormal' ||
+      lowerId === 'ord-pwr-ocu-identificacao-paranormal' ||
+      lowerId === 'trail-conduite-10' ||
+      lowerId === 'trail-conduite-40' ||
+      lowerId === 'trail-flagelador-10' ||
+      lowerId === 'trail-flagelador-40' ||
+      lowerId === 'trail-graduado-10' ||
+      lowerId === 'trail-graduado-40' ||
+      lowerId === 'trail-graduado-65' ||
+      lowerId === 'trail-intuitivo-10' ||
+      lowerId === 'trail-intuitivo-40' ||
+      lowerId === 'trail-intuitivo-65' ||
+      lowerId === 'trail-lamina_paranormal-10' ||
+      lowerId === 'trail-lamina_paranormal-40' ||
+      lowerId === 'trail-lamina_paranormal-65' ||
+      lowerId === 'ord-para-sang-sangue-ferro' ||
+      lowerId === 'ord-para-sang-sangue-fervente' ||
+      lowerId === 'ord-para-sang-sangue-vivo' ||
+      lowerId === 'ord-para-sang-arma-sangue' ||
+      lowerId === 'ord-para-mort-potencial-aprimorado' ||
+      lowerId === 'ord-para-mort-encarar' ||
+      lowerId === 'ord-para-ener-afortunado' ||
+      lowerId === 'ord-para-ener-golpe-sorte' ||
+      lowerId === 'ord-para-conh-visao-oculto' ||
+      lowerId === 'ord-para-conh-expansao' ||
+      lowerId === 'ord-para-aprender-ritual' ||
+      lowerId.startsWith('ord-para-resistir-') ||
+      lowerId === 'ord-pwr-ocu-envolto-misterio' ||
+      lowerId === 'ord-pwr-ocu-criar-selo' ||
+      lowerId === 'ord-pwr-ocu-guiado-paranormal' ||
+      lowerId === 'ord-pwr-ocu-improvisar-componentes' ||
+      lowerId === 'trail-conduite-65' ||
+      lowerId === 'trail-flagelador-65' ||
+      lowerId === 'ord-para-ener-campo-protetor' ||
+      lowerId === 'ord-para-mort-surto-temporal' ||
+      lowerId === 'ord-para-mort-potencial-reaproveitado' ||
+      lowerId === 'ord-para-sang-anatomia-insana' ||
       lowerName.includes('discurso motivador')
     ) {
       return true;
@@ -440,6 +560,16 @@ export function SheetExtras({
   const [secLetal, setSecLetal] = useState<0 | 1 | 2>(0);
   const [secPerfurante, setSecPerfurante] = useState<boolean>(false);
   const [combatTabFeedback, setCombatTabFeedback] = useState<string>('');
+  const [useLaminaMaldita, setUseLaminaMaldita] = useState(false);
+  const [ritualCamuflar, setRitualCamuflar] = useState(false);
+  const [ritualAmpliar, setRitualAmpliar] = useState(false);
+  const [ritualAcelerar, setRitualAcelerar] = useState(false);
+  const [ritualPoderFlagelo, setRitualPoderFlagelo] = useState(false);
+  const [ritualLaminaMovimentoMap, setRitualLaminaMovimentoMap] = useState<Record<string, boolean>>({});
+  const [improvisarElemento, setImprovisarElemento] = useState<string>('Sangue');
+  const [anularRitualPe, setAnularRitualPe] = useState<number>(1);
+  const [criarSeloRitualId, setCriarSeloRitualId] = useState<string>('');
+  const [criarSeloCircle, setCriarSeloCircle] = useState<number>(1);
 
   // Estados para seleção de alvos do Discurso Motivador (Negociador)
   const [isDiscursoModalOpen, setIsDiscursoModalOpen] = useState(false);
@@ -1693,13 +1823,29 @@ export function SheetExtras({
               const effectiveFurtivoDice = armedAssassinar
                 ? furtivoBaseDice * 2
                 : furtivoBaseDice;
+              const laminaMalditaCombatAb = abilities.find(
+                (a) => a.isActive !== false && (a.id === 'trail-lamina_paranormal-10' || a.name.toLowerCase().includes('lâmina maldita'))
+              );
+              const gladiadorParanormalAb = abilities.find(
+                (a) => a.isActive !== false && (a.id === 'trail-lamina_paranormal-40' || a.name.toLowerCase().includes('gladiador paranormal'))
+              );
+              const conjuracaoMarcialAb = abilities.find(
+                (a) => a.isActive !== false && (a.id === 'trail-lamina_paranormal-65' || a.name.toLowerCase().includes('conjuração marcial'))
+              );
+              const armaDeSangueAb = abilities.find(
+                (a) => a.isActive !== false && (a.id === 'ord-para-sang-arma-sangue' || a.name.toLowerCase().includes('arma de sangue'))
+              );
               const showTacticalBar =
                 Boolean(combateDefensivoAb) ||
                 Boolean(duasArmasAb) ||
                 hasGolpeDemolidor ||
                 hasAtaqueFurtivo ||
                 hasAssassinar ||
-                (hasArtistaMarcial && !hasUnarmedAttack);
+                (hasArtistaMarcial && !hasUnarmedAttack) ||
+                Boolean(laminaMalditaCombatAb) ||
+                Boolean(gladiadorParanormalAb) ||
+                Boolean(conjuracaoMarcialAb) ||
+                Boolean(armaDeSangueAb);
               if (!showTacticalBar) return null;
 
               return (
@@ -1839,6 +1985,149 @@ export function SheetExtras({
                         🥋 + Adicionar Ataque Desarmado (1d{unarmedDieSides})
                       </button>
                     )}
+
+                    {laminaMalditaCombatAb && (
+                      <button
+                        type="button"
+                        onClick={() => setUseLaminaMaldita((prev) => !prev)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                          useLaminaMaldita
+                            ? 'bg-purple-600 text-white border-purple-300 shadow'
+                            : 'bg-zinc-900 hover:bg-zinc-800 text-purple-300 border-purple-800/70'
+                        }`}
+                        title="Usa Ocultismo (INT) nos testes de ataque com armas afetadas por Amaldiçoar Arma"
+                      >
+                        {useLaminaMaldita
+                          ? '🗡️ Lâmina Maldita ATIVA (Ocultismo / INT)'
+                          : '🗡️ Ativar Lâmina Maldita (Ocultismo / INT)'}
+                      </button>
+                    )}
+
+                    {gladiadorParanormalAb && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onGrantTempPe) {
+                            onGrantTempPe(2, 'Gladiador Paranormal');
+                          }
+                          setCombatTabFeedback(
+                            '⚡ Gladiador Paranormal: +2 PE temporários adicionados por acerto corpo a corpo!'
+                          );
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-amber-950/70 hover:bg-amber-800 text-amber-200 border-amber-700 transition cursor-pointer"
+                        title="Sempre que acerta um ataque corpo a corpo em um inimigo, ganha +2 PE temporários (máx. Limite de PE na cena)"
+                      >
+                        ⚡ Gladiador Paranormal (+2 PE Temp)
+                      </button>
+                    )}
+
+                    {conjuracaoMarcialAb && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!onSpendResource(2)) return;
+                          setCombatTabFeedback(
+                            '⚔️ Conjuração Marcial (-2 PE): 1 ataque corpo a corpo como ação livre liberado nesta rodada! Role abaixo.'
+                          );
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-rose-950/70 hover:bg-rose-800 text-rose-200 border-rose-700 transition cursor-pointer"
+                        title="1x/rodada após conjurar ritual de ação padrão: gasta 2 PE para fazer um ataque corpo a corpo como ação livre"
+                      >
+                        ⚔️ Conjuração Marcial (-2 PE • Atq. Livre)
+                      </button>
+                    )}
+
+                    {armaDeSangueAb && (() => {
+                      const hasArmaSangueAff = Boolean(
+                        armaDeSangueAb.hasAffinityUpgrade ||
+                          armaDeSangueAb.name.toLowerCase().includes('afinidade')
+                      );
+                      const armaSangueDmg = hasArmaSangueAff ? '1d10' : '1d6';
+                      const hasArmaSangueInList = attacks.some((a) =>
+                        a.name.toLowerCase().includes('arma de sangue')
+                      );
+                      const extraAtkCost = hasArmaSangueAff ? 0 : 1;
+                      return (
+                        <>
+                          {!hasArmaSangueInList && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!onSpendResource(2)) return;
+                                const lutaSk = ordemSheetData?.skills.find((s) => s.id === 'luta');
+                                onUpdateAttacks([
+                                  ...attacks,
+                                  {
+                                    id: `atk-arma-sangue-${Math.random().toString(36).slice(2, 7)}`,
+                                    name: 'Arma de Sangue',
+                                    diceCount: Math.max(1, effFor),
+                                    attackBonus:
+                                      (lutaSk?.trainingDegree || 0) +
+                                      (lutaSk?.otherModifier || 0),
+                                    damageFormula: armaSangueDmg,
+                                    critRange: '20/x2',
+                                    damageType: 'Sangue',
+                                    isMelee: true,
+                                    isFirearm: false,
+                                  },
+                                ]);
+                                setCombatTabFeedback(
+                                  `🩸 Arma de Sangue manifestada (-2 PE): dano ${armaSangueDmg} de Sangue adicionada aos ataques!`
+                                );
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-red-950/80 hover:bg-red-800 text-red-200 border-red-700 transition cursor-pointer"
+                            >
+                              🩸 Manifestar Arma de Sangue (-2 PE • {armaSangueDmg})
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (extraAtkCost > 0 && !onSpendResource(extraAtkCost)) return;
+                              const lutaSk = ordemSheetData?.skills.find((s) => s.id === 'luta');
+                              const ocultSk = ordemSheetData?.skills.find((s) => s.id === 'ocultismo');
+                              const useOcult = Boolean(laminaMalditaCombatAb && useLaminaMaldita);
+                              const skBonus = useOcult
+                                ? (ocultSk?.trainingDegree || 0) +
+                                  (ocultSk?.otherModifier || 0) +
+                                  bonuses.skillBonusAll +
+                                  (bonuses.skillBonus['ocultismo'] || 0) +
+                                  bonuses.attackBonus
+                                : (lutaSk?.trainingDegree || 0) +
+                                  (lutaSk?.otherModifier || 0) +
+                                  bonuses.skillBonusAll +
+                                  (bonuses.skillBonus['luta'] || 0) +
+                                  bonuses.attackBonus;
+                              const diceC = useOcult
+                                ? effInt + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0) + bonuses.attackDiceBonus
+                                : effFor + bonuses.skillDiceAll + (bonuses.skillDice['luta'] || 0) + bonuses.attackDiceBonus;
+                              const sides = hasArmaSangueAff ? 10 : 6;
+                              onRoll(
+                                `Arma de Sangue (Atq. Extra${extraAtkCost === 0 ? ' Afinidade' : ''})`,
+                                diceC,
+                                20,
+                                skBonus,
+                                false,
+                                {
+                                  weaponName: 'Arma de Sangue',
+                                  critThreatMin: 20,
+                                  critMultiplier: 2,
+                                  normalDiceCount: 1,
+                                  critDiceCount: 2,
+                                  dieSides: sides,
+                                  damageModifier: effFor + bonuses.damageBonus + bonuses.meleeDamageBonus,
+                                  damageLabelSuffix: ' [Sangue • Ataque Extra]',
+                                }
+                              );
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-red-900/70 hover:bg-red-700 text-red-100 border-red-600 transition cursor-pointer"
+                            title="1x/turno após agredir com outra arma: realiza ataque adicional com a Arma de Sangue"
+                          >
+                            🩸 Atq. Extra Arma de Sangue ({extraAtkCost === 0 ? '0 PE • Afin.' : '-1 PE'})
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -1906,9 +2195,10 @@ export function SheetExtras({
                 const baseDamageDiceCount =
                   rawDmgParsed.count + golpePesadoExtraDice + maquinaMatarExtraDice;
 
-                // Perícias de Ataque em Ordem Paranormal: Pontaria para fogo/disparo, Luta para corpo a corpo
+                // Perícias de Ataque em Ordem Paranormal: Pontaria para fogo/disparo, Luta para corpo a corpo (ou Ocultismo/INT se Lâmina Maldita estiver ativo)
                 const pontariaSk = ordemSheetData?.skills.find((s) => s.id === 'pontaria');
                 const lutaSk = ordemSheetData?.skills.find((s) => s.id === 'luta');
+                const ocultismoSk = ordemSheetData?.skills.find((s) => s.id === 'ocultismo');
 
                 const pontariaSkillBonus =
                   (pontariaSk?.trainingDegree || 0) +
@@ -1922,13 +2212,33 @@ export function SheetExtras({
                   bonuses.skillBonusAll +
                   (bonuses.skillBonus['luta'] || 0);
 
+                const ocultismoSkillBonus =
+                  (ocultismoSk?.trainingDegree || 0) +
+                  (ocultismoSk?.otherModifier || 0) +
+                  bonuses.skillBonusAll +
+                  (bonuses.skillBonus['ocultismo'] || 0);
+
+                const usingLaminaMalditaAttack = Boolean(
+                  isOrdemSystem &&
+                    useLaminaMaldita &&
+                    abilities.some(
+                      (a) =>
+                        a.isActive !== false &&
+                        (a.id === 'trail-lamina_paranormal-10' ||
+                          a.name.toLowerCase().includes('lâmina maldita'))
+                    )
+                );
+
                 const meleeBaseAttr = isAgile ? Math.max(effFor, effAgi) : effFor;
 
                 // Dados de Ataque (d20):
                 // - Armas de fogo e de disparo usam Agilidade (effAgi) + bônus de dados de Pontaria
                 // - Armas corpo a corpo usam Força (ou Agilidade se ágil) + bônus de dados de Luta
+                // - Lâmina Maldita: usa Intelecto (effInt) + bônus de dados de Ocultismo
                 const rawAttackDice = isOrdemSystem
-                  ? isRanged
+                  ? usingLaminaMalditaAttack
+                    ? effInt + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0)
+                    : isRanged
                     ? effAgi + bonuses.skillDiceAll + (bonuses.skillDice['pontaria'] || 0)
                     : meleeBaseAttr + bonuses.skillDiceAll + (bonuses.skillDice['luta'] || 0)
                   : atk.diceCount || 1;
@@ -1937,8 +2247,13 @@ export function SheetExtras({
                 // Bônus de Ataque (+X):
                 // - Armas de fogo e de disparo usam o teste de Pontaria
                 // - Armas corpo a corpo usam o teste de Luta
+                // - Lâmina Maldita: usa Ocultismo
                 const workToolAtkBonus = atk.isWorkTool || invMatch?.isFavoriteTool ? 1 : 0;
-                const combatSkillBonus = isRanged ? pontariaSkillBonus : lutaSkillBonus;
+                const combatSkillBonus = usingLaminaMalditaAttack
+                  ? ocultismoSkillBonus
+                  : isRanged
+                  ? pontariaSkillBonus
+                  : lutaSkillBonus;
                 const finalAttackBonus = isOrdemSystem
                   ? combatSkillBonus + bonuses.attackBonus + workToolAtkBonus
                   : atk.attackBonus + bonuses.attackBonus + workToolAtkBonus;
@@ -2000,7 +2315,28 @@ export function SheetExtras({
                   isOrdemSystem && hasAtirarParaMatar && isFirearm
                 );
 
-                // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta, Mirar (+5), Disparo Letal (+2)
+                // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta, Mirar (+5), Disparo Letal (+2), Golpe de Sorte (+1/+1x Afinidade), Arma Atroz
+                const golpeSorteAb = abilities.find(
+                  (a) =>
+                    a.isActive !== false &&
+                    (a.id === 'ord-para-ener-golpe-sorte' ||
+                      a.name.toLowerCase().includes('golpe de sorte'))
+                );
+                const hasGolpeSorteAfinidade = Boolean(
+                  golpeSorteAb &&
+                    (golpeSorteAb.hasAffinityUpgrade ||
+                      golpeSorteAb.name.toLowerCase().includes('afinidade'))
+                );
+                const sceneEffectsCombat = ordemSheetData?.sceneEffects || [];
+                const armaAtrozEf = isMelee
+                  ? sceneEffectsCombat.find((ef) =>
+                      (ef.name || '').toLowerCase().includes('arma atroz')
+                    )
+                  : undefined;
+                const armaAtrozText = armaAtrozEf
+                  ? `${armaAtrozEf.name} ${armaAtrozEf.description || ''}`.toLowerCase()
+                  : '';
+
                 let critThreatSteps = 0;
                 if (hasTecnicaLetal && isMelee) critThreatSteps += 2;
                 if (isAniqFav && hasMaquinaMatar) critThreatSteps += 2;
@@ -2010,9 +2346,19 @@ export function SheetExtras({
                 }
                 if (isAimingFuzil) critThreatSteps += 5;
                 if (isDisparoLetalArmed) critThreatSteps += 2;
+                if (golpeSorteAb) critThreatSteps += 1;
+                if (armaAtrozEf) {
+                  critThreatSteps += armaAtrozText.includes('verdadeiro') ? 2 : 1;
+                }
                 let effectiveCritRange = boostCritRangeBySteps(atk.critRange, critThreatSteps);
                 if (isAniqFav && hasTecnicaSecreta && secDestruidor) {
                   effectiveCritRange = boostCritMultiplier(effectiveCritRange, 1);
+                }
+                if (hasGolpeSorteAfinidade) {
+                  effectiveCritRange = boostCritMultiplier(effectiveCritRange, 1);
+                }
+                if (armaAtrozEf && armaAtrozText.includes('verdadeiro')) {
+                  effectiveCritRange = boostCritMultiplier(effectiveCritRange, 2);
                 }
                 const critParsed = parseCritRange(effectiveCritRange);
                 const critBaseDamageDiceCount = baseDamageDiceCount * critParsed.multiplier;
@@ -2158,6 +2504,15 @@ export function SheetExtras({
                     );
                     setArmedAtaqueFurtivo(false);
                     setArmedAssassinar(false);
+                  }
+
+                  const ritualDmgExtras = rollRitualWeaponDamageExtras(
+                    isMelee,
+                    ordemSheetData?.sceneEffects || []
+                  );
+                  if (ritualDmgExtras.totalBonus > 0) {
+                    dmgModToUse += ritualDmgExtras.totalBonus;
+                    suffixParts.push(...ritualDmgExtras.labels);
                   }
 
                   if (isCrit && isAtirarParaMatarActive) {
@@ -2426,6 +2781,19 @@ export function SheetExtras({
                                   dmgSuffixParts.length > 0
                                     ? ` [${dmgSuffixParts.join(' • ')}]`
                                     : undefined,
+                                ...(() => {
+                                  const rExtras = rollRitualWeaponDamageExtras(
+                                    isMelee,
+                                    ordemSheetData?.sceneEffects || []
+                                  );
+                                  if (rExtras.totalBonus <= 0) return {};
+                                  const mergedSuffix = [...dmgSuffixParts, ...rExtras.labels];
+                                  return {
+                                    damageModifier:
+                                      finalDamageMod + extraDmgFromFurtivo + rExtras.totalBonus,
+                                    damageLabelSuffix: ` [${mergedSuffix.join(' • ')}]`,
+                                  };
+                                })(),
                                 forcaOpressoraPayload: foPayload,
                                 segurarGatilhoPayload: buildSegurarGatilhoPayload(batchId),
                               }
@@ -2721,6 +3089,22 @@ export function SheetExtras({
                                       dmgSuffixParts.length > 0
                                         ? ` [${dmgSuffixParts.join(' • ')}]`
                                         : undefined,
+                                    ...(() => {
+                                      const rExtras = rollRitualWeaponDamageExtras(
+                                        isMelee,
+                                        ordemSheetData?.sceneEffects || []
+                                      );
+                                      if (rExtras.totalBonus <= 0) return {};
+                                      const mergedSuffix = [...dmgSuffixParts, ...rExtras.labels];
+                                      return {
+                                        damageModifier:
+                                          finalDamageMod +
+                                          appliedAeDmg +
+                                          extraDmgFromFurtivo +
+                                          rExtras.totalBonus,
+                                        damageLabelSuffix: ` [${mergedSuffix.join(' • ')}]`,
+                                      };
+                                    })(),
                                     forcaOpressoraPayload: foPayload,
                                     segurarGatilhoPayload: buildSegurarGatilhoPayload(batchId),
                                   }
@@ -2804,18 +3188,128 @@ export function SheetExtras({
             </div>
           )}
 
-          {activeSubTab === 'spells' && system === 'ordem-paranormal' && (
-            <div className="bg-purple-950/30 border border-purple-800/50 px-3.5 py-2 rounded-xl text-[11px] text-purple-200 flex flex-wrap items-center justify-between gap-2">
-              <span>
-                👁️ <strong>O Custo do Paranormal:</strong> Conjurar um ritual desconta o PE, aplica bônus/PV temporários da cena e rola automaticamente seu <strong>Teste de Ocultismo (DT 20 + PE gasto)</strong>.
-              </span>
-              {ordemSheetData && (
-                <span className="font-mono font-bold text-purple-300">
-                  Limite de PE/Turno: {getOrdemPeLimit(ordemSheetData.nex, ordemSheetData.origin, abilities)} PE
-                </span>
-              )}
-            </div>
-          )}
+          {activeSubTab === 'spells' && system === 'ordem-paranormal' && (() => {
+            const effPreBar = Number(ordemSheetData?.attributes?.pre ?? 1) + (bonuses?.attributes?.['pre'] || 0);
+            const ritualDtBar = ordemSheetData
+              ? getOrdemRitualDT(ordemSheetData.nex, effPreBar, ordemSheetData.trail, abilities, ordemSheetData.origin)
+              : 10;
+            const peRitualLimitBar = ordemSheetData
+              ? getOrdemRitualPeLimit(ordemSheetData.nex, ordemSheetData.origin, abilities, effPreBar, ordemSheetData.trail)
+              : 1;
+            const peBaseLimitBar = ordemSheetData
+              ? getOrdemPeLimit(ordemSheetData.nex, ordemSheetData.origin, abilities)
+              : 1;
+            const hasFluxoPoderBar = abilities.some(
+              (a) => a.isActive !== false && (a.id === 'ord-pwr-ocu-fluxo-poder' || a.name.toLowerCase().includes('fluxo de poder'))
+            );
+            const maxSustainedBar = hasFluxoPoderBar ? 2 : 1;
+            const activeSustainedRituals = spellList.filter((s) => Boolean(s.isSustainedActive));
+            const hasCamuflarPower = abilities.some((a) => a.isActive !== false && (a.id === 'ord-pwr-ocu-camuflar-ocultismo' || a.name.toLowerCase().includes('camuflar ocultismo')));
+            const hasAmpliarPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-conduite-10' || a.name.toLowerCase().includes('ampliar ritual')));
+            const hasAcelerarPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-conduite-40' || a.name.toLowerCase().includes('acelerar ritual')));
+            const hasFlageloPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-flagelador-10' || a.name.toLowerCase().includes('poder do flagelo')));
+            const hasLaminaMalditaPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-lamina_paranormal-10' || a.name.toLowerCase().includes('lâmina maldita')));
+
+            return (
+              <div className="bg-purple-950/30 border border-purple-800/50 px-3.5 py-2.5 rounded-xl text-[11px] text-purple-200 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    👁️ <strong>O Custo do Paranormal:</strong> Conjurar desconta PE, aplica efeitos na cena e rola <strong>Ocultismo (DT 20 + PE gasto)</strong> (exceto Medo).
+                  </span>
+                  {ordemSheetData && (
+                    <div className="flex flex-wrap items-center gap-2 font-mono font-bold text-purple-300">
+                      <span className="px-2 py-0.5 rounded bg-purple-900/50 border border-purple-700/60">
+                        DT Base: {ritualDtBar}
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-purple-900/50 border border-purple-700/60">
+                        Limite PE/Ritual: {peRitualLimitBar > peBaseLimitBar ? `${peBaseLimitBar}/${peRitualLimitBar}` : peRitualLimitBar} PE
+                      </span>
+                      <span className={`px-2 py-0.5 rounded border ${activeSustainedRituals.length > maxSustainedBar ? 'bg-red-900/50 border-red-600 text-red-200' : 'bg-zinc-900/70 border-zinc-700 text-zinc-200'}`}>
+                        Sustentados: {activeSustainedRituals.length}/{maxSustainedBar}
+                      </span>
+                      {activeSustainedRituals.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cost = activeSustainedRituals.length;
+                            if (onSpendResource(cost)) {
+                              setAbilityUseFeedback(`🔄 Sustentação paga (-${cost} PE) para ${activeSustainedRituals.map((s) => s.name).join(', ')}.`);
+                            }
+                          }}
+                          className="px-2 py-0.5 rounded bg-indigo-700 hover:bg-indigo-600 text-white font-sans text-[10px] font-bold"
+                        >
+                          Pagar Sustentação (-{activeSustainedRituals.length} PE)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {(hasCamuflarPower || hasAmpliarPower || hasAcelerarPower || hasFlageloPower || hasLaminaMalditaPower) && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-purple-900/60">
+                    <span className="text-[10px] font-bold uppercase text-purple-400 mr-1">Modificadores de Conjuração:</span>
+                    {hasCamuflarPower && (
+                      <button
+                        type="button"
+                        onClick={() => setRitualCamuflar((v) => !v)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                          ritualCamuflar
+                            ? 'bg-purple-600 text-white border-purple-400'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
+                        }`}
+                      >
+                        🎭 Camuflar Ocultismo (+2 PE)
+                      </button>
+                    )}
+                    {hasAmpliarPower && (
+                      <button
+                        type="button"
+                        onClick={() => setRitualAmpliar((v) => !v)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                          ritualAmpliar
+                            ? 'bg-purple-600 text-white border-purple-400'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
+                        }`}
+                      >
+                        📏 Ampliar Ritual (+2 PE)
+                      </button>
+                    )}
+                    {hasAcelerarPower && (
+                      <button
+                        type="button"
+                        onClick={() => setRitualAcelerar((v) => !v)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                          ritualAcelerar
+                            ? 'bg-purple-600 text-white border-purple-400'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
+                        }`}
+                      >
+                        ⚡ Acelerar Ritual (+4 PE)
+                      </button>
+                    )}
+                    {hasFlageloPower && (
+                      <button
+                        type="button"
+                        onClick={() => setRitualPoderFlagelo((v) => !v)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                          ritualPoderFlagelo
+                            ? 'bg-red-700 text-white border-red-400'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-red-500'
+                        }`}
+                      >
+                        🩸 Poder do Flagelo (2 PV / 1 PE)
+                      </button>
+                    )}
+                    {hasLaminaMalditaPower && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900/70 border border-zinc-700 text-amber-300">
+                        🗡️ Lâmina Maldita: Amaldiçoar Arma custa -1 PE (mín. 1) na ficha
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {(activeSubTab === 'powers' ? powerList : spellList).length === 0 ? (
             <p className="text-xs text-zinc-500 text-center py-4">
@@ -2831,7 +3325,13 @@ export function SheetExtras({
                   (ab.category === 'ritual' || ab.category === 'magia');
 
                 const ritualForms = isOrdemRitual
-                  ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula)
+                  ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula, {
+                      ritualId: ab.id,
+                      element: ab.element,
+                      isFavoriteRitual: ab.isFavoriteRitual,
+                      abilities,
+                      extraPeCost: 0,
+                    })
                   : [];
 
                 const prog =
@@ -2845,22 +3345,113 @@ export function SheetExtras({
                             : ordemSheetData.nex >= 25
                             ? 2
                             : 1,
-                        peTurnLimit: getOrdemPeLimit(
+                        peTurnLimit: getOrdemRitualPeLimit(
                           ordemSheetData.nex,
                           ordemSheetData.origin,
-                          abilities
+                          abilities,
+                          Number(ordemSheetData.attributes?.pre ?? 1) + (bonuses?.attributes?.['pre'] || 0),
+                          ordemSheetData.trail
                         ),
                       }
                     : { maxCircle: 4, peTurnLimit: 20 };
 
+                const ritualDef = isOrdemRitual
+                  ? findOrdemRitualDef(ab.id) || findOrdemRitualDef(ab.name)
+                  : undefined;
+                const ritualElLabel = ab.element || ritualDef?.element || '';
+                const ritualElLower = ritualElLabel.toLowerCase();
+                const effPreRit =
+                  isOrdemSystem && ordemSheetData
+                    ? Number(ordemSheetData.attributes?.pre ?? 1) + (bonuses?.attributes?.['pre'] || 0)
+                    : 0;
+                const ritualDtValue =
+                  isOrdemRitual && ordemSheetData
+                    ? getOrdemRitualDT(
+                        ordemSheetData.nex,
+                        effPreRit,
+                        ordemSheetData.trail,
+                        abilities,
+                        ordemSheetData.origin,
+                        ritualElLabel
+                      )
+                    : null;
+                const isSustainedRitual = Boolean(
+                  isOrdemRitual &&
+                    (ritualDef?.duration || ab.description || '').toLowerCase().includes('sustentad')
+                );
+                const hasPrediletoPower = abilities.some(
+                  (a) =>
+                    a.isActive !== false &&
+                    (a.id === 'ord-pwr-ocu-ritual-predileto' ||
+                      a.name.toLowerCase().includes('ritual predileto'))
+                );
+                const isGraduadoGrimoireAvailable = Boolean(
+                  isOrdemRitual &&
+                    abilities.some(
+                      (a) =>
+                        a.id === 'trail-graduado-40' ||
+                        a.name.toLowerCase().includes('grimório ritualístico') ||
+                        (ordemSheetData?.trail === 'graduado' && (ordemSheetData?.nex ?? 0) >= 40)
+                    )
+                );
+                const hasRitualPotentePower = abilities.some(
+                  (a) =>
+                    a.isActive !== false &&
+                    (a.id === 'ord-pwr-ocu-ritual-potente' ||
+                      a.name.toLowerCase().includes('ritual potente'))
+                );
+                const hasLaminaMalditaSpell = abilities.some(
+                  (a) =>
+                    a.isActive !== false &&
+                    (a.id === 'trail-lamina_paranormal-10' ||
+                      a.name.toLowerCase().includes('lâmina maldita'))
+                );
+                const isAmaldicoarArmaSpell = Boolean(
+                  isOrdemRitual && ab.name.toLowerCase().includes('amaldiçoar arma')
+                );
+                const laminaMovActive = Boolean(
+                  isAmaldicoarArmaSpell && hasLaminaMalditaSpell && ritualLaminaMovimentoMap[ab.id]
+                );
+                const extraMetamagicPe =
+                  (isOrdemRitual && ritualCamuflar ? 2 : 0) +
+                  (isOrdemRitual && ritualAmpliar ? 2 : 0) +
+                  (isOrdemRitual && ritualAcelerar ? 4 : 0) +
+                  (laminaMovActive ? 1 : 0);
+                const computedRitualForms = isOrdemRitual
+                  ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula, {
+                      ritualId: ab.id,
+                      element: ritualElLabel,
+                      isFavoriteRitual: ab.isFavoriteRitual,
+                      abilities,
+                      extraPeCost: extraMetamagicPe,
+                    })
+                  : [];
+
                 return (
                   <div
                     key={ab.id}
-                    className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex flex-col md:flex-row md:justify-between md:items-center gap-3"
+                    className={`bg-zinc-950 border p-3.5 rounded-xl flex flex-col md:flex-row md:justify-between md:items-center gap-3 ${
+                      ab.isSustainedActive ? 'border-indigo-500/70 bg-indigo-950/15' : 'border-zinc-800'
+                    }`}
                   >
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-sm text-white">{ab.name}</h4>
+                        {isOrdemRitual && ritualElLabel && (
+                          <span className="text-[10px] font-mono font-bold bg-purple-950/70 text-purple-200 border border-purple-700/70 px-2 py-0.5 rounded">
+                            {ritualElLabel}
+                          </span>
+                        )}
+                        {ritualDtValue !== null && (
+                          <span className="text-[10px] font-mono font-bold bg-indigo-950/70 text-indigo-200 border border-indigo-700/60 px-2 py-0.5 rounded">
+                            DT {ritualDtValue}
+                          </span>
+                        )}
+                        {isOrdemRitual && hasRitualPotentePower && effInt > 0 && (
+                          <span className="text-[10px] font-mono font-bold bg-rose-950/60 text-rose-300 border border-rose-800/60 px-2 py-0.5 rounded">
+                            +{effInt} Dano/Cura
+                          </span>
+                        )}
                         {ab.category === 'poder_paranormal' && (
                           <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
                             👁️ Paranormal
@@ -2877,6 +3468,87 @@ export function SheetExtras({
                             </span>
                           )
                         )}
+                        {isOrdemRitual && hasPrediletoPower && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateAbilities(
+                                abilities.map((itemAb) => ({
+                                  ...itemAb,
+                                  isFavoriteRitual:
+                                    itemAb.id === ab.id ? !ab.isFavoriteRitual : false,
+                                }))
+                              )
+                            }
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border cursor-pointer ${
+                              ab.isFavoriteRitual
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-400'
+                                : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-amber-500/60'
+                            }`}
+                          >
+                            {ab.isFavoriteRitual ? '⭐ Predileto (-1 PE)' : '☆ Marcar Predileto'}
+                          </button>
+                        )}
+                        {isGraduadoGrimoireAvailable && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateAbilities(
+                                abilities.map((itemAb) =>
+                                  itemAb.id === ab.id
+                                    ? { ...itemAb, isGrimoireRitual: !ab.isGrimoireRitual }
+                                    : itemAb
+                                )
+                              )
+                            }
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border cursor-pointer ${
+                              ab.isGrimoireRitual
+                                ? 'bg-cyan-900/60 text-cyan-200 border-cyan-500'
+                                : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-cyan-500/60'
+                            }`}
+                          >
+                            {ab.isGrimoireRitual ? '📖 No Grimório' : '📖 Pôr no Grimório'}
+                          </button>
+                        )}
+                        {isSustainedRitual && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateAbilities(
+                                abilities.map((itemAb) =>
+                                  itemAb.id === ab.id
+                                    ? { ...itemAb, isSustainedActive: !ab.isSustainedActive }
+                                    : itemAb
+                                )
+                              )
+                            }
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border cursor-pointer ${
+                              ab.isSustainedActive
+                                ? 'bg-indigo-600 text-white border-indigo-400'
+                                : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-indigo-500'
+                            }`}
+                          >
+                            {ab.isSustainedActive ? '🔄 Sustentando (1 PE/turno)' : '🔄 Sustentar'}
+                          </button>
+                        )}
+                        {isAmaldicoarArmaSpell && hasLaminaMalditaSpell && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRitualLaminaMovimentoMap((prev) => ({
+                                ...prev,
+                                [ab.id]: !prev[ab.id],
+                              }))
+                            }
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border cursor-pointer ${
+                              laminaMovActive
+                                ? 'bg-amber-600 text-white border-amber-400'
+                                : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-amber-500'
+                            }`}
+                          >
+                            🗡️ +1 PE (Ação Mov.)
+                          </button>
+                        )}
                         {ab.modifiers &&
                           ab.modifiers.length > 0 &&
                           !hasDedicatedControlElsewhere(ab) && (
@@ -2890,19 +3562,38 @@ export function SheetExtras({
                           </label>
                         )}
                       </div>
+                      {isOrdemRitual && ritualDef && (
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-purple-200/80 font-mono mt-1">
+                          <span>Execução: {ritualDef.execution}</span>
+                          <span>Alcance: {ritualDef.range}</span>
+                          <span>{ritualDef.targetLabel || 'Alvo'}: {ritualDef.target}</span>
+                          <span>Duração: {ritualDef.duration}</span>
+                          {ritualDef.resistance && (
+                            <span className="text-amber-300">
+                              Resistência: {ritualDef.resistance}
+                              {ritualDtValue ? ` (DT ${ritualDtValue})` : ''}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {ab.description && <p className="text-xs text-zinc-400 mt-1">{ab.description}</p>}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
                       {isOrdemRitual && onCastOrdemRitual ? (
-                        ritualForms.map((f) => {
+                        computedRitualForms.map((f) => {
                           const circleOk = !f.requiredCircle || prog.maxCircle >= f.requiredCircle;
+                          const charAff = (ordemSheetData?.affinity || '').toLowerCase();
+                          const reqEl = (f.element || ritualElLower || '').toLowerCase();
                           const affinityOk =
                             !f.requiresAffinity ||
-                            (ordemSheetData &&
-                              ordemSheetData.nex >= 50 &&
-                              !!ordemSheetData.affinity &&
-                              ordemSheetData.affinity !== 'Nenhuma');
+                            Boolean(
+                              ordemSheetData &&
+                                ordemSheetData.nex >= 50 &&
+                                charAff &&
+                                charAff !== 'nenhuma' &&
+                                (!reqEl || reqEl === 'medo' || reqEl.includes(charAff))
+                            );
                           const peLimitOk = f.totalCost <= prog.peTurnLimit;
                           const canCastForm = circleOk && affinityOk && peLimitOk;
 
@@ -2911,11 +3602,22 @@ export function SheetExtras({
                             return null;
                           }
 
+                          const costText = ritualPoderFlagelo
+                            ? `-${f.totalCost * 2} PV`
+                            : `-${f.totalCost} PE`;
+
                           return (
                             <button
                               key={f.mode}
                               type="button"
-                              onClick={() => onCastOrdemRitual(ab, f)}
+                              onClick={() =>
+                                onCastOrdemRitual(ab, f, {
+                                  usePoderDoFlagelo: ritualPoderFlagelo,
+                                  camuflar: ritualCamuflar,
+                                  ampliar: ritualAmpliar,
+                                  acelerar: ritualAcelerar,
+                                })
+                              }
                               title={f.description}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap cursor-pointer ${
                                 f.mode === 'normal'
@@ -2925,13 +3627,13 @@ export function SheetExtras({
                                   : 'bg-red-950/60 hover:bg-red-700 text-red-300 hover:text-white border-red-700/60'
                               }`}
                             >
-                              {f.mode === 'normal' && `🔮 Normal (-${f.totalCost} PE)`}
+                              {f.mode === 'normal' && `🔮 Normal (${costText})`}
                               {f.mode === 'discente' &&
-                                `🔥 Discente (-${f.totalCost} PE)${
+                                `🔥 Discente (${costText})${
                                   f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
                                 }${f.requiresAffinity ? ' [Afin.]' : ''}`}
                               {f.mode === 'verdadeiro' &&
-                                `👁️ Verdadeiro (-${f.totalCost} PE)${
+                                `👁️ Verdadeiro (${costText})${
                                   f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
                                 }${f.requiresAffinity ? ' [Afin.]' : ''}`}
                             </button>
@@ -3117,6 +3819,451 @@ export function SheetExtras({
                                 )}
                               </div>
                             )}
+                          {(ab.id === 'ord-pwr-ocu-especialista-elemento' ||
+                            ab.id === 'ord-pwr-ocu-mestre-elemento' ||
+                            ab.name.toLowerCase().includes('especialista em elemento') ||
+                            ab.name.toLowerCase().includes('mestre em elemento')) && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] text-purple-300 font-bold">Elemento:</span>
+                              <select
+                                value={ab.chosenElement || ''}
+                                onChange={(e) =>
+                                  onUpdateAbilities(
+                                    abilities.map((a) =>
+                                      a.id === ab.id ? { ...a, chosenElement: e.target.value } : a
+                                    )
+                                  )
+                                }
+                                className="px-2 py-1 bg-zinc-900 border border-purple-700/70 rounded-lg text-xs text-white font-bold"
+                              >
+                                <option value="">-- Escolher --</option>
+                                <option value="Sangue">Sangue</option>
+                                <option value="Morte">Morte</option>
+                                <option value="Conhecimento">Conhecimento</option>
+                                <option value="Energia">Energia</option>
+                              </select>
+                            </div>
+                          )}
+                          {(ab.id === 'ord-pwr-ocu-guiado-paranormal' ||
+                            ab.name.toLowerCase().includes('guiado pelo paranormal')) && (() => {
+                            const guiadoUsedInScene = Boolean(
+                              isInCampaign &&
+                                (ordemSheetData?.sceneEffects || []).some(
+                                  (e) => e.id === 'pwr-scene-guiado-paranormal'
+                                )
+                            );
+                            return (
+                              <button
+                                type="button"
+                                disabled={guiadoUsedInScene}
+                                onClick={() => {
+                                  if (
+                                    !onSpendResource(
+                                      2,
+                                      isInCampaign
+                                        ? {
+                                            id: 'pwr-scene-guiado-paranormal',
+                                            name: 'Guiado pelo Paranormal (Usado na Cena)',
+                                            source: 'Cena',
+                                            description:
+                                              '+1d20 em um teste de Investigação ou Percepção nesta cena',
+                                          }
+                                        : undefined
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  setAbilityUseFeedback(
+                                    '👁️ Guiado pelo Paranormal (-2 PE): +1d20 no seu próximo teste de Investigação ou Percepção!'
+                                  );
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap ${
+                                  guiadoUsedInScene
+                                    ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed'
+                                    : 'bg-purple-950/70 hover:bg-purple-700 text-purple-200 hover:text-white border-purple-700 cursor-pointer'
+                                }`}
+                              >
+                                {guiadoUsedInScene
+                                  ? '✓ Usado na Cena'
+                                  : '👁️ Guiado (-2 PE → +1d20 Inv/Perc)'}
+                              </button>
+                            );
+                          })()}
+                          {(ab.id === 'ord-pwr-ocu-improvisar-componentes' ||
+                            ab.name.toLowerCase().includes('improvisar componentes')) &&
+                            ordemSheetData && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <select
+                                  value={improvisarElemento}
+                                  onChange={(e) => setImprovisarElemento(e.target.value)}
+                                  className="px-2 py-1 bg-zinc-900 border border-amber-700/70 rounded-lg text-xs text-white font-bold"
+                                >
+                                  <option value="Sangue">Sangue</option>
+                                  <option value="Morte">Morte</option>
+                                  <option value="Conhecimento">Conhecimento</option>
+                                  <option value="Energia">Energia</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const invSk = ordemSheetData.skills.find(
+                                      (s) => s.id === 'investigacao'
+                                    );
+                                    const invBonus =
+                                      (invSk?.trainingDegree || 0) +
+                                      (invSk?.otherModifier || 0) +
+                                      bonuses.skillBonusAll +
+                                      (bonuses.skillBonus['investigacao'] || 0);
+                                    const invDice =
+                                      effInt +
+                                      bonuses.skillDiceAll +
+                                      (bonuses.skillDice['investigacao'] || 0);
+                                    onRoll(
+                                      `Improvisar Componentes (${improvisarElemento} • DT 15)`,
+                                      invDice,
+                                      20,
+                                      invBonus
+                                    );
+                                    onUpdateInventory([
+                                      ...inventory,
+                                      {
+                                        id: `item-${Math.random().toString(36).slice(2, 9)}`,
+                                        name: `Componentes Ritualísticos de ${improvisarElemento} (Improvisados)`,
+                                        slots: 1,
+                                        quantity: 1,
+                                        category: 0,
+                                        description:
+                                          'Improvisados com Investigação (DT 15). Funcionam até o fim da cena.',
+                                      },
+                                    ]);
+                                    setAbilityUseFeedback(
+                                      `🧪 Teste de Investigação DT 15 rolado e Componentes de ${improvisarElemento} adicionados à mochila!`
+                                    );
+                                  }}
+                                  className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                >
+                                  🎲 Investigação (DT 15) + Criar Componentes
+                                </button>
+                              </div>
+                            )}
+                          {(ab.id === 'ord-pwr-ocu-identificacao-paranormal' ||
+                            ab.name.toLowerCase().includes('identificação paranormal') ||
+                            ab.name.toLowerCase().includes('identificacao paranormal')) &&
+                            ordemSheetData && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const ocultSk = ordemSheetData.skills.find(
+                                    (s) => s.id === 'ocultismo'
+                                  );
+                                  const ocultBonus =
+                                    (ocultSk?.trainingDegree || 0) +
+                                    (ocultSk?.otherModifier || 0) +
+                                    bonuses.skillBonusAll +
+                                    (bonuses.skillBonus['ocultismo'] || 0) +
+                                    10;
+                                  const ocultDice =
+                                    effInt +
+                                    bonuses.skillDiceAll +
+                                    (bonuses.skillDice['ocultismo'] || 0);
+                                  onRoll(
+                                    'Identificação Paranormal (+10 Ocultismo)',
+                                    ocultDice,
+                                    20,
+                                    ocultBonus
+                                  );
+                                }}
+                                className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                              >
+                                🔍 Identificar (+10 Ocultismo)
+                              </button>
+                            )}
+                          {(ab.id === 'ord-pwr-ocu-criar-selo' ||
+                            ab.name.toLowerCase().includes('criar selo')) && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {spellList.length === 0 ? (
+                                <span className="text-[11px] text-zinc-500">
+                                  Nenhum ritual conhecido na ficha
+                                </span>
+                              ) : (
+                                <>
+                                  <select
+                                    value={criarSeloRitualId || spellList[0]?.id || ''}
+                                    onChange={(e) => setCriarSeloRitualId(e.target.value)}
+                                    className="px-2 py-1 bg-zinc-900 border border-indigo-700/70 rounded-lg text-xs text-white max-w-[180px]"
+                                  >
+                                    {spellList.map((sp) => (
+                                      <option key={sp.id} value={sp.id}>
+                                        {sp.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const chosen =
+                                        spellList.find(
+                                          (sp) => sp.id === (criarSeloRitualId || spellList[0]?.id)
+                                        ) || spellList[0];
+                                      if (!chosen) return;
+                                      const def =
+                                        findOrdemRitualDef(chosen.id) ||
+                                        findOrdemRitualDef(chosen.name);
+                                      const circle = def?.circle || 1;
+                                      const sealCost = getOrdemCircleBaseCost(circle);
+                                      if (!onSpendResource(sealCost)) return;
+                                      onUpdateInventory([
+                                        ...inventory,
+                                        {
+                                          id: `item-${Math.random().toString(36).slice(2, 9)}`,
+                                          name: `Selo Paranormal: ${chosen.name}`,
+                                          slots: 1,
+                                          quantity: 1,
+                                          category: circle,
+                                          description: `Selo (${circle}º Círculo • ${
+                                            chosen.element || def?.element || 'Paranormal'
+                                          }). ${chosen.description || ''}`,
+                                        },
+                                      ]);
+                                      setAbilityUseFeedback(
+                                        `📜 Selo Paranormal de ${chosen.name} fabricado (-${sealCost} PE, Cat. ${circle}) e guardado na mochila!`
+                                      );
+                                    }}
+                                    className="px-3 py-1.5 bg-indigo-950/70 hover:bg-indigo-700 text-indigo-200 hover:text-white border border-indigo-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                  >
+                                    {(() => {
+                                      const chosen =
+                                        spellList.find(
+                                          (sp) => sp.id === (criarSeloRitualId || spellList[0]?.id)
+                                        ) || spellList[0];
+                                      const def = chosen
+                                        ? findOrdemRitualDef(chosen.id) ||
+                                          findOrdemRitualDef(chosen.name)
+                                        : undefined;
+                                      const c = def?.circle || 1;
+                                      return `📜 Fabricar Selo (-${getOrdemCircleBaseCost(c)} PE • Cat. ${c})`;
+                                    })()}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          {(ab.id === 'trail-conduite-65' ||
+                            ab.name.toLowerCase().includes('anular ritual')) &&
+                            ordemSheetData && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] text-zinc-400">PE Alvo:</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={30}
+                                  value={anularRitualPe}
+                                  onChange={(e) =>
+                                    setAnularRitualPe(Math.max(1, Number(e.target.value) || 1))
+                                  }
+                                  className="w-14 px-2 py-1 bg-zinc-900 border border-purple-700/70 rounded-lg text-xs font-mono text-white text-center"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!onSpendResource(anularRitualPe)) return;
+                                    const ocultSk = ordemSheetData.skills.find(
+                                      (s) => s.id === 'ocultismo'
+                                    );
+                                    const ocultBonus =
+                                      (ocultSk?.trainingDegree || 0) +
+                                      (ocultSk?.otherModifier || 0) +
+                                      bonuses.skillBonusAll +
+                                      (bonuses.skillBonus['ocultismo'] || 0);
+                                    const ocultDice =
+                                      effInt +
+                                      bonuses.skillDiceAll +
+                                      (bonuses.skillDice['ocultismo'] || 0);
+                                    onRoll(
+                                      `Anular Ritual (Oposto -${anularRitualPe} PE)`,
+                                      ocultDice,
+                                      20,
+                                      ocultBonus
+                                    );
+                                  }}
+                                  className="px-3 py-1.5 bg-purple-950/70 hover:bg-purple-700 text-purple-200 hover:text-white border border-purple-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                >
+                                  🚫 Anular (-{anularRitualPe} PE + Ocultismo)
+                                </button>
+                              </div>
+                            )}
+                          {(ab.id === 'trail-flagelador-65' ||
+                            ab.name.toLowerCase().includes('absorver agonia')) && (
+                            <div className="flex flex-wrap items-center gap-1">
+                              <span className="text-[11px] text-red-300 font-bold mr-1">
+                                Absorver:
+                              </span>
+                              {[1, 2, 3, 4].map((val) => (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  onClick={() => {
+                                    onGrantTempPe?.(val, 'Absorver Agonia');
+                                    setAbilityUseFeedback(
+                                      `🩸 Absorver Agonia: +${val} PE temporário adicionado!`
+                                    );
+                                  }}
+                                  className="px-2 py-1 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded text-xs font-bold cursor-pointer"
+                                >
+                                  +{val} PE
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {(ab.id === 'ord-para-ener-campo-protetor' ||
+                            ab.name.toLowerCase().includes('campo protetor')) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const hasAff = Boolean(
+                                  ab.hasAffinityUpgrade ||
+                                    ab.name.toLowerCase().includes('afinidade')
+                                );
+                                const mods: SceneEffect['modifiers'] = [
+                                  {
+                                    id: 'mod-campo-protetor-def',
+                                    targetType: 'defense',
+                                    targetKey: 'defesa',
+                                    value: 5,
+                                  },
+                                ];
+                                if (hasAff) {
+                                  mods.push({
+                                    id: 'mod-campo-protetor-ref',
+                                    targetType: 'skill_bonus',
+                                    targetKey: 'reflexos',
+                                    value: 5,
+                                  });
+                                }
+                                if (
+                                  !onSpendResource(1, {
+                                    id: 'pwr-scene-campo-protetor',
+                                    name: `Campo Protetor${hasAff ? ' (Afinidade)' : ''}`,
+                                    source: 'Cena',
+                                    description: hasAff
+                                      ? '+5 Defesa e +5 Reflexos (se falhar em Reflexos não sofre dano)'
+                                      : '+5 na Defesa ao esquivar',
+                                    modifiers: mods,
+                                  })
+                                ) {
+                                  return;
+                                }
+                                setAbilityUseFeedback(
+                                  `⚡ Campo Protetor ativado (-1 PE): +5 Defesa${
+                                    hasAff ? ' e +5 Reflexos' : ''
+                                  } na cena!`
+                                );
+                              }}
+                              className="px-3 py-1.5 bg-purple-950/70 hover:bg-purple-700 text-purple-200 hover:text-white border border-purple-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                            >
+                              ⚡ Campo Protetor (-1 PE → +5 Def)
+                            </button>
+                          )}
+                          {(ab.id === 'ord-para-mort-surto-temporal' ||
+                            ab.name.toLowerCase().includes('surto temporal')) && (() => {
+                            const hasAff = Boolean(
+                              ab.hasAffinityUpgrade || ab.name.toLowerCase().includes('afinidade')
+                            );
+                            const blocked = Boolean(
+                              isInCampaign &&
+                                !hasAff &&
+                                (ordemSheetData?.sceneEffects || []).some(
+                                  (e) => e.id === 'pwr-scene-surto-temporal'
+                                )
+                            );
+                            return (
+                              <button
+                                type="button"
+                                disabled={blocked}
+                                onClick={() => {
+                                  if (
+                                    !onSpendResource(
+                                      3,
+                                      isInCampaign && !hasAff
+                                        ? {
+                                            id: 'pwr-scene-surto-temporal',
+                                            name: 'Surto Temporal (Usado na Cena)',
+                                            source: 'Cena',
+                                            description:
+                                              '+1 ação padrão adicional usada nesta cena (1x/cena sem Afinidade)',
+                                          }
+                                        : undefined
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  setAbilityUseFeedback(
+                                    `⏳ Surto Temporal ativado (-3 PE): você ganha +1 ação padrão adicional neste turno${
+                                      hasAff ? ' (1x/turno com Afinidade)' : ''
+                                    }!`
+                                  );
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap ${
+                                  blocked
+                                    ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed'
+                                    : 'bg-zinc-900 hover:bg-zinc-700 text-zinc-100 border-zinc-600 cursor-pointer'
+                                }`}
+                              >
+                                {blocked
+                                  ? '✓ Surto Usado na Cena'
+                                  : `⏳ Surto Temporal (-3 PE • ${
+                                      hasAff ? '1x/turno' : '1x/cena'
+                                    })`}
+                              </button>
+                            );
+                          })()}
+                          {(ab.id === 'ord-para-mort-potencial-reaproveitado' ||
+                            ab.name.toLowerCase().includes('potencial reaproveitado')) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const hasAff = Boolean(
+                                  ab.hasAffinityUpgrade ||
+                                    ab.name.toLowerCase().includes('afinidade')
+                                );
+                                const gain = hasAff ? 3 : 2;
+                                onGrantTempPe?.(gain, 'Potencial Reaproveitado');
+                                setAbilityUseFeedback(
+                                  `💀 Potencial Reaproveitado: +${gain} PE temporários por passar no teste de resistência!`
+                                );
+                              }}
+                              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-600 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                            >
+                              {ab.hasAffinityUpgrade ||
+                              ab.name.toLowerCase().includes('afinidade')
+                                ? '💀 +3 PE Temp (Resistência)'
+                                : '💀 +2 PE Temp (Resistência)'}
+                            </button>
+                          )}
+                          {(ab.id === 'ord-para-sang-anatomia-insana' ||
+                            ab.name.toLowerCase().includes('anatomia insana')) &&
+                            (ab.hasAffinityUpgrade ||
+                            ab.name.toLowerCase().includes('afinidade') ? (
+                              <span className="px-2.5 py-1 bg-red-950/70 text-red-200 border border-red-700 rounded-lg text-xs font-bold">
+                                🛡️ Imune a Críticos e Furtivos
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onRoll(
+                                    'Anatomia Insana (3 ou 4 = Ignora Crítico/Furtivo)',
+                                    1,
+                                    4,
+                                    0,
+                                    true
+                                  )
+                                }
+                                className="px-3 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                              >
+                                🎲 Ignorar Crítico (1d4 ≥ 3)
+                              </button>
+                            ))}
                           {!isPassive &&
                             !hasDedicatedControlElsewhere(ab) &&
                             !(
@@ -3203,9 +4350,16 @@ export function SheetExtras({
                   const rawCat = it.category || 0;
                   const qty = it.quantity || 1;
                   const remendaoRed = hasRemendao && isGeneralEquipment(it) ? 1 : 0;
+                  const hasFerramentasParanormaisInv = abilities.some(
+                    (ab) =>
+                      ab.isActive !== false &&
+                      (ab.id === 'ord-pwr-ocu-ferramentas-paranormais' ||
+                        ab.name.toLowerCase().includes('ferramentas paranormais'))
+                  );
                   const singleUnitRed =
                     (it.isFavoriteTool ? 1 : 0) +
                     (hasMochilaUtilidades && it.isUtilityBackpackItem ? 1 : 0) +
+                    (hasFerramentasParanormaisInv && it.isParanormalTool ? 1 : 0) +
                     (it.isAniquiladorFavorite && aniquiladorCatReduction > 0
                       ? aniquiladorCatReduction
                       : 0);
@@ -3329,6 +4483,11 @@ export function SheetExtras({
                             🎒 Mochila de Utilidades (-1 Cat., -1 Esp.)
                           </span>
                         )}
+                        {hasFerramentasParanormais && item.isParanormalTool && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
+                            🔮 Ferramenta Paranormal (-I Cat.)
+                          </span>
+                        )}
                         {hasRemendao &&
                           isGeneralEquipment(item) &&
                           (item.category || 0) > 0 && (
@@ -3399,6 +4558,29 @@ export function SheetExtras({
                                 }
                               />
                               🎒 Mochila de Utilidades (-1 Cat., -1 Esp.)
+                            </label>
+                          )}
+
+                        {hasFerramentasParanormais &&
+                          canChangeParanormalTool &&
+                          !attacks.some(
+                            (a) => a.name.toLowerCase() === item.name.toLowerCase()
+                          ) && (
+                            <label className="flex items-center gap-1.5 text-[11px] text-purple-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.isParanormalTool)}
+                                onChange={() =>
+                                  onUpdateInventory(
+                                    inventory.map((i) => ({
+                                      ...i,
+                                      isParanormalTool:
+                                        i.id === item.id ? !i.isParanormalTool : false,
+                                    }))
+                                  )
+                                }
+                              />
+                              🔮 Ferramenta Paranormal (-I Cat.)
                             </label>
                           )}
 

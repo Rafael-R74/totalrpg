@@ -13,6 +13,7 @@ import {
   ORDEM_PATENTS,
   ORDEM_SKILLS_METADATA,
   getOrdemPeLimit,
+  getOrdemRitualPeLimit,
   getOrdemRitualDT,
   getOrdemEffectiveCredit,
 } from '@totalrpg/shared';
@@ -38,6 +39,7 @@ interface OrdemSheetProps {
   onOpenInterlude?: () => void;
   onCheckResource?: (amount: number, powerLabel?: string) => boolean;
   onSpendResource?: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
+  onHealPv?: (amount: number, label?: string) => void;
   onRoll: (label: string, count: number, sides: number, modifier: number) => void;
 }
 
@@ -70,6 +72,7 @@ export function OrdemSheet({
   onOpenInterlude,
   onCheckResource,
   onSpendResource,
+  onHealPv,
   onRoll,
 }: OrdemSheetProps) {
   const [armOriginBoost, setArmOriginBoost] = useState(false);
@@ -181,6 +184,48 @@ export function OrdemSheet({
     isInCampaign && sceneEffects.some((e) => e.id === 'pwr-scene-primeira-impressao')
   );
 
+  // Habilidades e Poderes de Ocultista & Poderes Paranormais
+  const hasIntuicaoParanormal = abilities.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.includes('intuicao-paranormal') ||
+        a.name.toLowerCase().includes('intuição paranormal') ||
+        a.name.toLowerCase().includes('intuicao paranormal'))
+  );
+  const hasIdentificacaoParanormal = abilities.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.includes('identificacao-paranormal') ||
+        a.name.toLowerCase().includes('identificação paranormal') ||
+        a.name.toLowerCase().includes('identificacao paranormal'))
+  );
+  const hasInabalavel =
+    (safeData.trail === 'intuitivo' && safeData.nex >= 65) ||
+    abilities.some(
+      (a) =>
+        a.id === 'trail-intuitivo-65' ||
+        a.name.toLowerCase().includes('inabalável') ||
+        a.name.toLowerCase().includes('inabalavel')
+    );
+  const resistirPowers = abilities.filter(
+    (a) =>
+      a.isActive !== false &&
+      a.name.toLowerCase().includes('resistir a ')
+  );
+  const sangueFerventeAb = abilities.find(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.includes('sangue-fervente') ||
+        a.name.toLowerCase().includes('sangue fervente'))
+  );
+  const sangueVivoAb = abilities.find(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.includes('sangue-vivo') ||
+        a.name.toLowerCase().includes('sangue vivo'))
+  );
+  const [armIntuicaoParanormal, setArmIntuicaoParanormal] = useState(false);
+
   const [armedEcleticoDegree, setArmedEcleticoDegree] = useState<0 | 5 | 10 | 15>(0);
   const maxPeritoTierDice: 6 | 8 | 10 | 12 =
     safeData.nex >= 85 ? 12 : safeData.nex >= 55 ? 10 : safeData.nex >= 25 ? 8 : 6;
@@ -216,6 +261,13 @@ export function OrdemSheet({
 
   // Limite de PE/turno e DT de Rituais automáticos (v1.3)
   const peLimitPerTurn = getOrdemPeLimit(safeData.nex, safeData.origin, abilities);
+  const ritualPeLimit = getOrdemRitualPeLimit(
+    safeData.nex,
+    safeData.origin,
+    abilities,
+    effectivePre,
+    safeData.trail
+  );
   const ritualDT = getOrdemRitualDT(
     safeData.nex,
     effectivePre,
@@ -440,11 +492,15 @@ export function OrdemSheet({
               <span className="text-[10px] text-zinc-500">
                 {hasActiveInitiativeOrder
                   ? `Gasto neste turno: ${peSpentThisTurn} / ${peLimitPerTurn} PE`
+                  : ritualPeLimit > peLimitPerTurn
+                  ? `Rituais: ${ritualPeLimit} PE (Presença Poderosa)`
                   : 'Máx. de PE gasto por rodada'}
               </span>
             </div>
             <span className="text-xl font-black font-mono text-amber-300">
-              {peLimitPerTurn} PE
+              {ritualPeLimit > peLimitPerTurn
+                ? `${peLimitPerTurn}/${ritualPeLimit} PE`
+                : `${peLimitPerTurn} PE`}
             </span>
           </div>
 
@@ -485,19 +541,103 @@ export function OrdemSheet({
           </div>
         </div>
 
-        {/* Indicadores Passivos Especiais (Origem / Tropa de Choque / Especialista) */}
+        {/* Indicadores Passivos Especiais (Origem / Tropa de Choque / Especialista / Ocultista / Paranormal) */}
         {(isTeoricoConspiracao ||
           hasCascaGrossa ||
           hasCaiDentro ||
           hasInquebravel ||
           hasPeritoExplosivos ||
-          hasAssassinar) && (
+          hasAssassinar ||
+          hasInabalavel ||
+          resistirPowers.length > 0 ||
+          Boolean(sangueFerventeAb) ||
+          Boolean(sangueVivoAb)) && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {isTeoricoConspiracao && (
               <span className="px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/70 text-cyan-200 text-xs font-bold">
                 🧠 Eu Já Sabia (Teórico da Conspiração): Resistência a Dano Mental = {mentalResistance} (Intelecto)
               </span>
             )}
+            {hasInabalavel && (
+              <span className="px-2.5 py-1 rounded-lg bg-purple-950/70 border border-purple-700/70 text-purple-200 text-xs font-bold">
+                🛡️ Inabalável: RD Mental 10 & Paranormal 10 (Vontade metade = 0 dano)
+              </span>
+            )}
+            {resistirPowers.map((rp) => {
+              const isAff =
+                Boolean(rp.hasAffinityUpgrade) ||
+                rp.name.toLowerCase().includes('afinidade');
+              const elLabel =
+                rp.name.replace(/^Resistir a\s+/i, '').replace(/\s*\(.*\)$/g, '').trim() ||
+                rp.element ||
+                'Elemento';
+              return (
+                <span
+                  key={rp.id}
+                  className="px-2.5 py-1 rounded-lg bg-purple-950/60 border border-purple-700/60 text-purple-200 text-xs font-bold"
+                >
+                  🛡️ RD {elLabel}: {isAff ? '20 (Afinidade)' : '10'}
+                </span>
+              );
+            })}
+            {sangueFerventeAb && (() => {
+              const isAff =
+                Boolean(sangueFerventeAb.hasAffinityUpgrade) ||
+                sangueFerventeAb.name.toLowerCase().includes('afinidade');
+              const bonusVal = isAff ? 2 : 1;
+              const currentAttr = safeData.sangueFerventeAttr === 'agi' ? 'agi' : 'for';
+              return (
+                <div
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1.5 ${
+                    isMachucado
+                      ? 'bg-red-950/80 border-red-500 text-red-200 animate-pulse'
+                      : 'bg-zinc-950 border-red-900/60 text-zinc-400'
+                  }`}
+                >
+                  <span>
+                    🩸 Sangue Fervente ({isMachucado ? `ATIVO: +${bonusVal}` : `quando Machucado: +${bonusVal}`}):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ ...safeData, sangueFerventeAttr: 'for' })}
+                    className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer border ${
+                      currentAttr === 'for'
+                        ? 'bg-red-700 text-white border-red-400'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                    }`}
+                  >
+                    FOR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ ...safeData, sangueFerventeAttr: 'agi' })}
+                    className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer border ${
+                      currentAttr === 'agi'
+                        ? 'bg-red-700 text-white border-red-400'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                    }`}
+                  >
+                    AGI
+                  </button>
+                </div>
+              );
+            })()}
+            {sangueVivoAb && isMachucado && onHealPv && (() => {
+              const isAff =
+                Boolean(sangueVivoAb.hasAffinityUpgrade) ||
+                sangueVivoAb.name.toLowerCase().includes('afinidade');
+              const healVal = isAff ? 5 : 2;
+              return (
+                <button
+                  type="button"
+                  onClick={() => onHealPv(healVal, 'Sangue Vivo (Cura Acelerada)')}
+                  className="px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-700 border border-red-500 text-red-100 text-xs font-extrabold transition cursor-pointer shadow"
+                  title="Cura Acelerada até a metade dos PV máximos enquanto Machucado"
+                >
+                  🩸 Cura Acelerada Sangue Vivo (+{healVal} PV)
+                </button>
+              );
+            })()}
             {hasCascaGrossa && (
               <span className="px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/70 text-amber-200 text-xs font-bold">
                 🛡️ Casca Grossa: Soma +{effectiveVig} (VIG) na RD ao Bloquear
@@ -739,6 +879,28 @@ export function OrdemSheet({
           </div>
         )}
 
+        {/* Barra de Automação do Ocultista na Seção de Perícias (Intuição Paranormal) */}
+        {hasIntuicaoParanormal && (
+          <div className="mb-3 p-3 rounded-xl bg-purple-950/20 border border-purple-800/40 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-purple-200">
+              <strong className="text-purple-300">👁️ Intuição Paranormal:</strong> Ao facilitar investigação, soma seu Intelecto ({effectiveInt}) ou Presença ({effectivePre}) no teste.
+            </span>
+            <button
+              type="button"
+              onClick={() => setArmIntuicaoParanormal((prev) => !prev)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                armIntuicaoParanormal
+                  ? 'bg-purple-500 text-white border-purple-300 shadow'
+                  : 'bg-zinc-900 hover:bg-purple-950 text-purple-200 border-purple-700/60'
+              }`}
+            >
+              {armIntuicaoParanormal
+                ? `👁️ Intuição ARMADA (+${Math.max(effectiveInt, effectivePre)} no próx. teste)`
+                : `👁️ Armar Intuição Paranormal (+${Math.max(effectiveInt, effectivePre)} Facilitar Investigação)`}
+            </button>
+          </div>
+        )}
+
         {/* Painel de Automação do Especialista na Seção de Perícias (Eclético, Perito e Conhecimento Aplicado) */}
         {(hasEcletico || hasPerito || hasConhecimentoAplicado) && (
           <div className="mb-3 p-3.5 rounded-xl bg-blue-950/20 border border-blue-800/40 flex flex-col gap-3">
@@ -955,6 +1117,7 @@ export function OrdemSheet({
             function handleExecuteSkillRoll(opts?: {
               forcePerito?: boolean;
               forceMaosRapidas?: boolean;
+              forceIdentificacaoParanormal?: boolean;
             }) {
               if (
                 isUntrainedLocked &&
@@ -983,6 +1146,19 @@ export function OrdemSheet({
               if (canUseConhecimentoAplicadoHere) {
                 peToSpend += 2;
                 suffixParts.push('🧠 Conhecimento Aplicado (INT)');
+              }
+
+              // 2b. Intuição Paranormal (Ocultista)
+              if (armIntuicaoParanormal) {
+                const intuicaoBonus = Math.max(effectiveInt, effectivePre);
+                rollMod += intuicaoBonus;
+                suffixParts.push(`👁️ Intuição Paranormal +${intuicaoBonus}`);
+              }
+
+              // 2c. Identificação Paranormal (Ocultista — Ocultismo)
+              if (opts?.forceIdentificacaoParanormal && skill.id === 'ocultismo') {
+                rollMod += 10;
+                suffixParts.push('🔍 Identificação Paranormal +10');
               }
 
               // 3. Perito
@@ -1049,6 +1225,7 @@ export function OrdemSheet({
 
               if (usedEcletico) setArmedEcleticoDegree(0);
               if (canUseConhecimentoAplicadoHere) setArmConhecimentoAplicado(false);
+              if (armIntuicaoParanormal) setArmIntuicaoParanormal(false);
               if (usedPerito) setArmPerito(false);
               if (armOriginBoost) setArmOriginBoost(false);
 
@@ -1085,6 +1262,19 @@ export function OrdemSheet({
                       className="px-2 py-1 bg-blue-950/70 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-700/70 rounded text-[10px] font-mono font-bold transition cursor-pointer shrink-0"
                     >
                       🎓 +1d{activePeritoDice} (-{peritoCost} PE)
+                    </button>
+                  )}
+
+                  {skill.id === 'ocultismo' && hasIdentificacaoParanormal && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleExecuteSkillRoll({ forceIdentificacaoParanormal: true })
+                      }
+                      title="Identificação Paranormal: +10 em Ocultismo para identificar criaturas, objetos ou rituais"
+                      className="px-2 py-1 bg-purple-950/70 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-700/70 rounded text-[10px] font-mono font-bold transition cursor-pointer shrink-0"
+                    >
+                      🔍 Identificar (+10)
                     </button>
                   )}
 

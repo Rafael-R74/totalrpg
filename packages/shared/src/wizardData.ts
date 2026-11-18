@@ -953,25 +953,25 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 10,
         name: 'Ampliar Ritual (Conduíte 10%)',
-        cost: 2,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 40,
         name: 'Acelerar Ritual (Conduíte 40%)',
-        cost: 4,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 65,
         name: 'Anular Ritual (Conduíte 65%)',
-        cost: 1,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
@@ -1001,9 +1001,9 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 40,
         name: 'Abraçar a Dor (Flagelador 40%)',
-        cost: 2,
+        cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
@@ -1076,7 +1076,11 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
         cost: 0,
         description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
         isActive: true,
-        modifiers: [{ id: 'tr-int-10', targetType: 'skill_bonus', targetKey: 'vontade', value: 5 }],
+        modifiers: [
+          { id: 'tr-int-10-fort', targetType: 'skill_bonus', targetKey: 'fortitude', value: 5 },
+          { id: 'tr-int-10-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: 5 },
+          { id: 'tr-int-10-von', targetType: 'skill_bonus', targetKey: 'vontade', value: 5 },
+        ],
       },
       {
         nex: 40,

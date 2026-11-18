@@ -323,9 +323,11 @@ export function DiceRollModal({
 
                             <div className="flex flex-wrap gap-1.5 justify-center max-w-[140px]">
                               {atkRoll.rolls.map((val, dIdx) => {
+                                const atkSides = atkRoll.sides || 20;
                                 const canReroll =
                                   val === 1 &&
                                   Boolean(atkRoll.hasAfortunado) &&
+                                  (atkSides !== 20 || Boolean(atkRoll.hasAfortunadoAffinity)) &&
                                   !atkRoll.rerolledAfortunado &&
                                   Boolean(onRerollOne);
                                 const isKept =
@@ -619,9 +621,11 @@ export function DiceRollModal({
 
                           <div className="flex flex-wrap gap-1.5 justify-end">
                             {dmgRoll.rolls.map((val, dIdx) => {
+                              const dmgSides = dmgRoll.sides || 6;
                               const canReroll =
                                 val === 1 &&
                                 Boolean(dmgRoll.hasAfortunado) &&
+                                (dmgSides !== 20 || Boolean(dmgRoll.hasAfortunadoAffinity)) &&
                                 !dmgRoll.rerolledAfortunado &&
                                 Boolean(onRerollOne);
                               return (
@@ -757,13 +761,22 @@ export function DiceRollModal({
               <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-bold">
                 Dados Rolados ({roll.rolls.length})
               </span>
+              {(() => {
+                const formulaSidesMatch = roll.formula.match(/d(\d+)/i);
+                const rollSides =
+                  roll.sides || (formulaSidesMatch ? Number(formulaSidesMatch[1]) : 20);
+                const afortunadoAllowedForRoll =
+                  Boolean(roll.hasAfortunado) &&
+                  (rollSides !== 20 || Boolean(roll.hasAfortunadoAffinity));
+                return (
+                  <>
               <div className="flex flex-wrap justify-center gap-2">
                 {roll.rolls.map((val, idx) => {
                   const isKeptInOrdem =
                     roll.system === 'ordem-paranormal' && val === highestRoll && roll.rolls.length > 1;
                   const canRerollThisDie =
                     val === 1 &&
-                    Boolean(roll.hasAfortunado) &&
+                    afortunadoAllowedForRoll &&
                     !roll.rerolledAfortunado &&
                     !!onRerollOne;
                   return (
@@ -795,7 +808,7 @@ export function DiceRollModal({
                 })}
               </div>
 
-              {Boolean(roll.hasAfortunado) &&
+              {afortunadoAllowedForRoll &&
                 !roll.rerolledAfortunado &&
                 roll.rolls.includes(1) &&
                 onRerollOne && (
@@ -804,7 +817,9 @@ export function DiceRollModal({
                   onClick={() => onRerollOne(roll, roll.rolls.indexOf(1))}
                   className="mt-2 w-full py-2 px-3 bg-emerald-950/80 hover:bg-emerald-800 border border-emerald-500/60 text-emerald-200 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
                 >
-                  🍀 Rerrolar dado "1" (Poder Afortunado — 1x por rolagem)
+                  {roll.hasAfortunadoAffinity
+                    ? '🍀 Rerrolar dado "1" (Afortunado + Afinidade — 1x por rolagem)'
+                    : '🍀 Rerrolar dado "1" (Poder Afortunado — dados ≠ d20)'}
                 </button>
               )}
 
@@ -813,6 +828,9 @@ export function DiceRollModal({
                   🍀 Dado 1 rerrolado com Afortunado!
                 </span>
               )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Botão Direto de Rolagem de Dano / Dano Crítico após Rolagem de Acerto */}
