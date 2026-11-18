@@ -58,44 +58,114 @@ function normalizeRitualLookup(str: string): string {
     .trim();
 }
 
+const RITUAL_BY_ID_MAP = new Map<string, OrdemRitualDef>();
+const RITUAL_BY_NORM_NAME_MAP = new Map<string, OrdemRitualDef>();
+
+for (const ritual of ORDEM_RITUALS_DATA) {
+  RITUAL_BY_ID_MAP.set(ritual.id.toLowerCase(), ritual);
+  const norm = normalizeRitualLookup(ritual.name);
+  if (norm) {
+    RITUAL_BY_NORM_NAME_MAP.set(norm, ritual);
+  }
+}
+
 export function findOrdemRitualDef(idOrName?: string): OrdemRitualDef | undefined {
   if (!idOrName) return undefined;
   const cleanId = idOrName.trim().toLowerCase();
-  const byId = ORDEM_RITUALS_DATA.find(
-    (r) => r.id.toLowerCase() === cleanId || cleanId.includes(r.id.toLowerCase())
-  );
+  
+  // 1. Direct lookup by exact ID O(1)
+  const byId = RITUAL_BY_ID_MAP.get(cleanId);
   if (byId) return byId;
 
+  // 2. Lookup by normalized name O(1)
   const normName = normalizeRitualLookup(idOrName);
-  return ORDEM_RITUALS_DATA.find((r) => normalizeRitualLookup(r.name) === normName);
+  if (normName) {
+    const byNorm = RITUAL_BY_NORM_NAME_MAP.get(normName);
+    if (byNorm) return byNorm;
+  }
+
+  // 3. Fast prefix match for generated IDs (ex: "ord-rit-chamas-do-caos-abc123")
+  if (cleanId.startsWith('ord-rit-')) {
+    for (const [id, def] of RITUAL_BY_ID_MAP) {
+      if (cleanId.startsWith(id)) {
+        return def;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export function createKnownRitualsKeySet(abilities: CharacterAbility[]): Set<string> {
+  const keys = new Set<string>();
+
+  for (const ab of abilities) {
+    if (ab.category !== 'ritual' && ab.category !== 'magia') continue;
+    const nameLower = ab.name.trim().toLowerCase();
+    keys.add(`name:${nameLower}`);
+
+    const norm = normalizeRitualLookup(ab.name);
+    if (norm) keys.add(`norm:${norm}`);
+
+    const def = findOrdemRitualDef(ab.id) || findOrdemRitualDef(ab.name);
+    if (def) {
+      keys.add(`id:${def.id.toLowerCase()}`);
+    } else if (ab.id) {
+      keys.add(`id:${ab.id.toLowerCase()}`);
+    }
+
+    if (nameLower.includes('amaldiçoar arma')) {
+      for (const el of ['sangue', 'morte', 'conhecimento', 'energia']) {
+        if (nameLower.includes(el)) {
+          keys.add(`amaldicoar:${el}`);
+        }
+      }
+    }
+  }
+
+  const hasAllAmaldicoar =
+    keys.has('amaldicoar:sangue') &&
+    keys.has('amaldicoar:morte') &&
+    keys.has('amaldicoar:conhecimento') &&
+    keys.has('amaldicoar:energia');
+  if (hasAllAmaldicoar) {
+    keys.add('amaldicoar:all');
+    keys.add('id:ord-rit-amaldicoar-arma');
+  }
+
+  return keys;
 }
 
 export function isOrdemRitualAlreadyOwned(
   entry: { id?: string; name: string },
-  abilities: CharacterAbility[]
+  abilities: CharacterAbility[],
+  precomputedKeySet?: Set<string>
 ): boolean {
+  const keys = precomputedKeySet || createKnownRitualsKeySet(abilities);
   const entryLower = entry.name.trim().toLowerCase();
   const isAmaldicoar =
     entry.id === 'ord-rit-amaldicoar-arma' || entryLower.includes('amaldiçoar arma');
 
   if (isAmaldicoar) {
-    return (['sangue', 'morte', 'conhecimento', 'energia'] as const).every((el) =>
-      abilities.some((ab) =>
-        ab.name.toLowerCase().includes(`amaldiçoar arma — ${el}`)
-      )
-    );
+    return keys.has('amaldicoar:all');
   }
 
-  const targetDef = findOrdemRitualDef(entry.id) || findOrdemRitualDef(entry.name);
-  const targetNorm = normalizeRitualLookup(entry.name);
+  if (keys.has(`name:${entryLower}`)) return true;
 
-  return abilities.some((ab) => {
-    if (ab.category !== 'ritual' && ab.category !== 'magia') return false;
-    if (ab.name.trim().toLowerCase() === entryLower) return true;
-    const abDef = findOrdemRitualDef(ab.id) || findOrdemRitualDef(ab.name);
-    if (targetDef && abDef && targetDef.id === abDef.id) return true;
-    return targetNorm.length > 0 && normalizeRitualLookup(ab.name) === targetNorm;
-  });
+  if (entry.id) {
+    const cleanId = entry.id.toLowerCase();
+    if (keys.has(`id:${cleanId}`)) return true;
+    const def = findOrdemRitualDef(entry.id);
+    if (def && keys.has(`id:${def.id.toLowerCase()}`)) return true;
+  }
+
+  const norm = normalizeRitualLookup(entry.name);
+  if (norm && keys.has(`norm:${norm}`)) return true;
+
+  const defByName = findOrdemRitualDef(entry.name);
+  if (defByName && keys.has(`id:${defByName.id.toLowerCase()}`)) return true;
+
+  return false;
 }
 
 export function getOrdemCircleBaseCost(circle: number): number {

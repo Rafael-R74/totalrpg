@@ -84,10 +84,16 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || !activeRoomId) return;
 
-    socket.emit('session:join', {
-      campaignId: activeRoomId,
-      role: currentCampaignSession?.role || 'player',
-    });
+    function handleJoin() {
+      if (!activeRoomId) return;
+      socket.emit('session:join', {
+        campaignId: activeRoomId,
+        role: currentCampaignSession?.role || 'player',
+      });
+    }
+
+    handleJoin();
+    socket.on('connect', handleJoin);
 
     socket.on('dice:rolled', (newRoll) => {
       setRollHistory((prev) => [newRoll, ...prev]);
@@ -213,6 +219,7 @@ export default function App() {
     });
 
     return () => {
+      socket.off('connect', handleJoin);
       socket.off('dice:rolled');
       socket.off('campaign:permissionsUpdated');
       socket.off('character:updated');

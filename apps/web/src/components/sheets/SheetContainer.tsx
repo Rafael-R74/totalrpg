@@ -32,6 +32,7 @@ import {
   RitualEffectRollPayload,
   DiceRollResult,
   isOrdemRitualAlreadyOwned,
+  createKnownRitualsKeySet,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -3523,6 +3524,7 @@ export function SheetContainer({
             return a.name.localeCompare(b.name, 'pt-BR');
           });
 
+        const evoKnownRitualsSet = createKnownRitualsKeySet(characterAbilities);
         const allRitualsUpToCircle = (
           compendiumEntries.filter((e) => e.category === 'spell').length > 0
             ? compendiumEntries.filter((e) => e.category === 'spell')
@@ -3546,8 +3548,8 @@ export function SheetContainer({
               r.description.toLowerCase().includes(evoRitualSearch.toLowerCase())
           )
           .sort((a, b) => {
-            const ownedA = isOrdemRitualAlreadyOwned(a, characterAbilities) ? 1 : 0;
-            const ownedB = isOrdemRitualAlreadyOwned(b, characterAbilities) ? 1 : 0;
+            const ownedA = isOrdemRitualAlreadyOwned(a, characterAbilities, evoKnownRitualsSet) ? 1 : 0;
+            const ownedB = isOrdemRitualAlreadyOwned(b, characterAbilities, evoKnownRitualsSet) ? 1 : 0;
             if (ownedA !== ownedB) return ownedA - ownedB;
             return a.name.localeCompare(b.name, 'pt-BR');
           });
@@ -3978,6 +3980,7 @@ export function SheetContainer({
                               return null;
                             }
                             const maxAprenderCircle = Math.min(2, maxCircleUnlocked);
+                            const eligibleKnownSet = createKnownRitualsKeySet(characterAbilities);
                             const eligibleRituals = (
                               compendiumEntries.filter((e) => e.category === 'spell').length > 0
                                 ? compendiumEntries.filter((e) => e.category === 'spell')
@@ -3985,8 +3988,8 @@ export function SheetContainer({
                             )
                               .filter((r) => (r.metadata?.circle || 1) <= maxAprenderCircle)
                               .sort((a, b) => {
-                                const ownedA = isOrdemRitualAlreadyOwned(a, characterAbilities) ? 1 : 0;
-                                const ownedB = isOrdemRitualAlreadyOwned(b, characterAbilities) ? 1 : 0;
+                                const ownedA = isOrdemRitualAlreadyOwned(a, characterAbilities, eligibleKnownSet) ? 1 : 0;
+                                const ownedB = isOrdemRitualAlreadyOwned(b, characterAbilities, eligibleKnownSet) ? 1 : 0;
                                 if (ownedA !== ownedB) return ownedA - ownedB;
                                 return a.name.localeCompare(b.name, 'pt-BR');
                               });
@@ -4003,7 +4006,7 @@ export function SheetContainer({
                                 >
                                   <option value="">-- Selecione um Ritual --</option>
                                   {eligibleRituals.map((r) => {
-                                    const alreadyOwned = isOrdemRitualAlreadyOwned(r, characterAbilities);
+                                    const alreadyOwned = isOrdemRitualAlreadyOwned(r, characterAbilities, eligibleKnownSet);
                                     return (
                                       <option key={r.id} value={r.id} disabled={alreadyOwned}>
                                         {r.name} ({r.metadata?.circle || 1}ºC • {r.metadata?.element || 'Paranormal'}){alreadyOwned ? ' [✓ Já possui]' : ''}
@@ -4296,7 +4299,7 @@ export function SheetContainer({
                         const isAmaldicoar =
                           r.id === 'ord-rit-amaldicoar-arma' ||
                           r.name.toLowerCase().includes('amaldiçoar arma');
-                        const alreadyKnown = isOrdemRitualAlreadyOwned(r, characterAbilities);
+                        const alreadyKnown = isOrdemRitualAlreadyOwned(r, characterAbilities, evoKnownRitualsSet);
                         const isPicked =
                           evoNewRitualId === r.id || evoNewRitualId.startsWith(`${r.id}:`);
                         const pickedElement = evoNewRitualId.startsWith(`${r.id}:`)
