@@ -273,7 +273,9 @@ export function OrdemSheet({
     effectivePre,
     safeData.trail,
     abilities,
-    safeData.origin
+    safeData.origin,
+    undefined,
+    safeData.sceneEffects
   );
   const effectiveDisplacement = Math.max(
     0,

@@ -90,6 +90,21 @@ export interface SegurarGatilhoPayload {
   tecnicaSecretaDamageSuffix?: string;
 }
 
+// Payload de efeito vinculado à rolagem de O Custo do Paranormal (Ocultismo) de um Ritual
+export interface RitualEffectRollPayload {
+  ritualId: string;
+  ritualName: string;
+  formLabel: string;
+  peSpent: number;
+  pvSpent?: number;
+  custoParanormalDt: number;
+  effectType?: 'damage' | 'healing' | 'temp_hp' | 'utility';
+  effectFormula?: string;
+  effectLabel?: string;
+  maximizeEffect?: boolean;
+  appliedSceneSummary?: string;
+}
+
 // Payload de dano vinculado a uma rolagem de acerto de arma (para botão direto de Dano / Dano Crítico no modal)
 export interface AttackDamageRollPayload {
   weaponName: string;
@@ -126,6 +141,7 @@ export interface DiceRollResult {
   rerolledAfortunado?: boolean;
   attackDamagePayload?: AttackDamageRollPayload;
   forcaOpressoraPayload?: ForcaOpressoraRollPayload;
+  ritualEffectPayload?: RitualEffectRollPayload;
   batchId?: string;
   batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
   batchShotNumber?: number;
@@ -184,6 +200,7 @@ export interface ClientToServerEvents {
     hasAfortunadoAffinity?: boolean;
     attackDamagePayload?: AttackDamageRollPayload;
     forcaOpressoraPayload?: ForcaOpressoraRollPayload;
+    ritualEffectPayload?: RitualEffectRollPayload;
     batchId?: string;
     batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
     batchShotNumber?: number;
@@ -263,6 +280,12 @@ export interface SceneEffect {
   tempHpGranted?: number;
   tempPeGranted?: number;
   modifiers?: RuleModifier[];
+  recurringFormula?: string;
+  recurringLabel?: string;
+  recurringAction?: string;
+  isSustainedRitual?: boolean;
+  ritualId?: string;
+  usesOcultismoManeuver?: boolean;
 }
 
 export interface OrdemSheetData {

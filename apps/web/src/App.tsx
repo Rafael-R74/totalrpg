@@ -14,6 +14,7 @@ import {
   DiceRollResult,
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
+  RitualEffectRollPayload,
   SheetPermissions,
   StickyPostIt,
   RPGItem,
@@ -117,6 +118,12 @@ export default function App() {
         } else {
           setActiveBatchRolls([]);
           setActiveRollModal(newRoll);
+        }
+
+        if (newRoll.label.startsWith('🛡️ Vida Temporária:')) {
+          window.dispatchEvent(
+            new CustomEvent('totalrpg:ritual-temp-hp', { detail: newRoll })
+          );
         }
       }
     });
@@ -247,7 +254,8 @@ export default function App() {
       batchShotNumber: number;
       batchIsCrit?: boolean;
     },
-    hasAfortunadoAffinity?: boolean
+    hasAfortunadoAffinity?: boolean,
+    ritualEffectPayload?: RitualEffectRollPayload
   ) {
     if (!activeRoomId || !currentUser) return;
     const effectiveBatchMeta =
@@ -276,6 +284,7 @@ export default function App() {
       hasAfortunadoAffinity,
       attackDamagePayload,
       forcaOpressoraPayload,
+      ritualEffectPayload,
       ...(effectiveBatchMeta || {}),
     });
   }
@@ -464,6 +473,48 @@ export default function App() {
             rollResult.hasAfortunado,
             undefined,
             p.forcaOpressoraPayload,
+            undefined,
+            rollResult.hasAfortunadoAffinity
+          );
+        }}
+        onRollRitualEffect={(rollResult) => {
+          const rp = rollResult.ritualEffectPayload;
+          if (!rp || !rp.effectFormula) return;
+          const clean = rp.effectFormula.toLowerCase().replace(/\s+/g, '');
+          const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
+          if (!match) return;
+          const count = parseInt(match[1], 10);
+          const sides = parseInt(match[2], 10);
+          const modifier = match[3] ? parseInt(match[3], 10) : 0;
+          const et = rp.effectType || 'damage';
+          const prefix =
+            et === 'healing'
+              ? '💚 Cura'
+              : et === 'temp_hp'
+              ? '🛡️ Vida Temporária'
+              : et === 'utility'
+              ? '🎲 Efeito'
+              : '💥 Dano';
+          const fixedRolls = rp.maximizeEffect
+            ? Array(Math.max(1, count)).fill(sides)
+            : undefined;
+          const extraNote = rp.effectLabel ? ` — ${rp.effectLabel}` : '';
+          triggerRoll(
+            rollResult.characterName,
+            rollResult.system,
+            `${prefix}: ${rp.ritualName} [${rp.formLabel}]${extraNote}${
+              rp.maximizeEffect ? ' [Cinerária: Dano Máx.]' : ''
+            }`,
+            count,
+            sides,
+            modifier,
+            rollResult.isSecret,
+            false,
+            rollResult.characterId,
+            fixedRolls,
+            rollResult.hasAfortunado,
+            undefined,
+            undefined,
             undefined,
             rollResult.hasAfortunadoAffinity
           );
