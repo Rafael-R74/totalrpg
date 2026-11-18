@@ -14,6 +14,7 @@ import {
   DiceRollResult,
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
+  RitualEffectRollPayload,
   SheetPermissions,
   StickyPostIt,
   RPGItem,
@@ -83,10 +84,16 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || !activeRoomId) return;
 
-    socket.emit('session:join', {
-      campaignId: activeRoomId,
-      role: currentCampaignSession?.role || 'player',
-    });
+    function handleJoin() {
+      if (!activeRoomId) return;
+      socket.emit('session:join', {
+        campaignId: activeRoomId,
+        role: currentCampaignSession?.role || 'player',
+      });
+    }
+
+    handleJoin();
+    socket.on('connect', handleJoin);
 
     socket.on('dice:rolled', (newRoll) => {
       setRollHistory((prev) => [newRoll, ...prev]);
@@ -117,6 +124,12 @@ export default function App() {
         } else {
           setActiveBatchRolls([]);
           setActiveRollModal(newRoll);
+        }
+
+        if (newRoll.label.startsWith('🛡️ Vida Temporária:')) {
+          window.dispatchEvent(
+            new CustomEvent('totalrpg:ritual-temp-hp', { detail: newRoll })
+          );
         }
       }
     });
@@ -206,6 +219,7 @@ export default function App() {
     });
 
     return () => {
+      socket.off('connect', handleJoin);
       socket.off('dice:rolled');
       socket.off('campaign:permissionsUpdated');
       socket.off('character:updated');
@@ -246,7 +260,9 @@ export default function App() {
       batchRole: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
       batchShotNumber: number;
       batchIsCrit?: boolean;
-    }
+    },
+    hasAfortunadoAffinity?: boolean,
+    ritualEffectPayload?: RitualEffectRollPayload
   ) {
     if (!activeRoomId || !currentUser) return;
     const effectiveBatchMeta =
@@ -272,8 +288,10 @@ export default function App() {
       isSecret,
       fixedRolls,
       hasAfortunado,
+      hasAfortunadoAffinity,
       attackDamagePayload,
       forcaOpressoraPayload,
+      ritualEffectPayload,
       ...(effectiveBatchMeta || {}),
     });
   }
@@ -355,6 +373,7 @@ export default function App() {
             critDiceCount: sg.critDiceCount,
             dieSides: sg.dieSides,
             damageModifier: sg.baseDamageModifier + aeDmgBonus,
+            maximizeCritDamage: sg.maximizeCritDamage,
             damageLabelSuffix:
               dmgSuffixParts.length > 0 ? ` [${dmgSuffixParts.join(' • ')}]` : undefined,
             segurarGatilhoPayload: {
@@ -382,7 +401,8 @@ export default function App() {
               batchId: sg.batchId,
               batchRole: 'segurar_gatilho_attack',
               batchShotNumber: shotNumber,
-            }
+            },
+            baseRoll.hasAfortunadoAffinity
           );
           return true;
         }}
@@ -397,10 +417,16 @@ export default function App() {
             const isCrit = keptNatural >= p.critThreatMin;
             const shotNum = atkRoll.batchShotNumber || p.segurarGatilhoPayload?.shotIndex || 1;
             const suffix = p.damageLabelSuffix || '';
-            const label = isCrit
-              ? `💥 Dano Crítico (${shotNum}º Disp. • x${p.critMultiplier}): ${p.weaponName}${suffix}`
-              : `Dano (${shotNum}º Disp.): ${p.weaponName}${suffix}`;
             const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
+            const maxCritSuffix =
+              isCrit && p.maximizeCritDamage ? ' [💀 Atirar p/ Matar: Dano Máx.]' : '';
+            const label = isCrit
+              ? `💥 Dano Crítico (${shotNum}º Disp. • x${p.critMultiplier}): ${p.weaponName}${suffix}${maxCritSuffix}`
+              : `Dano (${shotNum}º Disp.): ${p.weaponName}${suffix}`;
+            const fixedRolls =
+              isCrit && p.maximizeCritDamage
+                ? Array(Math.max(1, diceCount)).fill(p.dieSides)
+                : undefined;
 
             triggerRoll(
               atkRoll.characterName,
@@ -412,7 +438,7 @@ export default function App() {
               atkRoll.isSecret,
               false,
               atkRoll.characterId,
-              undefined,
+              fixedRolls,
               atkRoll.hasAfortunado,
               p,
               p.forcaOpressoraPayload,
@@ -421,7 +447,8 @@ export default function App() {
                 batchRole: 'segurar_gatilho_damage',
                 batchShotNumber: shotNum,
                 batchIsCrit: isCrit,
-              }
+              },
+              atkRoll.hasAfortunadoAffinity
             );
           });
         }}
@@ -429,10 +456,16 @@ export default function App() {
           const p = rollResult.attackDamagePayload;
           if (!p) return;
           const suffix = p.damageLabelSuffix || '';
-          const label = isCrit
-            ? `💥 Dano Crítico [x${p.critMultiplier}]: ${p.weaponName}${suffix}`
-            : `Dano: ${p.weaponName}${suffix}`;
           const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
+          const maxCritSuffix =
+            isCrit && p.maximizeCritDamage ? ' [💀 Atirar p/ Matar: Dano Máx.]' : '';
+          const label = isCrit
+            ? `💥 Dano Crítico [x${p.critMultiplier}]: ${p.weaponName}${suffix}${maxCritSuffix}`
+            : `Dano: ${p.weaponName}${suffix}`;
+          const fixedRolls =
+            isCrit && p.maximizeCritDamage
+              ? Array(Math.max(1, diceCount)).fill(p.dieSides)
+              : undefined;
           triggerRoll(
             rollResult.characterName,
             rollResult.system,
@@ -443,10 +476,54 @@ export default function App() {
             rollResult.isSecret,
             false,
             rollResult.characterId,
-            undefined,
+            fixedRolls,
             rollResult.hasAfortunado,
             undefined,
-            p.forcaOpressoraPayload
+            p.forcaOpressoraPayload,
+            undefined,
+            rollResult.hasAfortunadoAffinity
+          );
+        }}
+        onRollRitualEffect={(rollResult) => {
+          const rp = rollResult.ritualEffectPayload;
+          if (!rp || !rp.effectFormula) return;
+          const clean = rp.effectFormula.toLowerCase().replace(/\s+/g, '');
+          const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
+          if (!match) return;
+          const count = parseInt(match[1], 10);
+          const sides = parseInt(match[2], 10);
+          const modifier = match[3] ? parseInt(match[3], 10) : 0;
+          const et = rp.effectType || 'damage';
+          const prefix =
+            et === 'healing'
+              ? '💚 Cura'
+              : et === 'temp_hp'
+              ? '🛡️ Vida Temporária'
+              : et === 'utility'
+              ? '🎲 Efeito'
+              : '💥 Dano';
+          const fixedRolls = rp.maximizeEffect
+            ? Array(Math.max(1, count)).fill(sides)
+            : undefined;
+          const extraNote = rp.effectLabel ? ` — ${rp.effectLabel}` : '';
+          triggerRoll(
+            rollResult.characterName,
+            rollResult.system,
+            `${prefix}: ${rp.ritualName} [${rp.formLabel}]${extraNote}${
+              rp.maximizeEffect ? ' [Cinerária: Dano Máx.]' : ''
+            }`,
+            count,
+            sides,
+            modifier,
+            rollResult.isSecret,
+            false,
+            rollResult.characterId,
+            fixedRolls,
+            rollResult.hasAfortunado,
+            undefined,
+            undefined,
+            undefined,
+            rollResult.hasAfortunadoAffinity
           );
         }}
         onRollForcaOpressora={(rollResult, maneuver) => {
@@ -469,7 +546,11 @@ export default function App() {
               false,
               rollResult.characterId,
               undefined,
-              rollResult.hasAfortunado
+              rollResult.hasAfortunado,
+              undefined,
+              undefined,
+              undefined,
+              rollResult.hasAfortunadoAffinity
             );
           } else {
             triggerRoll(
@@ -483,7 +564,11 @@ export default function App() {
               false,
               rollResult.characterId,
               undefined,
-              rollResult.hasAfortunado
+              rollResult.hasAfortunado,
+              undefined,
+              undefined,
+              undefined,
+              rollResult.hasAfortunadoAffinity
             );
           }
         }}
