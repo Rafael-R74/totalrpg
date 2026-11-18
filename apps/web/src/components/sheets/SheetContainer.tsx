@@ -21,12 +21,18 @@ import {
   ORDEM_INTERLUDE_DISHES,
   calculateOrdemBaseVitals,
   getOrdemPeLimit,
+  getOrdemRitualPeLimit,
+  findOrdemRitualDef,
   getOrdemMaxLoad,
   checkOrdemPowerRequirements,
   getOrdemClassMilestoneSummary,
   OrdemRitualCastForm,
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
+  RitualEffectRollPayload,
+  DiceRollResult,
+  isOrdemRitualAlreadyOwned,
+  createKnownRitualsKeySet,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -59,7 +65,10 @@ interface SheetContainerProps {
     fixedRolls?: number[],
     hasAfortunado?: boolean,
     attackDamagePayload?: AttackDamageRollPayload,
-    forcaOpressoraPayload?: ForcaOpressoraRollPayload
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload,
+    batchMeta?: any,
+    hasAfortunadoAffinity?: boolean,
+    ritualEffectPayload?: RitualEffectRollPayload
   ) => void;
   onRegisterSpendResource?: (fn: (amount: number) => boolean) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
@@ -177,10 +186,13 @@ export function SheetContainer({
   const [evoRitualElementFilter, setEvoRitualElementFilter] = useState<string>('ALL');
   const [evoRitualCircleFilter, setEvoRitualCircleFilter] = useState<number | 'ALL'>('ALL');
   const [evoShowAmaldicoarPrompt, setEvoShowAmaldicoarPrompt] = useState<boolean>(false);
+  const [evoExtraPowerRitualId, setEvoExtraPowerRitualId] = useState<string>('');
+  const [evoExpansaoPowerId, setEvoExpansaoPowerId] = useState<string>('');
   const [ritualCastSummaryModal, setRitualCastSummaryModal] = useState<{
     ritualName: string;
     formLabel: string;
     peSpent: number;
+    pvSpent?: number;
     dt: number;
     ocultismoRolls: number[];
     ocultismoMod: number;
@@ -189,8 +201,10 @@ export function SheetContainer({
     failedByFiveOrMore: boolean;
     sanLost: number;
     permSanLost: number;
+    isMedoRitual?: boolean;
     effectAppliedText?: string;
     damageFormulaToRoll?: string;
+    healingFormulaToRoll?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -198,6 +212,69 @@ export function SheetContainer({
       setShowInitiativePrompt(true);
     }
   }, [initiativeRequestSignal]);
+
+  useEffect(() => {
+    function handleRitualTempHpRoll(ev: Event) {
+      const customEv = ev as CustomEvent<DiceRollResult>;
+      const newRoll = customEv.detail;
+      const baseChar = latestCharacterRef.current;
+      if (!baseChar || !newRoll || newRoll.characterId !== baseChar.id) return;
+
+      const labelMatch = newRoll.label.match(/^🛡️ Vida Temporária:\s*(.+?)\s*\[([^\]]+)\]/);
+      const ritualName = labelMatch ? labelMatch[1].trim() : 'Ritual';
+      const formLabel = labelMatch ? labelMatch[2].trim() : 'Normal';
+      const baseRaw = (baseChar.sheetData || {}) as Record<string, any>;
+      const prevEffects: SceneEffect[] = Array.isArray(baseRaw.sceneEffects)
+        ? baseRaw.sceneEffects
+        : [];
+      const rollTag = `ritual-temp-${newRoll.id}`;
+      const existingSameRoll = prevEffects.find((e) => e.sourceAbilityId === rollTag);
+      const existingSameRitual = prevEffects.find(
+        (e) =>
+          e.name.trim().toLowerCase() === ritualName.toLowerCase() &&
+          typeof e.tempHpGranted === 'number'
+      );
+      const oldGranted =
+        existingSameRoll?.tempHpGranted ?? existingSameRitual?.tempHpGranted ?? 0;
+
+      const nextTempHp = Math.max(0, Number(baseRaw.tempHp || 0) - oldGranted) + Math.max(0, newRoll.total);
+      const filteredEffects = prevEffects.filter(
+        (e) =>
+          e.sourceAbilityId !== rollTag &&
+          !(
+            e.name.trim().toLowerCase() === ritualName.toLowerCase() &&
+            typeof e.tempHpGranted === 'number'
+          )
+      );
+      const newEffect: SceneEffect = {
+        id: existingSameRoll?.id || `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: ritualName,
+        source: `${formLabel} (${newRoll.formula})`,
+        sourceAbilityId: rollTag,
+        description: `+${newRoll.total} PV Temporários até o fim da cena (Rolagem: [${newRoll.rolls.join(', ')}])`,
+        tempHpGranted: newRoll.total,
+      };
+      const nextChar: FullCharacterResponse = {
+        ...baseChar,
+        sheetData: {
+          ...baseRaw,
+          tempHp: nextTempHp,
+          sceneEffects: [...filteredEffects, newEffect],
+        },
+      };
+      latestCharacterRef.current = nextChar;
+      setCharacter(nextChar);
+      handleSaveSheet(nextChar);
+      showHoverToast(
+        `🛡️ ${ritualName}: +${newRoll.total} PV Temporários aplicados na ficha!`
+      );
+    }
+
+    window.addEventListener('totalrpg:ritual-temp-hp', handleRitualTempHpRoll);
+    return () => {
+      window.removeEventListener('totalrpg:ritual-temp-hp', handleRitualTempHpRoll);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadSheetAndCompendium() {
@@ -209,11 +286,17 @@ export function SheetContainer({
         if (Array.isArray(raw.abilities)) {
           raw.abilities = raw.abilities.map((ab: CharacterAbility) => {
             if (ab.name.includes('Sangue de Ferro')) {
+              const hasAff = Boolean(
+                ab.hasAffinityUpgrade || ab.name.toLowerCase().includes('afinidade')
+              );
               return {
                 ...ab,
                 cost: 0,
                 modifiers: [
                   { id: 'm2', targetType: 'vital_max', targetKey: 'pv', value: 2, scaleWithLevel: true },
+                  ...(hasAff
+                    ? [{ id: 'm-sf-fort-af', targetType: 'skill_bonus' as const, targetKey: 'fortitude', value: 5 }]
+                    : []),
                 ],
               };
             }
@@ -254,17 +337,26 @@ export function SheetContainer({
                 }
               }
             }
-            // Sincroniza poderes de Combatente já existentes com as novas regras automáticas do motor
-            const officialCombatPower = ORDEM_COMPENDIUM_ENTRIES.find(
-              (ce) =>
-                ce.id.startsWith('ord-pwr-comb-') &&
-                ce.name.toLowerCase() === ab.name.trim().toLowerCase()
-            );
-            if (officialCombatPower) {
+            // Sincroniza habilidades iniciais de Especialista (Eclético e Perito) já existentes
+            const lowerAbName = ab.name.trim().toLowerCase();
+            if (lowerAbName === 'eclético' || lowerAbName === 'ecletico' || lowerAbName === 'perito') {
               return {
                 ...ab,
-                cost: officialCombatPower.cost,
-                modifiers: officialCombatPower.modifiers || [],
+                cost: 0,
+                isActive: true,
+              };
+            }
+            // Sincroniza poderes de Combatente e Especialista já existentes com as novas regras automáticas do motor
+            const officialClassPower = ORDEM_COMPENDIUM_ENTRIES.find(
+              (ce) =>
+                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
+                ce.name.toLowerCase() === lowerAbName
+            );
+            if (officialClassPower) {
+              return {
+                ...ab,
+                cost: officialClassPower.cost,
+                modifiers: officialClassPower.modifiers || [],
               };
             }
             // Sincroniza poderes de Origem de fichas já criadas com as definições oficiais v1.3
@@ -307,17 +399,17 @@ export function SheetContainer({
             );
           })
           .map((entry) => {
-            const officialCombat = ORDEM_COMPENDIUM_ENTRIES.find(
+            const officialClassEntry = ORDEM_COMPENDIUM_ENTRIES.find(
               (ce) =>
-                ce.id.startsWith('ord-pwr-comb-') &&
+                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
                 ce.name.toLowerCase() === entry.name.toLowerCase()
             );
-            return officialCombat
+            return officialClassEntry
               ? {
                   ...entry,
-                  cost: officialCombat.cost,
-                  modifiers: officialCombat.modifiers,
-                  metadata: officialCombat.metadata,
+                  cost: officialClassEntry.cost,
+                  modifiers: officialClassEntry.modifiers,
+                  metadata: officialClassEntry.metadata,
                 }
               : entry;
           });
@@ -504,10 +596,46 @@ export function SheetContainer({
     activeSceneEffects
   );
 
+  // Sangue Fervente (Poder Paranormal de Sangue): +1 (+2 com Afinidade) em FOR ou AGI enquanto Machucado
+  if (character.system === 'ordem-paranormal') {
+    const pvBarEarly = character.vitals.find((v) => v.id === 'pv');
+    const pvMaxEarly = pvBarEarly
+      ? Math.max(1, pvBarEarly.max + (bonuses.vitalMax['pv'] || 0))
+      : 1;
+    const isMachucadoEarly = pvBarEarly
+      ? pvBarEarly.current <= Math.floor(pvMaxEarly / 2)
+      : false;
+    if (isMachucadoEarly) {
+      const sangueFerventeAb = characterAbilities.find(
+        (ab) =>
+          ab.isActive !== false &&
+          (ab.id === 'ord-para-sang-sangue-fervente' ||
+            ab.name.toLowerCase().includes('sangue fervente'))
+      );
+      if (sangueFerventeAb) {
+        const isAff = Boolean(
+          sangueFerventeAb.hasAffinityUpgrade ||
+            sangueFerventeAb.name.toLowerCase().includes('afinidade')
+        );
+        const targetAttr = rawSheet.sangueFerventeAttr === 'agi' ? 'agi' : 'for';
+        bonuses.attributes[targetAttr] =
+          (bonuses.attributes[targetAttr] || 0) + (isAff ? 2 : 1);
+      }
+    }
+  }
+
   const hasAfortunado = characterAbilities.some(
     (ab) =>
-      ab.id.toLowerCase().includes('afortunado') ||
-      ab.name.toLowerCase().includes('afortunado')
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('afortunado') ||
+        ab.name.toLowerCase().includes('afortunado'))
+  );
+  const hasAfortunadoAffinity = characterAbilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('afortunado') ||
+        ab.name.toLowerCase().includes('afortunado')) &&
+      (ab.hasAffinityUpgrade || ab.name.toLowerCase().includes('afinidade'))
   );
 
   const hasActiveInitiativeOrder = Boolean(
@@ -540,7 +668,8 @@ export function SheetContainer({
     isInitiativeRoll?: boolean,
     fixedRolls?: number[],
     attackDamagePayload?: AttackDamageRollPayload,
-    forcaOpressoraPayload?: ForcaOpressoraRollPayload
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload,
+    ritualEffectPayload?: RitualEffectRollPayload
   ) {
     if (!character) return;
     onRollDice(
@@ -556,7 +685,10 @@ export function SheetContainer({
       fixedRolls,
       hasAfortunado,
       attackDamagePayload,
-      forcaOpressoraPayload
+      forcaOpressoraPayload,
+      undefined,
+      hasAfortunadoAffinity,
+      ritualEffectPayload
     );
   }
 
@@ -735,23 +867,229 @@ export function SheetContainer({
     return { rolls, total: Math.max(1, sum + mod) };
   }
 
-  function handleCastOrdemRitual(ritual: CharacterAbility, form: OrdemRitualCastForm) {
+  function appendFlatBonusToFormula(formula: string | undefined, extra: number): string | undefined {
+    if (!formula || extra <= 0) return formula;
+    const clean = formula.trim();
+    const match = clean.match(/^(\d+d\d+)\s*([+-]\s*\d+)$/i);
+    if (match) {
+      const existingMod = parseInt(match[2].replace(/\s+/g, ''), 10);
+      const nextMod = existingMod + extra;
+      return `${match[1]}${nextMod >= 0 ? `+${nextMod}` : nextMod}`;
+    }
+    return `${clean}+${extra}`;
+  }
+
+  function handleHealPv(amount: number, label?: string) {
+    if (!character || amount <= 0) return;
+    const pvBar = character.vitals.find((b) => b.id === 'pv');
+    if (!pvBar) return;
+    const effectiveMax = Math.max(1, pvBar.max + (bonuses.vitalMax['pv'] || 0));
+    const isSangueVivo = (label || '').toLowerCase().includes('sangue vivo');
+    const healingCap = isSangueVivo ? Math.floor(effectiveMax / 2) : effectiveMax;
+
+    if (pvBar.current >= healingCap) {
+      showHoverToast(
+        isSangueVivo
+          ? `🩸 Sangue Vivo: PVs já estão em ou acima da metade máxima (${healingCap} PV).`
+          : `💚 Seus PVs já estão no máximo (${effectiveMax} PV).`
+      );
+      return;
+    }
+
+    const nextCurrent = Math.min(healingCap, pvBar.current + amount);
+    const actualHealed = nextCurrent - pvBar.current;
+    const updatedVitals = character.vitals.map((b) =>
+      b.id === 'pv' ? { ...b, current: nextCurrent } : b
+    );
+    const nextChar: FullCharacterResponse = {
+      ...character,
+      vitals: updatedVitals,
+    };
+    latestCharacterRef.current = nextChar;
+    setCharacter(nextChar);
+    handleSaveSheet(nextChar);
+    showHoverToast(
+      `💚 ${label || 'Cura'}: +${actualHealed} PV (${nextCurrent}/${effectiveMax})!`
+    );
+  }
+
+  function handleGrantTempPe(amount: number, label?: string) {
+    if (!character || amount <= 0) return;
+    const currTempPe = Number(rawSheet.tempPe || 0);
+    const peLimit = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
+    const hasSceneCap =
+      label === 'Gladiador Paranormal' || label === 'Potencial Reaproveitado';
+    const nextTempPe = hasSceneCap
+      ? Math.min(peLimit, currTempPe + amount)
+      : currTempPe + amount;
+    const gained = Math.max(0, nextTempPe - currTempPe);
+
+    if (hasSceneCap && gained === 0) {
+      showHoverToast(
+        `⚡ ${label}: teto de ${peLimit} PE temporários por cena já atingido!`
+      );
+      return;
+    }
+
+    const nextChar: FullCharacterResponse = {
+      ...character,
+      sheetData: {
+        ...rawSheet,
+        tempPe: nextTempPe,
+      },
+    };
+    latestCharacterRef.current = nextChar;
+    setCharacter(nextChar);
+    handleSaveSheet(nextChar);
+    showHoverToast(
+      `⚡ ${label || 'PE Temporário'}: +${gained} PE Temp (Total Temp: ${nextTempPe} PE)!`
+    );
+  }
+
+  function getRecurringRitualInfo(
+    ritualDefId: string,
+    form: OrdemRitualCastForm,
+    ritualPotenteBonus: number
+  ): {
+    recurringFormula?: string;
+    recurringLabel?: string;
+    usesOcultismoManeuver?: boolean;
+  } {
+    const withPotente = (f?: string) =>
+      f ? appendFlatBonusToFormula(f, ritualPotenteBonus) : undefined;
+    switch (ritualDefId) {
+      case 'ord-rit-chamas-caos':
+        return {
+          recurringFormula:
+            form.mode === 'normal'
+              ? withPotente('3d6')
+              : withPotente(form.damageFormula),
+          recurringLabel:
+            form.mode === 'normal'
+              ? 'Chamas do Caos (Modelar — 3d6 Fogo)'
+              : `Chamas do Caos (${form.label} — Labareda)`,
+        };
+      case 'ord-rit-poeira-podridao':
+      case 'ord-rit-ferver-sangue':
+      case 'ord-rit-vomitar-pestes':
+      case 'ord-rit-presenca-medo':
+      case 'ord-rit-purgatorio':
+      case 'ord-rit-flagelo-sangue':
+        return {
+          recurringFormula: withPotente(form.damageFormula),
+          recurringLabel: `${form.label} (Efeito por Rodada)`,
+        };
+      case 'ord-rit-tentaculos-lodo':
+        return {
+          recurringFormula: withPotente(form.damageFormula),
+          recurringLabel: 'Tentáculos de Lodo (Esmagar)',
+          usesOcultismoManeuver: true,
+        };
+      case 'ord-rit-sopro-caos':
+        return { usesOcultismoManeuver: true };
+      case 'ord-rit-paradoxo':
+        return form.mode === 'discente'
+          ? {
+              recurringFormula: withPotente('4d6'),
+              recurringLabel: 'Paradoxo Discente (Esfera 4d6 Morte)',
+            }
+          : {};
+      case 'ord-rit-miasma-entropico':
+        return form.mode === 'verdadeiro'
+          ? {
+              recurringFormula: withPotente('6d8'),
+              recurringLabel: 'Miasma Entrópico Verdadeiro (Nuvem 3 rod.)',
+            }
+          : {};
+      case 'ord-rit-tecer-ilusao':
+        return form.mode === 'verdadeiro'
+          ? {
+              recurringFormula: withPotente('6d6'),
+              recurringLabel: 'Tecer Ilusão Verdadeiro (Perigo Mortal)',
+            }
+          : {};
+      case 'ord-rit-hemofagia':
+        return form.mode === 'verdadeiro'
+          ? {
+              recurringFormula: withPotente('4d6'),
+              recurringLabel: 'Hemofagia Verdadeiro (Toque)',
+            }
+          : {};
+      case 'ord-rit-contato-paranormal':
+        return {
+          recurringFormula: form.damageFormula,
+          recurringLabel: 'Contato Paranormal (Dado de Auxílio)',
+        };
+      default:
+        return {};
+    }
+  }
+
+  function handleCastOrdemRitual(
+    ritual: CharacterAbility,
+    form: OrdemRitualCastForm,
+    castOptions?: {
+      usePoderDoFlagelo?: boolean;
+      camuflar?: boolean;
+      ampliar?: boolean;
+      acelerar?: boolean;
+    }
+  ) {
     if (!character) return;
+    const usePoderDoFlagelo = Boolean(castOptions?.usePoderDoFlagelo);
+    const pvBar = character.vitals.find((b) => b.id === 'pv');
     const peBar = character.vitals.find((b) => b.id === 'pe');
-    if (peBar && peBar.current + tempPe < form.totalCost) {
+    const pvCostFlagelo = usePoderDoFlagelo ? form.totalCost * 2 : 0;
+
+    if (usePoderDoFlagelo) {
+      if (pvBar && pvBar.current < pvCostFlagelo) {
+        showHoverToast(
+          `🩸 PV básicos insuficientes para Poder do Flagelo (${ritual.name})! Necessário: ${pvCostFlagelo} PV (Atual: ${pvBar.current} PV).`
+        );
+        return;
+      }
+    } else if (peBar && peBar.current + tempPe < form.totalCost) {
       showHoverToast(
         `⚡ PE insuficiente para conjurar ${ritual.name} (${form.label})! Necessário: ${form.totalCost} PE (Atual: ${peBar.current + tempPe} PE).`
       );
       return;
     }
-    if (!checkTurnPeLimitAllowed(form.totalCost, `${ritual.name} (${form.label})`)) {
+
+    const preAttrForLimit = Number(rawSheet.attributes?.pre ?? 1) + (bonuses.attributes['pre'] || 0);
+    const ritualPeTurnLimit = getOrdemRitualPeLimit(
+      levelOrNex,
+      rawSheet.origin,
+      characterAbilities,
+      preAttrForLimit,
+      rawSheet.trail
+    );
+    if (
+      hasActiveInitiativeOrder &&
+      form.totalCost > 0 &&
+      !(peSpentThisTurn === 0 && form.totalCost <= 2) &&
+      peSpentThisTurn + form.totalCost > ritualPeTurnLimit
+    ) {
+      showHoverToast(
+        `⚠️ Limite de PE por turno para rituais atingido (${peSpentThisTurn}/${ritualPeTurnLimit} PE)!`
+      );
       return;
     }
+
     if (hasActiveInitiativeOrder && form.totalCost > 0) {
       setPeSpentThisTurn((prev) => prev + form.totalCost);
     }
 
-    // 1. Teste de Ocultismo — O Custo do Paranormal (DT 20 + PE gasto)
+    const ritualDef = findOrdemRitualDef(ritual.id) || findOrdemRitualDef(ritual.name);
+    const ritualDefId = ritualDef?.id || '';
+    const ritualElementLower = (
+      form.element ||
+      ritual.element ||
+      ritualDef?.element ||
+      ''
+    ).toLowerCase();
+    const isMedoRitual = ritualElementLower === 'medo';
+
+    // 1. Calcula DT e bônus de Ocultismo e Ritual Potente antes de montar os efeitos e rolagens
     const dt = 20 + form.totalCost;
     const intAttr = Number(rawSheet.attributes?.int ?? 1) + (bonuses.attributes['int'] || 0);
     const ocultismoSkill = (rawSheet.skills || []).find((s: any) => s.id === 'ocultismo');
@@ -762,118 +1100,274 @@ export function SheetContainer({
       bonuses.skillBonusAll +
       (bonuses.skillBonus['ocultismo'] || 0);
 
-    const numD20 = ocultismoDice <= 0 ? Math.abs(ocultismoDice) + 2 : ocultismoDice;
-    const ocultismoRolls: number[] = [];
-    for (let i = 0; i < numD20; i++) {
-      ocultismoRolls.push(Math.floor(Math.random() * 20) + 1);
-    }
-    const keptRoll =
-      ocultismoDice <= 0 ? Math.min(...ocultismoRolls) : Math.max(...ocultismoRolls);
-    const ocultismoTotal = keptRoll + ocultismoMod;
-
-    const passed = ocultismoTotal >= dt;
-    const failedByFiveOrMore = !passed && dt - ocultismoTotal >= 5;
-    const sanLost = passed ? 0 : form.totalCost;
-    const permSanLost = failedByFiveOrMore ? 1 : 0;
-
-    // Dispara a rolagem oficial de Ocultismo no log da mesa usando EXATAMENTE os mesmos dados (fixedRolls) para que o Modal e a Notificação mostrem o mesmo valor!
-    triggerCharacterRoll(
-      `O Custo do Paranormal (Ocultismo DT ${dt}) — ${ritual.name} [${form.label}]`,
-      ocultismoDice,
-      20,
-      ocultismoMod,
-      false,
-      false,
-      ocultismoRolls
+    const hasRitualPotente = characterAbilities.some(
+      (ab) =>
+        ab.isActive !== false &&
+        (ab.id === 'ord-pwr-ocu-ritual-potente' ||
+          ab.name.toLowerCase().includes('ritual potente'))
     );
+    const ritualPotenteBonus = hasRitualPotente ? Math.max(0, intAttr) : 0;
 
-    // 2. Efeitos de Cena e PV Temporários (ex.: Consumir Manancial, Armadura de Sangue, Tela de Ruído, Embaralhar, Amaldiçoar Arma)
+    // 2. Efeitos de Cena, Arma, Sustentados e PV Temporários (Tela de Ruído / Forma Monstruosa / Cinerária / etc.)
     let nextTempHp = Number(rawSheet.tempHp || 0);
-    let nextTempPe = Number(rawSheet.tempPe || 0);
+    const nextTempPe = Number(rawSheet.tempPe || 0);
     let nextSceneEffects: SceneEffect[] = [...activeSceneEffects];
     const effectNotes: string[] = [];
     const isAmaldicoarArma = ritual.name.toLowerCase().includes('amaldiçoar arma');
-    const isCicatrizacao =
-      ritual.name.toLowerCase().includes('cicatrização') ||
-      ritual.name.toLowerCase().includes('cicatrizacao');
-    const originNormalized = String(rawSheet.origin || '').toLowerCase();
-    const isAgenteSaude =
-      originNormalized === 'agente_saude' || originNormalized === 'agente de saúde';
+    const isSustainedForm = Boolean(
+      (form.duration || ritualDef?.duration || '').toLowerCase().includes('sustentad')
+    );
+    const recurringInfo = getRecurringRitualInfo(ritualDefId, form, ritualPotenteBonus);
 
-    if (isAmaldicoarArma) {
-      const bonusWeaponDice =
-        form.mode === 'verdadeiro' ? '+4d6' : form.mode === 'discente' ? '+2d6' : '+1d6';
-      nextSceneEffects = nextSceneEffects.filter((e) => e.name !== ritual.name);
+    const prevSameRitualEffect = activeSceneEffects.find(
+      (e) =>
+        (e.ritualId && e.ritualId === ritual.id) ||
+        e.name.trim().toLowerCase() === ritual.name.trim().toLowerCase()
+    );
+    const withoutSameRitual = nextSceneEffects.filter(
+      (e) =>
+        !(
+          (e.ritualId && e.ritualId === ritual.id) ||
+          e.name.trim().toLowerCase() === ritual.name.trim().toLowerCase()
+        )
+    );
+
+    const newEffectBase: Partial<SceneEffect> = {
+      isSustainedRitual: isSustainedForm,
+      ritualId: ritual.id,
+      recurringFormula: recurringInfo.recurringFormula,
+      recurringLabel: recurringInfo.recurringLabel,
+      usesOcultismoManeuver: recurringInfo.usesOcultismoManeuver,
+    };
+
+    if (form.weaponExtraDice || form.weaponCritThreatSteps || isAmaldicoarArma) {
+      nextSceneEffects = [...withoutSameRitual];
+      const weaponDescParts: string[] = [];
+      if (isAmaldicoarArma || form.weaponExtraDice) {
+        const extraDiceText =
+          form.weaponExtraDice ||
+          (form.mode === 'verdadeiro' ? '4d6' : form.mode === 'discente' ? '2d6' : '1d6');
+        weaponDescParts.push(`+${extraDiceText} dano`);
+        if (ritual.name.toLowerCase().includes('chamas do caos')) {
+          weaponDescParts.push('Chamejar');
+        }
+      }
+      if (form.weaponCritThreatSteps) {
+        weaponDescParts.push(`+${form.weaponCritThreatSteps} margem de ameaça`);
+      }
+      if (form.weaponCritMultiplierBoost) {
+        weaponDescParts.push(`+${form.weaponCritMultiplierBoost}x multiplicador crítico`);
+      }
       nextSceneEffects.push({
         id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: ritual.name,
         source: form.label,
-        description: `Arma imbuída com ${bonusWeaponDice} de dano elemental até o fim da cena`,
+        description: `${form.label}: ${weaponDescParts.join(' • ')}`,
+        modifiers: form.sceneModifiers,
+        ...newEffectBase,
       });
-      effectNotes.push(`⚔️ ${ritual.name}: Arma imbuída com ${bonusWeaponDice} de dano durante a cena!`);
-    }
-
-    if (form.tempHpFormula) {
-      const rolled = rollDiceFormulaLocally(form.tempHpFormula);
-      nextTempHp += rolled.total;
-      nextSceneEffects = nextSceneEffects.filter((e) => e.name !== ritual.name);
-      nextSceneEffects.push({
-        id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: ritual.name,
-        source: `${form.label} (${form.tempHpFormula})`,
-        description: `+${rolled.total} PV Temporários até o fim da cena (Rolagem: [${rolled.rolls.join(', ')}])`,
-        tempHpGranted: rolled.total,
-      });
-      effectNotes.push(`🛡️ +${rolled.total} PV Temporários recebidos (${form.tempHpFormula}: [${rolled.rolls.join(', ')}])!`);
+      effectNotes.push(`⚔️ ${ritual.name} (${form.label}): ${weaponDescParts.join(', ')} ativo na cena!`);
     } else if (form.tempHpFlat) {
-      nextTempHp += form.tempHpFlat;
-      nextSceneEffects = nextSceneEffects.filter((e) => e.name !== ritual.name);
-      nextSceneEffects.push({
-        id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: ritual.name,
-        source: form.label,
-        description: `+${form.tempHpFlat} PV Temporários na cena`,
-        tempHpGranted: form.tempHpFlat,
-      });
-      effectNotes.push(`🛡️ +${form.tempHpFlat} PV Temporários recebidos!`);
-    }
-
-    if (form.sceneDefenseBonus) {
-      nextSceneEffects = nextSceneEffects.filter((e) => e.name !== ritual.name);
-      nextSceneEffects.push({
-        id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: ritual.name,
-        source: form.label,
-        description: `+${form.sceneDefenseBonus} na Defesa durante a cena`,
-        modifiers: [
-          {
-            id: `mod-${ritual.id}-def`,
-            targetType: 'defense',
-            targetKey: 'defesa',
-            value: form.sceneDefenseBonus,
-          },
-        ],
-      });
+      // Substitui eventual PV Temporário anterior do mesmo ritual (ex: Tela de Ruído Normal -> Discente)
+      const oldGranted = prevSameRitualEffect?.tempHpGranted || 0;
+      nextTempHp = Math.max(0, nextTempHp - oldGranted) + form.tempHpFlat;
+      nextSceneEffects = [
+        ...withoutSameRitual,
+        {
+          id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: ritual.name,
+          source: form.label,
+          description: `+${form.tempHpFlat} PV Temporários na cena`,
+          tempHpGranted: form.tempHpFlat,
+          modifiers: form.sceneModifiers,
+          ...newEffectBase,
+        },
+      ];
+      effectNotes.push(`🛡️ +${form.tempHpFlat} PV Temporários recebidos na cena!`);
+    } else if (form.sceneDefenseBonus) {
+      const defModifiers = [
+        {
+          id: `mod-${ritual.id}-def`,
+          targetType: 'defense' as const,
+          targetKey: 'defesa',
+          value: form.sceneDefenseBonus,
+        },
+        ...(form.sceneModifiers || []),
+      ];
+      nextSceneEffects = [
+        ...withoutSameRitual,
+        {
+          id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: ritual.name,
+          source: form.label,
+          description: `+${form.sceneDefenseBonus} na Defesa durante a cena`,
+          modifiers: defModifiers,
+          ...newEffectBase,
+        },
+      ];
       effectNotes.push(`🛡️ +${form.sceneDefenseBonus} na Defesa ativo até o fim da cena!`);
-    } else if (ritual.modifiers && ritual.modifiers.length > 0 && !form.sceneDefenseBonus) {
-      nextSceneEffects = nextSceneEffects.filter((e) => e.name !== ritual.name);
-      nextSceneEffects.push({
-        id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: ritual.name,
-        source: form.label,
-        description: form.description,
-        modifiers: ritual.modifiers,
-      });
-      effectNotes.push(`✨ Efeito de ${ritual.name} ativo na cena!`);
+    } else if (ritualDefId === 'ord-rit-cineraria') {
+      const cinerariaDesc =
+        form.mode === 'verdadeiro'
+          ? '+5 na DT, rituais custam -2 PE e causam dano maximizado na névoa'
+          : form.mode === 'discente'
+          ? '+5 na DT e rituais custam -2 PE na névoa'
+          : '+5 na DT dos rituais conjurados na névoa';
+      nextSceneEffects = [
+        ...withoutSameRitual,
+        {
+          id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: ritual.name,
+          source: form.label,
+          description: cinerariaDesc,
+          ...newEffectBase,
+        },
+      ];
+      effectNotes.push(`🌫️ Cinerária (${form.label}): ${cinerariaDesc}!`);
+    } else if (form.sceneModifiers && form.sceneModifiers.length > 0 && !form.tempHpFormula) {
+      nextSceneEffects = [
+        ...withoutSameRitual,
+        {
+          id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: ritual.name,
+          source: form.label,
+          description: form.description,
+          modifiers: form.sceneModifiers,
+          ...newEffectBase,
+        },
+      ];
+      effectNotes.push(`✨ Efeito de ${ritual.name} (${form.label}) ativo na cena!`);
+    } else if (
+      isSustainedForm ||
+      recurringInfo.recurringFormula ||
+      recurringInfo.usesOcultismoManeuver ||
+      (ritual.modifiers && ritual.modifiers.length > 0 && !form.tempHpFormula)
+    ) {
+      nextSceneEffects = [
+        ...withoutSameRitual,
+        {
+          id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: ritual.name,
+          source: form.label,
+          description: form.description,
+          modifiers: ritual.modifiers && ritual.modifiers.length > 0 ? ritual.modifiers : undefined,
+          ...newEffectBase,
+        },
+      ];
+      effectNotes.push(
+        isSustainedForm
+          ? `🔄 ${ritual.name} (${form.label}) agora está sustentado na cena!`
+          : `✨ Efeito de ${ritual.name} ativo na cena!`
+      );
     }
 
-    // 3. Atualiza PE (descontando PE Temp primeiro, se houver) e Sanidade
-    const absorbedTempPe = Math.min(nextTempPe, form.totalCost);
-    nextTempPe = Math.max(0, nextTempPe - absorbedTempPe);
-    const remainingPeCost = form.totalCost - absorbedTempPe;
+    const nextAbilities = isSustainedForm
+      ? characterAbilities.map((ab) =>
+          ab.id === ritual.id ? { ...ab, isSustainedActive: true } : ab
+        )
+      : characterAbilities;
+
+    // 3. Determina o efeito rolável vinculado (Dano, Cura, Vida Temporária ou Utilidade)
+    const isCinerariaVerdadeiroActive = activeSceneEffects.some((ef) => {
+      const nm = (ef.name || '').toLowerCase();
+      if (!nm.includes('cinerária') && !nm.includes('cineraria')) return false;
+      return `${ef.source || ''} ${ef.description || ''}`.toLowerCase().includes('verdadeiro');
+    });
+
+    let effectType: RitualEffectRollPayload['effectType'] | undefined;
+    let effectFormula: string | undefined;
+    let effectLabel: string | undefined;
+
+    if (form.healingFormula) {
+      effectType = 'healing';
+      effectFormula = appendFlatBonusToFormula(form.healingFormula, ritualPotenteBonus);
+    } else if (form.tempHpFormula && !form.damageFormula) {
+      effectType = 'temp_hp';
+      effectFormula = form.tempHpFormula;
+    } else if (ritualDefId === 'ord-rit-ouvir-sussurros') {
+      effectType = 'utility';
+      effectFormula = '1d6';
+      effectLabel = 'Sussurros (2–6 funciona, 1 falha)';
+    } else if (form.damageFormula && !isAmaldicoarArma) {
+      effectType = 'damage';
+      const baseDmgF =
+        ritualDefId === 'ord-rit-chamas-caos' && form.mode === 'normal'
+          ? '3d6'
+          : form.damageFormula;
+      effectFormula = appendFlatBonusToFormula(baseDmgF, ritualPotenteBonus);
+      if (ritualDefId === 'ord-rit-deflagracao-energia') {
+        effectLabel = 'Dano (Multiplique o total por 10)';
+      } else if (ritualDefId === 'ord-rit-chamas-caos' && form.mode === 'normal') {
+        effectLabel = 'Dano de Fogo (Modelar)';
+      }
+    }
+
+    const ritualEffectPayload: RitualEffectRollPayload = {
+      ritualId: ritual.id,
+      ritualName: ritual.name,
+      formLabel: form.label,
+      peSpent: usePoderDoFlagelo ? 0 : form.totalCost,
+      pvSpent: usePoderDoFlagelo ? pvCostFlagelo : undefined,
+      custoParanormalDt: dt,
+      effectType,
+      effectFormula,
+      effectLabel,
+      maximizeEffect:
+        effectType === 'damage' && isCinerariaVerdadeiroActive ? true : undefined,
+      appliedSceneSummary: effectNotes.length > 0 ? effectNotes.join(' • ') : undefined,
+    };
+
+    // 4. Invocando o Medo (p. 121) vs O Custo do Paranormal (DT 20 + PE gasto)
+    const ocultismoRolls: number[] = [];
+    let ocultismoTotal = 0;
+    let passed = false;
+    let failedByFiveOrMore = false;
+    let sanLost = 0;
+    let permSanLost = 0;
+
+    if (isMedoRitual) {
+      sanLost = form.totalCost;
+      permSanLost = form.mode === 'verdadeiro' ? 3 : form.mode === 'discente' ? 2 : 1;
+    } else {
+      const numD20 = ocultismoDice <= 0 ? Math.abs(ocultismoDice) + 2 : ocultismoDice;
+      for (let i = 0; i < numD20; i++) {
+        ocultismoRolls.push(Math.floor(Math.random() * 20) + 1);
+      }
+      const keptRoll =
+        ocultismoDice <= 0 ? Math.min(...ocultismoRolls) : Math.max(...ocultismoRolls);
+      ocultismoTotal = keptRoll + ocultismoMod;
+      passed = ocultismoTotal >= dt;
+      failedByFiveOrMore = !passed && dt - ocultismoTotal >= 5;
+      sanLost = passed ? 0 : form.totalCost;
+      permSanLost = failedByFiveOrMore ? 1 : 0;
+
+      // Dispara a rolagem oficial de Ocultismo no Modal já carregando o botão do Efeito do Ritual (se houver)!
+      triggerCharacterRoll(
+        `O Custo do Paranormal (Ocultismo DT ${dt}) — ${ritual.name} [${form.label}]`,
+        ocultismoDice,
+        20,
+        ocultismoMod,
+        false,
+        false,
+        ocultismoRolls,
+        undefined,
+        undefined,
+        ritualEffectPayload
+      );
+    }
+
+    // 5. Atualiza PV (se Poder do Flagelo) ou PE (descontando PE Temp primeiro) e Sanidade
+    const absorbedTempPe = usePoderDoFlagelo ? 0 : Math.min(nextTempPe, form.totalCost);
+    const updatedTempPe = usePoderDoFlagelo
+      ? nextTempPe
+      : Math.max(0, nextTempPe - absorbedTempPe);
+    const remainingPeCost = usePoderDoFlagelo ? 0 : form.totalCost - absorbedTempPe;
 
     const updatedVitals = character.vitals.map((bar) => {
-      if (bar.id === 'pe') {
+      if (bar.id === 'pv' && usePoderDoFlagelo) {
+        return { ...bar, current: Math.max(0, bar.current - pvCostFlagelo) };
+      }
+      if (bar.id === 'pe' && remainingPeCost > 0) {
         return { ...bar, current: Math.max(0, bar.current - remainingPeCost) };
       }
       if (bar.id === 'san' && (sanLost > 0 || permSanLost > 0)) {
@@ -889,19 +1383,22 @@ export function SheetContainer({
       vitals: updatedVitals,
       sheetData: {
         ...rawSheet,
+        abilities: nextAbilities,
         tempHp: nextTempHp,
-        tempPe: nextTempPe,
+        tempPe: updatedTempPe,
         sceneEffects: nextSceneEffects,
       },
     };
 
+    latestCharacterRef.current = nextChar;
     setCharacter(nextChar);
     handleSaveSheet(nextChar);
 
     setRitualCastSummaryModal({
       ritualName: ritual.name,
       formLabel: form.label,
-      peSpent: form.totalCost,
+      peSpent: usePoderDoFlagelo ? 0 : form.totalCost,
+      pvSpent: usePoderDoFlagelo ? pvCostFlagelo : undefined,
       dt,
       ocultismoRolls,
       ocultismoMod,
@@ -910,11 +1407,10 @@ export function SheetContainer({
       failedByFiveOrMore,
       sanLost,
       permSanLost,
+      isMedoRitual,
       effectAppliedText: effectNotes.length > 0 ? effectNotes.join(' • ') : undefined,
-      damageFormulaToRoll:
-        form.damageFormula && !form.tempHpFormula && !isAmaldicoarArma
-          ? form.damageFormula
-          : undefined,
+      damageFormulaToRoll: effectType === 'damage' ? effectFormula : undefined,
+      healingFormulaToRoll: effectType === 'healing' ? effectFormula : undefined,
     });
   }
 
@@ -1103,17 +1599,23 @@ export function SheetContainer({
     }
 
     if (originId === 'trambiqueiro') {
-      if (activeSceneEffects.some((e) => e.id === 'orig-scene-impostor')) {
+      const inCamp = Boolean(character?.campaignId);
+      if (inCamp && activeSceneEffects.some((e) => e.id === 'orig-scene-impostor')) {
         showHoverToast('🎭 Impostor só pode ser utilizado 1 vez por cena!');
         return;
       }
       if (
-        !handleSpendResource(2, {
-          id: 'orig-scene-impostor',
-          name: 'Impostor (Poder de Trambiqueiro)',
-          source: '1x/Cena',
-          description: 'Já utilizado nesta cena',
-        })
+        !handleSpendResource(
+          2,
+          inCamp
+            ? {
+                id: 'orig-scene-impostor',
+                name: 'Impostor (Poder de Trambiqueiro)',
+                source: '1x/Cena',
+                description: 'Já utilizado nesta cena',
+              }
+            : undefined
+        )
       ) {
         return;
       }
@@ -1127,7 +1629,7 @@ export function SheetContainer({
         (bonuses.skillBonus['enganacao'] || 0);
 
       triggerCharacterRoll(
-        'Teste de Enganação (Impostor -2 PE • 1x/Cena)',
+        `Teste de Enganação (Impostor -2 PE${inCamp ? ' • 1x/Cena' : ''})`,
         dice,
         20,
         mod
@@ -1199,13 +1701,27 @@ export function SheetContainer({
 
   const maxLoadSlots =
     character.system === 'ordem-paranormal'
-      ? getOrdemMaxLoad(strengthVal, intellectVal, rawSheet.trail, levelOrNex, 0)
+      ? getOrdemMaxLoad(
+          strengthVal,
+          intellectVal,
+          rawSheet.trail,
+          levelOrNex,
+          0,
+          characterAbilities
+        )
       : 10 + Math.max(0, strengthVal * 2);
 
-  const currentLoadSlots = (character.inventory || []).reduce(
-    (acc, item) => acc + item.slots * (item.quantity || 1),
-    0
+  const hasMochilaUtilidadesSheet = characterAbilities.some((ab) =>
+    ab.name.toLowerCase().includes('mochila de utilidades')
   );
+  const currentLoadSlots = (character.inventory || []).reduce((acc, item) => {
+    const qty = item.quantity || 1;
+    if (hasMochilaUtilidadesSheet && item.isUtilityBackpackItem) {
+      const reducedFirst = Math.max(0, item.slots - 1);
+      return acc + reducedFirst + item.slots * Math.max(0, qty - 1);
+    }
+    return acc + item.slots * qty;
+  }, 0);
   const isCharacterOverloaded =
     currentLoadSlots > maxLoadSlots + bonuses.loadLimit;
 
@@ -1297,7 +1813,112 @@ export function SheetContainer({
     setEvoRitualElementFilter('ALL');
     setEvoRitualCircleFilter('ALL');
     setEvoShowAmaldicoarPrompt(false);
+    setEvoExtraPowerRitualId('');
+    setEvoExpansaoPowerId('');
     setIsNexEvolutionOpen(true);
+  }
+
+  function getNexEvolutionMissingSteps(
+    currentNexVal: number,
+    nextNexVal: number,
+    milestoneObj: (typeof ORDEM_NEX_PROGRESSION)[number] | undefined
+  ): string[] {
+    if (!character || character.system !== 'ordem-paranormal') return [];
+    const missing: string[] = [];
+    if (currentNexVal >= 99) {
+      missing.push('Agente já atingiu o limite máximo de 99% de NEX');
+      return missing;
+    }
+
+    const activeTrail = evoTrailId || rawSheet.trail || '';
+    if (!rawSheet.trail && nextNexVal >= 10 && rawSheet.characterClass !== 'mundano' && !activeTrail) {
+      missing.push('Escolher sua Trilha de classe');
+    }
+
+    if (milestoneObj?.grantsClassPower || milestoneObj?.grantsVersatility) {
+      if (!evoSelectedPowerId) {
+        missing.push('Escolher 1 Poder (de Classe, Transcender ou Versatilidade)');
+      } else if (evoChoiceMode !== 'versatility') {
+        const pEntry =
+          compendiumEntries.find((e) => e.id === evoSelectedPowerId) ||
+          ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoSelectedPowerId);
+        if (pEntry) {
+          const pNameLower = pEntry.name.toLowerCase();
+          if (evoChoiceMode === 'class_power' && pNameLower.includes('treinamento em perícia')) {
+            const eligiblePowerSkills = (rawSheet.skills || []).filter((sk: any) => {
+              const deg = Number(sk.trainingDegree || 0);
+              return deg === 0 || (deg === 5 && nextNexVal >= 35) || (deg === 10 && nextNexVal >= 70);
+            });
+            const reqCount = Math.min(2, eligiblePowerSkills.length);
+            if (reqCount > 0 && evoSkillTrainingPowerIds.length < reqCount) {
+              missing.push(`Escolher ${reqCount} perícia(s) para Treinamento em Perícia`);
+            }
+          }
+          if (
+            evoChoiceMode === 'transcend' &&
+            (pEntry.id === 'ord-para-aprender-ritual' || pNameLower.includes('aprender ritual')) &&
+            !evoExtraPowerRitualId
+          ) {
+            missing.push('Escolher o ritual do poder Aprender Ritual');
+          }
+          if (
+            evoChoiceMode === 'transcend' &&
+            (pEntry.id === 'ord-para-conh-expansao' ||
+              pNameLower.includes('expansão de conhecimento')) &&
+            !evoExpansaoPowerId
+          ) {
+            missing.push('Escolher o poder de outra classe (Expansão de Conhecimento)');
+          }
+        }
+      }
+    }
+
+    if (milestoneObj?.grantsAttributeIncrease) {
+      const currVal = Number(rawSheet.attributes?.[evoAttrKey] ?? 1);
+      if (currVal >= 5) {
+        missing.push('Selecionar um atributo abaixo de 5 para o aumento');
+      }
+    }
+
+    if (milestoneObj?.grantsTrainingUpgrade) {
+      const clsObjLocal =
+        ORDEM_CLASSES.find((c) => c.id === rawSheet.characterClass) || ORDEM_CLASSES[0];
+      const effIntLocal =
+        Number(rawSheet.attributes?.int ?? 1) +
+        (milestoneObj.grantsAttributeIncrease && evoAttrKey === 'int' ? 1 : 0);
+      const maxSkUp = (clsObjLocal.trainingUpgradeBase || 2) + Math.max(0, effIntLocal);
+      const eligibleUpSkills = (rawSheet.skills || []).filter((s: any) =>
+        nextNexVal >= 70 ? s.trainingDegree === 10 : s.trainingDegree === 5
+      );
+      const requiredSkCount = Math.min(maxSkUp, eligibleUpSkills.length);
+      if (requiredSkCount > 0 && evoUpgradeSkills.length < requiredSkCount) {
+        missing.push(
+          `Escolher ${requiredSkCount} perícias para Grau de Treinamento (${evoUpgradeSkills.length}/${requiredSkCount})`
+        );
+      }
+    }
+
+    if (milestoneObj?.grantsAffinity && (!evoAffinity || evoAffinity === 'Nenhuma')) {
+      missing.push('Escolher sua Afinidade Elemental (NEX 50%)');
+    }
+
+    if (rawSheet.characterClass === 'ocultista') {
+      const maxCircle = nextNexVal >= 85 ? 4 : nextNexVal >= 55 ? 3 : nextNexVal >= 25 ? 2 : 1;
+      const spellPool =
+        compendiumEntries.filter((e) => e.category === 'spell').length > 0
+          ? compendiumEntries.filter((e) => e.category === 'spell')
+          : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'spell');
+      const hasUnlearnedRitual = spellPool.some(
+        (r) =>
+          (r.metadata?.circle || 1) <= maxCircle &&
+          !isOrdemRitualAlreadyOwned(r, characterAbilities)
+      );
+      if (hasUnlearnedRitual && !evoNewRitualId) {
+        missing.push('Escolher +1 Novo Ritual aprendido para este NEX');
+      }
+    }
+
+    return missing;
   }
 
   function handleConfirmNexEvolution() {
@@ -1305,6 +1926,12 @@ export function SheetContainer({
     const currentNex = Number(rawSheet.nex ?? 5);
     const nextNex = currentNex === 0 ? 5 : currentNex === 95 ? 99 : Math.min(99, currentNex + 5);
     const milestone = ORDEM_NEX_PROGRESSION.find((m) => m.nex === nextNex);
+
+    const missingSteps = getNexEvolutionMissingSteps(currentNex, nextNex, milestone);
+    if (missingSteps.length > 0) {
+      showHoverToast(`⚠️ Complete as escolhas obrigatórias antes de evoluir: ${missingSteps.join(' • ')}`);
+      return;
+    }
 
     const nextAttributes = {
       agi: Number(rawSheet.attributes?.agi ?? 1),
@@ -1330,7 +1957,65 @@ export function SheetContainer({
       ? [...rawSheet.proficiencies]
       : [];
     const nextAttacks: PreparedAttack[] = [...(character.attacks || [])];
+    const nextInventory: RPGItem[] = [...(character.inventory || [])];
     let trainedFromPowerIds: string[] = [];
+
+    // Helper local para aplicar proficiências/ataques automáticos ao ganhar um poder de classe
+    function applyPowerAutoGrants(entry: CompendiumEntryData) {
+      const lowerPowerName = entry.name.toLowerCase();
+      if (
+        lowerPowerName.includes('armamento pesado') &&
+        !nextProficiencies.some((p) => p.toLowerCase().includes('armas pesadas'))
+      ) {
+        nextProficiencies.push('Armas pesadas');
+      }
+      if (
+        (lowerPowerName.includes('balística avançada') ||
+          lowerPowerName.includes('balistica avancada')) &&
+        !nextProficiencies.some((p) => p.toLowerCase().includes('armas táticas de fogo'))
+      ) {
+        nextProficiencies.push('Armas táticas de fogo');
+      }
+      if (
+        lowerPowerName.includes('ninja urbano') &&
+        !nextProficiencies.some((p) => p.toLowerCase().includes('corpo a corpo e de disparo'))
+      ) {
+        nextProficiencies.push('Armas táticas corpo a corpo e de disparo');
+      }
+      if (
+        (lowerPowerName.includes('proteção pesada') ||
+          lowerPowerName.includes('protecao pesada')) &&
+        !nextProficiencies.some(
+          (p) =>
+            p.toLowerCase().includes('proteções pesadas') ||
+            p.toLowerCase().includes('protecoes pesadas')
+        )
+      ) {
+        nextProficiencies.push('Proteções pesadas');
+      }
+      if (
+        lowerPowerName.includes('artista marcial') &&
+        !nextAttacks.some((a) => a.isUnarmed || a.name.toLowerCase().includes('desarmado'))
+      ) {
+        const lutaSk = Array.isArray(rawSheet.skills)
+          ? rawSheet.skills.find((s: any) => s.id === 'luta')
+          : null;
+        const dieSides = nextNex >= 70 ? 10 : nextNex >= 35 ? 8 : 6;
+        nextAttacks.push({
+          id: `atk-unarmed-${Math.random().toString(36).slice(2, 7)}`,
+          name: 'Ataque Desarmado (Artista Marcial)',
+          diceCount: Math.max(1, nextAttributes.for, nextAttributes.agi),
+          attackBonus:
+            Number(lutaSk?.trainingDegree ?? 0) + Number(lutaSk?.otherModifier ?? 0),
+          damageFormula: `1d${dieSides}`,
+          critRange: '20/x2',
+          damageType: 'Impacto',
+          isMelee: true,
+          isFirearm: false,
+          isUnarmed: true,
+        });
+      }
+    }
 
     // Sincronizar poderes de Trilha até o novo NEX
     if (chosenTrailId && nextNex >= 10) {
@@ -1350,6 +2035,87 @@ export function SheetContainer({
               isActive: tp.cost === 0,
               modifiers: tp.modifiers || [],
             });
+          }
+        }
+        if (
+          trail.id === 'atirador_elite' &&
+          !nextProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+        ) {
+          nextProficiencies.push('Armas de fogo (balas longas)');
+        }
+        if (
+          trail.id === 'lamina_paranormal' &&
+          nextNex >= 10 &&
+          !nextAbilities.some((ab) => ab.name.toLowerCase().includes('amaldiçoar arma'))
+        ) {
+          const baseAmaldicoar =
+            compendiumEntries.find((e) => e.id === 'ord-rit-amaldicoar-arma') ||
+            ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === 'ord-rit-amaldicoar-arma');
+          nextAbilities.push({
+            id: 'rit-lamina-maldita-amaldicoar',
+            name: 'Amaldiçoar Arma — Sangue (Lâmina Maldita)',
+            category: 'ritual',
+            cost: 1,
+            element: 'Sangue',
+            description:
+              baseAmaldicoar?.description ||
+              'Imbui uma arma com dano elemental (+1d6 / +2d6 Discente / +4d6 Verdadeiro). Pode gastar +1 PE para conjurar como ação de movimento.',
+            isActive: false,
+            modifiers: [],
+          });
+        }
+        if (
+          trail.id === 'graduado' &&
+          nextNex >= 40 &&
+          !nextInventory.some(
+            (it) =>
+              it.name.toLowerCase().includes('grimório') ||
+              it.name.toLowerCase().includes('grimorio')
+          )
+        ) {
+          nextInventory.push({
+            id: 'item-grimorio-ritualistico',
+            name: 'Grimório Ritualístico',
+            slots: 1,
+            quantity: 1,
+            category: 0,
+            description:
+              'Grimório especial de Ocultista Graduado (40%): armazena seus rituais extras (até seu Intelecto).',
+          });
+        }
+        if (rawSheet.characterClass === 'ocultista' && nextNex === 99) {
+          const trail99Map: Record<string, string> = {
+            conduite: 'ord-rit-canalizar-medo',
+            flagelador: 'ord-rit-medo-tangivel',
+            graduado: 'ord-rit-conhecendo-medo',
+            intuitivo: 'ord-rit-presenca-medo',
+            lamina_paranormal: 'ord-rit-lamina-medo',
+          };
+          const fearRitualId = trail99Map[trail.id];
+          if (fearRitualId) {
+            const rEntry99 =
+              compendiumEntries.find((e) => e.id === fearRitualId) ||
+              ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === fearRitualId);
+            if (
+              rEntry99 &&
+              !nextAbilities.some(
+                (ab) =>
+                  ab.id.includes(fearRitualId) ||
+                  ab.name.toLowerCase().includes(rEntry99.name.split(' (')[0].toLowerCase())
+              )
+            ) {
+              nextAbilities.push({
+                id: `rit-nex99-${rEntry99.id}`,
+                name: rEntry99.name,
+                category: 'ritual',
+                cost: rEntry99.cost,
+                element: 'Medo',
+                description: rEntry99.description,
+                damageFormula: rEntry99.metadata?.damageFormula,
+                isActive: false,
+                modifiers: rEntry99.modifiers || [],
+              });
+            }
           }
         }
       }
@@ -1374,6 +2140,12 @@ export function SheetContainer({
             isActive: p10.cost === 0,
             modifiers: p10.modifiers || [],
           });
+          if (
+            versTrail.id === 'atirador_elite' &&
+            !nextProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+          ) {
+            nextProficiencies.push('Armas de fogo (balas longas)');
+          }
         }
       } else {
         const pEntry =
@@ -1396,10 +2168,30 @@ export function SheetContainer({
           );
           if (existingIdx >= 0 && evoChoiceMode === 'transcend') {
             // Upgrade de Afinidade do Poder Paranormal
+            const existingAb = nextAbilities[existingIdx];
+            let upgradedModifiers = existingAb.modifiers || pEntry.modifiers || [];
+            if (
+              pEntry.id === 'ord-para-mort-potencial-aprimorado' ||
+              pEntry.name.toLowerCase().includes('potencial aprimorado')
+            ) {
+              upgradedModifiers = [
+                { id: 'm-pot-aprim-af', targetType: 'vital_max', targetKey: 'pe', value: 2, scaleWithLevel: true },
+              ];
+            } else if (
+              pEntry.id === 'ord-para-sang-sangue-ferro' ||
+              pEntry.name.toLowerCase().includes('sangue de ferro')
+            ) {
+              upgradedModifiers = [
+                { id: 'm2', targetType: 'vital_max', targetKey: 'pv', value: 2, scaleWithLevel: true },
+                { id: 'm-sf-fort-af', targetType: 'skill_bonus', targetKey: 'fortitude', value: 5 },
+              ];
+            }
             nextAbilities[existingIdx] = {
-              ...nextAbilities[existingIdx],
+              ...existingAb,
               name: `${pEntry.name} (Afinidade)`,
               category: 'poder_paranormal',
+              hasAffinityUpgrade: true,
+              modifiers: upgradedModifiers,
             };
           } else {
             const requiresManualToggle =
@@ -1416,56 +2208,66 @@ export function SheetContainer({
                   ? 'poder_paranormal'
                   : 'poder',
               cost: pEntry.cost,
+              element: pEntry.metadata?.element,
               description: pEntry.description,
               isActive: pEntry.cost === 0 && !requiresManualToggle,
               modifiers: pEntry.modifiers || [],
             });
 
-            const lowerPowerName = pEntry.name.toLowerCase();
+            applyPowerAutoGrants(pEntry);
             if (
-              lowerPowerName.includes('armamento pesado') &&
-              !nextProficiencies.some((p) => p.toLowerCase().includes('armas pesadas'))
-            ) {
-              nextProficiencies.push('Armas pesadas');
-            }
-            if (
-              (lowerPowerName.includes('proteção pesada') ||
-                lowerPowerName.includes('protecao pesada')) &&
-              !nextProficiencies.some(
-                (p) =>
-                  p.toLowerCase().includes('proteções pesadas') ||
-                  p.toLowerCase().includes('protecoes pesadas')
-              )
-            ) {
-              nextProficiencies.push('Proteções pesadas');
-            }
-            if (
-              lowerPowerName.includes('artista marcial') &&
-              !nextAttacks.some((a) => a.isUnarmed || a.name.toLowerCase().includes('desarmado'))
-            ) {
-              const lutaSk = Array.isArray(rawSheet.skills)
-                ? rawSheet.skills.find((s: any) => s.id === 'luta')
-                : null;
-              const dieSides = nextNex >= 70 ? 10 : nextNex >= 35 ? 8 : 6;
-              nextAttacks.push({
-                id: `atk-unarmed-${Math.random().toString(36).slice(2, 7)}`,
-                name: 'Ataque Desarmado (Artista Marcial)',
-                diceCount: Math.max(1, nextAttributes.for, nextAttributes.agi),
-                attackBonus:
-                  Number(lutaSk?.trainingDegree ?? 0) + Number(lutaSk?.otherModifier ?? 0),
-                damageFormula: `1d${dieSides}`,
-                critRange: '20/x2',
-                damageType: 'Impacto',
-                isMelee: true,
-                isFirearm: false,
-                isUnarmed: true,
-              });
-            }
-            if (
-              lowerPowerName.includes('treinamento em perícia') &&
+              pEntry.name.toLowerCase().includes('treinamento em perícia') &&
               evoSkillTrainingPowerIds.length > 0
             ) {
               trainedFromPowerIds = [...evoSkillTrainingPowerIds];
+            }
+            // Aprender Ritual (Poder Paranormal): adiciona também o ritual escolhido
+            if (
+              (pEntry.id === 'ord-para-aprender-ritual' ||
+                pEntry.name.toLowerCase().includes('aprender ritual')) &&
+              evoExtraPowerRitualId
+            ) {
+              const [exRitId, exEl] = evoExtraPowerRitualId.split(':');
+              const rExtra =
+                compendiumEntries.find((e) => e.id === exRitId) ||
+                ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === exRitId);
+              if (rExtra) {
+                nextAbilities.push({
+                  id: exEl
+                    ? `rit-aprender-${nextNex}-${rExtra.id}-${exEl.toLowerCase()}`
+                    : `rit-aprender-${nextNex}-${rExtra.id}`,
+                  name: exEl ? `Amaldiçoar Arma — ${exEl} (1º Círculo)` : rExtra.name,
+                  category: 'ritual',
+                  cost: rExtra.cost,
+                  element: exEl || rExtra.metadata?.element,
+                  description: rExtra.description,
+                  damageFormula: rExtra.metadata?.damageFormula,
+                  isActive: false,
+                  modifiers: rExtra.modifiers || [],
+                });
+              }
+            }
+            // Expansão de Conhecimento: adiciona também o poder de outra classe escolhido
+            if (
+              (pEntry.id === 'ord-para-conh-expansao' ||
+                pEntry.name.toLowerCase().includes('expansão de conhecimento')) &&
+              evoExpansaoPowerId
+            ) {
+              const expEntry =
+                compendiumEntries.find((e) => e.id === evoExpansaoPowerId) ||
+                ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === evoExpansaoPowerId);
+              if (expEntry) {
+                nextAbilities.push({
+                  id: `expansao-${nextNex}-${expEntry.id}`,
+                  name: `${expEntry.name} (Expansão)`,
+                  category: 'poder',
+                  cost: expEntry.cost,
+                  description: expEntry.description,
+                  isActive: expEntry.cost === 0,
+                  modifiers: expEntry.modifiers || [],
+                });
+                applyPowerAutoGrants(expEntry);
+              }
             }
           }
         }
@@ -1541,7 +2343,7 @@ export function SheetContainer({
       'ordem-paranormal',
       nextNex,
       nextAbilities,
-      character.inventory || [],
+      nextInventory,
       activeConditions
     );
 
@@ -1581,6 +2383,7 @@ export function SheetContainer({
       ...character,
       vitals: updatedVitals,
       attacks: nextAttacks,
+      inventory: nextInventory,
       sheetData: {
         ...rawSheet,
         nex: nextNex,
@@ -2337,21 +3140,28 @@ export function SheetContainer({
               }`}
             >
               <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider">
-                    🔮 {ritualCastSummaryModal.ritualName} ({ritualCastSummaryModal.formLabel}) • -{ritualCastSummaryModal.peSpent} PE
-                  </span>
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-black/40">
-                    Teste de Ocultismo: [{ritualCastSummaryModal.ocultismoRolls.join(', ')}] + {ritualCastSummaryModal.ocultismoMod} = {ritualCastSummaryModal.ocultismoTotal} vs DT {ritualCastSummaryModal.dt}
-                  </span>
-                </div>
-                <p className="text-xs font-bold">
-                  {ritualCastSummaryModal.passed
-                    ? '✅ Sucesso no Custo do Paranormal! Sua mente resistiu ao Outro Lado (0 de Sanidade perdida).'
-                    : ritualCastSummaryModal.failedByFiveOrMore
-                    ? `💀 Falha por 5 ou mais no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} de Sanidade atual e -1 de Sanidade Máxima Permanente!`
-                    : `⚠️ Falha no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} pontos de Sanidade.`}
-                </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider">
+                      🔮 {ritualCastSummaryModal.ritualName} ({ritualCastSummaryModal.formLabel}) •{' '}
+                      {ritualCastSummaryModal.pvSpent
+                        ? `-${ritualCastSummaryModal.pvSpent} PV`
+                        : `-${ritualCastSummaryModal.peSpent} PE`}
+                    </span>
+                    {!ritualCastSummaryModal.isMedoRitual && (
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-black/40">
+                        Teste de Ocultismo: [{ritualCastSummaryModal.ocultismoRolls.join(', ')}] + {ritualCastSummaryModal.ocultismoMod} = {ritualCastSummaryModal.ocultismoTotal} vs DT {ritualCastSummaryModal.dt}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold">
+                    {ritualCastSummaryModal.isMedoRitual
+                      ? `💀 Invocando o Medo: você perdeu ${ritualCastSummaryModal.sanLost} de Sanidade atual e -${ritualCastSummaryModal.permSanLost} de Sanidade Máxima Permanente!`
+                      : ritualCastSummaryModal.passed
+                      ? '✅ Sucesso no Custo do Paranormal! Sua mente resistiu ao Outro Lado (0 de Sanidade perdida).'
+                      : ritualCastSummaryModal.failedByFiveOrMore
+                      ? `💀 Falha por 5 ou mais no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} de Sanidade atual e -1 de Sanidade Máxima Permanente!`
+                      : `⚠️ Falha no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} pontos de Sanidade.`}
+                  </p>
                 {ritualCastSummaryModal.effectAppliedText && (
                   <p className="text-xs text-cyan-300 font-bold">
                     {ritualCastSummaryModal.effectAppliedText}
@@ -2359,28 +3169,50 @@ export function SheetContainer({
                 )}
               </div>
               <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                {ritualCastSummaryModal.damageFormulaToRoll && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const clean = ritualCastSummaryModal.damageFormulaToRoll!
-                        .toLowerCase()
-                        .replace(/\s+/g, '');
-                      const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
-                      if (match) {
-                        triggerCharacterRoll(
-                          `Efeito: ${ritualCastSummaryModal.ritualName} (${ritualCastSummaryModal.formLabel})`,
-                          parseInt(match[1], 10),
-                          parseInt(match[2], 10),
-                          match[3] ? parseInt(match[3], 10) : 0
-                        );
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold shadow cursor-pointer"
-                  >
-                    🎲 Rolar Efeito ({ritualCastSummaryModal.damageFormulaToRoll})
-                  </button>
-                )}
+                  {ritualCastSummaryModal.damageFormulaToRoll && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const clean = ritualCastSummaryModal.damageFormulaToRoll!
+                          .toLowerCase()
+                          .replace(/\s+/g, '');
+                        const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
+                        if (match) {
+                          triggerCharacterRoll(
+                            `Efeito: ${ritualCastSummaryModal.ritualName} (${ritualCastSummaryModal.formLabel})`,
+                            parseInt(match[1], 10),
+                            parseInt(match[2], 10),
+                            match[3] ? parseInt(match[3], 10) : 0
+                          );
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold shadow cursor-pointer"
+                    >
+                      🎲 Rolar Dano ({ritualCastSummaryModal.damageFormulaToRoll})
+                    </button>
+                  )}
+                  {ritualCastSummaryModal.healingFormulaToRoll && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const clean = ritualCastSummaryModal.healingFormulaToRoll!
+                          .toLowerCase()
+                          .replace(/\s+/g, '');
+                        const match = clean.match(/^(\d+)d(\d+)([+-]\d+)?$/);
+                        if (match) {
+                          triggerCharacterRoll(
+                            `Cura: ${ritualCastSummaryModal.ritualName} (${ritualCastSummaryModal.formLabel})`,
+                            parseInt(match[1], 10),
+                            parseInt(match[2], 10),
+                            match[3] ? parseInt(match[3], 10) : 0
+                          );
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-extrabold shadow cursor-pointer"
+                    >
+                      💚 Rolar Cura ({ritualCastSummaryModal.healingFormulaToRoll})
+                    </button>
+                  )}
                 <button
                   type="button"
                   onClick={() => setRitualCastSummaryModal(null)}
@@ -2692,6 +3524,7 @@ export function SheetContainer({
             return a.name.localeCompare(b.name, 'pt-BR');
           });
 
+        const evoKnownRitualsSet = createKnownRitualsKeySet(characterAbilities);
         const allRitualsUpToCircle = (
           compendiumEntries.filter((e) => e.category === 'spell').length > 0
             ? compendiumEntries.filter((e) => e.category === 'spell')
@@ -2714,7 +3547,12 @@ export function SheetContainer({
               r.name.toLowerCase().includes(evoRitualSearch.toLowerCase()) ||
               r.description.toLowerCase().includes(evoRitualSearch.toLowerCase())
           )
-          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          .sort((a, b) => {
+            const ownedA = isOrdemRitualAlreadyOwned(a, characterAbilities, evoKnownRitualsSet) ? 1 : 0;
+            const ownedB = isOrdemRitualAlreadyOwned(b, characterAbilities, evoKnownRitualsSet) ? 1 : 0;
+            if (ownedA !== ownedB) return ownedA - ownedB;
+            return a.name.localeCompare(b.name, 'pt-BR');
+          });
 
         const classSpecificSummary = getOrdemClassMilestoneSummary(
           rawSheet.characterClass || 'combatente',
@@ -3127,6 +3965,110 @@ export function SheetContainer({
                               </div>
                             );
                           })()}
+
+                        {/* Seletor de Ritual quando Aprender Ritual (Transcender) for escolhido */}
+                        {evoChoiceMode === 'transcend' &&
+                          (() => {
+                            const selectedEntry = paranormalPowerOptions.find(
+                              (e) => e.id === evoSelectedPowerId
+                            );
+                            if (
+                              !selectedEntry ||
+                              (selectedEntry.id !== 'ord-para-aprender-ritual' &&
+                                !selectedEntry.name.toLowerCase().includes('aprender ritual'))
+                            ) {
+                              return null;
+                            }
+                            const maxAprenderCircle = Math.min(2, maxCircleUnlocked);
+                            const eligibleKnownSet = createKnownRitualsKeySet(characterAbilities);
+                            const eligibleRituals = (
+                              compendiumEntries.filter((e) => e.category === 'spell').length > 0
+                                ? compendiumEntries.filter((e) => e.category === 'spell')
+                                : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'spell')
+                            )
+                              .filter((r) => (r.metadata?.circle || 1) <= maxAprenderCircle)
+                              .sort((a, b) => {
+                                const ownedA = isOrdemRitualAlreadyOwned(a, characterAbilities, eligibleKnownSet) ? 1 : 0;
+                                const ownedB = isOrdemRitualAlreadyOwned(b, characterAbilities, eligibleKnownSet) ? 1 : 0;
+                                if (ownedA !== ownedB) return ownedA - ownedB;
+                                return a.name.localeCompare(b.name, 'pt-BR');
+                              });
+
+                            return (
+                              <div className="mt-2 p-3 rounded-xl bg-zinc-900 border border-purple-500/40 space-y-2">
+                                <label className="block text-xs font-bold text-purple-300">
+                                  🔮 Aprender Ritual: Escolha o Ritual (até {maxAprenderCircle}º Círculo)
+                                </label>
+                                <select
+                                  value={evoExtraPowerRitualId}
+                                  onChange={(e) => setEvoExtraPowerRitualId(e.target.value)}
+                                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-purple-700 text-xs text-white"
+                                >
+                                  <option value="">-- Selecione um Ritual --</option>
+                                  {eligibleRituals.map((r) => {
+                                    const alreadyOwned = isOrdemRitualAlreadyOwned(r, characterAbilities, eligibleKnownSet);
+                                    return (
+                                      <option key={r.id} value={r.id} disabled={alreadyOwned}>
+                                        {r.name} ({r.metadata?.circle || 1}ºC • {r.metadata?.element || 'Paranormal'}){alreadyOwned ? ' [✓ Já possui]' : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+                            );
+                          })()}
+
+                        {/* Seletor de Poder de Outra Classe quando Expansão de Conhecimento for escolhido */}
+                        {evoChoiceMode === 'transcend' &&
+                          (() => {
+                            const selectedEntry = paranormalPowerOptions.find(
+                              (e) => e.id === evoSelectedPowerId
+                            );
+                            if (
+                              !selectedEntry ||
+                              (selectedEntry.id !== 'ord-para-conh-expansao' &&
+                                !selectedEntry.name
+                                  .toLowerCase()
+                                  .includes('expansão de conhecimento'))
+                            ) {
+                              return null;
+                            }
+                            const otherClassPowers = allPowerEntries
+                              .filter((e) => {
+                                const ln = e.name.toLowerCase();
+                                const lr = (e.metadata?.requirements || '').toLowerCase();
+                                if (
+                                  ln.includes('ataque especial') ||
+                                  ln.includes('treinamento em perícia')
+                                ) {
+                                  return false;
+                                }
+                                return !lr.includes(
+                                  String(rawSheet.characterClass || '').toLowerCase()
+                                );
+                              })
+                              .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+                            return (
+                              <div className="mt-2 p-3 rounded-xl bg-zinc-900 border border-amber-500/40 space-y-2">
+                                <label className="block text-xs font-bold text-amber-300">
+                                  👁️ Expansão de Conhecimento: Escolha 1 Poder de Outra Classe
+                                </label>
+                                <select
+                                  value={evoExpansaoPowerId}
+                                  onChange={(e) => setEvoExpansaoPowerId(e.target.value)}
+                                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-amber-700 text-xs text-white"
+                                >
+                                  <option value="">-- Selecione um Poder de Outra Classe --</option>
+                                  {otherClassPowers.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })()}
                       </>
                     )}
                   </div>
@@ -3357,9 +4299,7 @@ export function SheetContainer({
                         const isAmaldicoar =
                           r.id === 'ord-rit-amaldicoar-arma' ||
                           r.name.toLowerCase().includes('amaldiçoar arma');
-                        const alreadyKnown = !isAmaldicoar && characterAbilities.some(
-                          (ab) => ab.name.trim().toLowerCase() === r.name.trim().toLowerCase()
-                        );
+                        const alreadyKnown = isOrdemRitualAlreadyOwned(r, characterAbilities, evoKnownRitualsSet);
                         const isPicked =
                           evoNewRitualId === r.id || evoNewRitualId.startsWith(`${r.id}:`);
                         const pickedElement = evoNewRitualId.startsWith(`${r.id}:`)
@@ -3422,22 +4362,43 @@ export function SheetContainer({
                 )}
               </div>
 
-              <div className="px-6 py-4 bg-zinc-950 border-t border-zinc-800 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsNexEvolutionOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-bold cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmNexEvolution}
-                  className="px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider shadow-lg cursor-pointer"
-                >
-                  ✅ Confirmar Evolução para NEX {nextNex}%
-                </button>
-              </div>
+              {(() => {
+                const evoMissingRequirements = getNexEvolutionMissingSteps(
+                  currentNex,
+                  nextNex,
+                  milestone
+                );
+                return (
+                  <div className="px-6 py-4 bg-zinc-950 border-t border-zinc-800 space-y-2.5">
+                    {evoMissingRequirements.length > 0 && (
+                      <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-500/60 text-xs text-amber-200 font-semibold">
+                        ⚠️ Pendente antes de avançar: {evoMissingRequirements.join(' • ')}
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsNexEvolutionOpen(false)}
+                        className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-bold cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={evoMissingRequirements.length > 0}
+                        onClick={handleConfirmNexEvolution}
+                        className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider shadow-lg transition ${
+                          evoMissingRequirements.length > 0
+                            ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                        }`}
+                      >
+                        ✅ Confirmar Evolução para NEX {nextNex}%
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );
@@ -3450,6 +4411,7 @@ export function SheetContainer({
           bonuses={bonuses}
           customSkills={customSkills}
           abilities={characterAbilities}
+          isInCampaign={Boolean(character.campaignId)}
           isOverloaded={isCharacterOverloaded}
           isMachucado={isCharacterMachucado}
           isEditMode={isEditMode}
@@ -3460,6 +4422,7 @@ export function SheetContainer({
           onOpenInterlude={canMasterControl ? () => setIsInterludeModalOpen(true) : undefined}
           onCheckResource={handleCheckResource}
           onSpendResource={handleSpendResource}
+          onHealPv={handleHealPv}
           hasActiveInitiativeOrder={hasActiveInitiativeOrder}
           isMyTurnInCombat={isMyTurnInCombat}
           currentRoundNumber={currentRoundNumber}
@@ -3608,6 +4571,10 @@ export function SheetContainer({
             ? (character.sheetData as OrdemSheetData)
             : undefined
         }
+        isInCampaign={Boolean(character.campaignId)}
+        campaignId={character.campaignId || undefined}
+        characterId={character.id}
+        characterName={character.name}
         bonuses={bonuses}
         compendiumEntries={compendiumEntries}
         isEditMode={isEditMode}
@@ -3663,6 +4630,21 @@ export function SheetContainer({
         onCheckResource={handleCheckResource}
         onSpendResource={handleSpendResource}
         onCastOrdemRitual={handleCastOrdemRitual}
+        onGrantTempPe={handleGrantTempPe}
+        onUpdateSceneEffects={(newEffects) => {
+          const base = latestCharacterRef.current;
+          if (!base) return;
+          const baseRaw = (base.sheetData || {}) as Record<string, any>;
+          const nextChar: FullCharacterResponse = {
+            ...base,
+            sheetData: { ...baseRaw, sceneEffects: newEffects },
+          };
+          latestCharacterRef.current = nextChar;
+          setCharacter(nextChar);
+          if (!isEditMode) {
+            scheduleGameModeSave();
+          }
+        }}
         onTriggerOriginSpecial={handleTriggerOriginSpecial}
         vislumbresSuccessPending={Boolean(
           vislumbresResult?.passed && !vislumbresResult?.peGranted
@@ -3678,7 +4660,11 @@ export function SheetContainer({
           _isDamage,
           attackDamagePayload,
           forcaOpressoraPayload
-        ) =>
+        ) => {
+          const fixedRolls =
+            _isDamage && attackDamagePayload?.maximizeCritDamage
+              ? Array(Math.max(1, count)).fill(sides)
+              : undefined;
           triggerCharacterRoll(
             label,
             count,
@@ -3686,11 +4672,11 @@ export function SheetContainer({
             mod,
             false,
             false,
-            undefined,
-            attackDamagePayload,
+            fixedRolls,
+            _isDamage ? undefined : attackDamagePayload,
             forcaOpressoraPayload
-          )
-        }
+          );
+        }}
       />
     </div>
   );

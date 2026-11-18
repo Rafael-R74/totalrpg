@@ -41,6 +41,8 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   }
 });
 
+app.set('io', io);
+
 io.on('connection', (socket) => {
   console.log(`🔌 Cliente conectado: ${socket.id}`);
 
@@ -106,13 +108,18 @@ io.on('connection', (socket) => {
       isSecret,
       fixedRolls,
       hasAfortunado,
+      hasAfortunadoAffinity,
       attackDamagePayload,
       forcaOpressoraPayload,
+      ritualEffectPayload,
       batchId,
       batchRole,
       batchShotNumber,
       batchIsCrit,
     }) => {
+      if (campaignId) {
+        socket.join(campaignId);
+      }
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
       const safeCount = isOrdemZeroDicePenalty
@@ -160,8 +167,10 @@ io.on('connection', (socket) => {
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         isSecret: Boolean(isSecret),
         hasAfortunado: Boolean(hasAfortunado),
+        hasAfortunadoAffinity: Boolean(hasAfortunadoAffinity),
         attackDamagePayload,
         forcaOpressoraPayload,
+        ritualEffectPayload,
         batchId,
         batchRole,
         batchShotNumber,
@@ -187,6 +196,9 @@ io.on('connection', (socket) => {
 
   // Poder Afortunado: Rerrola um resultado '1' (1x por rolagem)
   socket.on('dice:rerollOne', ({ campaignId, rollResult, dieIndex }) => {
+    if (campaignId) {
+      socket.join(campaignId);
+    }
     if (!rollResult || rollResult.rerolledAfortunado) return;
     const idx =
       typeof dieIndex === 'number' && rollResult.rolls[dieIndex] === 1
