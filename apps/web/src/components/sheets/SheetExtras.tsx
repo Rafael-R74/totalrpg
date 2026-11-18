@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   SystemId,
   PreparedAttack,
@@ -15,6 +15,7 @@ import {
   OrdemRitualCastForm,
   findOrdemRitualDef,
   isOrdemRitualAlreadyOwned,
+  createKnownRitualsKeySet,
   getOrdemRitualDT,
   getOrdemRitualPeLimit,
   getOrdemCircleBaseCost,
@@ -1101,8 +1102,14 @@ export function SheetExtras({
     );
   }
 
-  const modalCompendiumList = compendiumEntries
-    .filter((entry) => {
+  const modalCompendiumList = useMemo(() => {
+    if (!isAddModalOpen) return [];
+
+    const lowerQuery = searchQuery.trim().toLowerCase();
+    const powerTypeFilter = compendiumPowerTypeFilter;
+    const elemFilter = compendiumElementFilter.toLowerCase();
+
+    const filtered = compendiumEntries.filter((entry) => {
       const lowerEntryName = entry.name.trim().toLowerCase();
       if (
         lowerEntryName === 'ataque especial (combatente)' ||
@@ -1112,9 +1119,10 @@ export function SheetExtras({
       }
 
       const matchesSearch =
-        entry.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        entry.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (entry.metadata?.element || '').toLowerCase().includes(searchQuery.toLowerCase());
+        !lowerQuery ||
+        entry.name.toLowerCase().includes(lowerQuery) ||
+        entry.description.toLowerCase().includes(lowerQuery) ||
+        (entry.metadata?.element || '').toLowerCase().includes(lowerQuery);
 
       if (!matchesSearch) return false;
       if (activeSubTab === 'powers') {
@@ -1123,12 +1131,12 @@ export function SheetExtras({
           entry.category === 'paranormal_power' ||
           entry.category === 'origin';
         if (!isPowerCat) return false;
-        if (compendiumPowerTypeFilter !== 'ALL' && entry.category !== compendiumPowerTypeFilter) {
+        if (powerTypeFilter !== 'ALL' && entry.category !== powerTypeFilter) {
           return false;
         }
         if (
           compendiumElementFilter !== 'ALL' &&
-          (entry.metadata?.element || '').toLowerCase() !== compendiumElementFilter.toLowerCase()
+          (entry.metadata?.element || '').toLowerCase() !== elemFilter
         ) {
           return false;
         }
@@ -1144,7 +1152,7 @@ export function SheetExtras({
         }
         if (
           compendiumElementFilter !== 'ALL' &&
-          (entry.metadata?.element || '').toLowerCase() !== compendiumElementFilter.toLowerCase()
+          (entry.metadata?.element || '').toLowerCase() !== elemFilter
         ) {
           return false;
         }
@@ -1152,35 +1160,60 @@ export function SheetExtras({
       }
       if (activeSubTab === 'inventory') return entry.category === 'item';
       return false;
-    })
-    .sort((a, b) => {
-      if (
-        activeSubTab === 'powers' &&
-        system === 'ordem-paranormal' &&
-        ordemSheetData
-      ) {
-        const getPriority = (entry: CompendiumEntryData): number => {
-          const owned = abilities.some(
-            (ab) => ab.name.trim().toLowerCase() === entry.name.trim().toLowerCase()
-          );
-          if (owned) return 2;
-          const met =
-            entry.category === 'power' || entry.category === 'paranormal_power'
-              ? checkOrdemPowerRequirements(entry, ordemSheetData, abilities).met
-              : true;
-          return met ? 0 : 1;
-        };
+    });
+
+    if (activeSubTab === 'powers' && system === 'ordem-paranormal' && ordemSheetData) {
+      const ownedNamesSet = new Set(abilities.map((ab) => ab.name.trim().toLowerCase()));
+      const priorityMap = new Map<string, number>();
+
+      const getPriority = (entry: CompendiumEntryData): number => {
+        const cached = priorityMap.get(entry.id);
+        if (cached !== undefined) return cached;
+        const owned = ownedNamesSet.has(entry.name.trim().toLowerCase());
+        if (owned) {
+          priorityMap.set(entry.id, 2);
+          return 2;
+        }
+        const met =
+          entry.category === 'power' || entry.category === 'paranormal_power'
+            ? checkOrdemPowerRequirements(entry, ordemSheetData, abilities).met
+            : true;
+        const val = met ? 0 : 1;
+        priorityMap.set(entry.id, val);
+        return val;
+      };
+
+      return filtered.sort((a, b) => {
         const pA = getPriority(a);
         const pB = getPriority(b);
         if (pA !== pB) return pA - pB;
-      }
-      if (activeSubTab === 'spells' && system === 'ordem-paranormal') {
-        const ownedA = isOrdemRitualAlreadyOwned(a, abilities) ? 1 : 0;
-        const ownedB = isOrdemRitualAlreadyOwned(b, abilities) ? 1 : 0;
+        return a.name.localeCompare(b.name, 'pt-BR');
+      });
+    }
+
+    if (activeSubTab === 'spells' && system === 'ordem-paranormal') {
+      const knownSet = createKnownRitualsKeySet(abilities);
+      return filtered.sort((a, b) => {
+        const ownedA = isOrdemRitualAlreadyOwned(a, abilities, knownSet) ? 1 : 0;
+        const ownedB = isOrdemRitualAlreadyOwned(b, abilities, knownSet) ? 1 : 0;
         if (ownedA !== ownedB) return ownedA - ownedB;
-      }
-      return a.name.localeCompare(b.name, 'pt-BR');
-    });
+        return a.name.localeCompare(b.name, 'pt-BR');
+      });
+    }
+
+    return filtered.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [
+    isAddModalOpen,
+    compendiumEntries,
+    searchQuery,
+    activeSubTab,
+    compendiumPowerTypeFilter,
+    compendiumElementFilter,
+    compendiumCircleFilter,
+    abilities,
+    system,
+    ordemSheetData,
+  ]);
 
   let addButtonLabel = '';
   let canShowAddButton = false;
@@ -3524,123 +3557,120 @@ export function SheetExtras({
             );
           })()}
 
-          {(activeSubTab === 'powers' ? powerList : spellList).length === 0 ? (
-            <p className="text-xs text-zinc-500 text-center py-4">
-              Nenhum {activeSubTab === 'powers' ? 'poder' : spellLabel.toLowerCase()} adicionado na ficha.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {(activeSubTab === 'powers' ? powerList : spellList).map((ab) => {
-                const isPassive = ab.cost === 0 && !ab.damageFormula;
-                const isOrdemRitual =
-                  activeSubTab === 'spells' &&
-                  system === 'ordem-paranormal' &&
-                  (ab.category === 'ritual' || ab.category === 'magia');
+          {(() => {
+            const listToRender = activeSubTab === 'powers' ? powerList : spellList;
+            if (listToRender.length === 0) {
+              return (
+                <p className="text-xs text-zinc-500 text-center py-4">
+                  Nenhum {activeSubTab === 'powers' ? 'poder' : spellLabel.toLowerCase()} adicionado na ficha.
+                </p>
+              );
+            }
 
-                const ritualForms = isOrdemRitual
-                  ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula, {
-                      ritualId: ab.id,
-                      element: ab.element,
-                      isFavoriteRitual: ab.isFavoriteRitual,
+            const effPreRit =
+              isOrdemSystem && ordemSheetData
+                ? Number(ordemSheetData.attributes?.pre ?? 1) + (bonuses?.attributes?.['pre'] || 0)
+                : 0;
+
+            const prog =
+              system === 'ordem-paranormal' && ordemSheetData
+                ? {
+                    maxCircle:
+                      ordemSheetData.nex >= 85
+                        ? 4
+                        : ordemSheetData.nex >= 55
+                        ? 3
+                        : ordemSheetData.nex >= 25
+                        ? 2
+                        : 1,
+                    peTurnLimit: getOrdemRitualPeLimit(
+                      ordemSheetData.nex,
+                      ordemSheetData.origin,
                       abilities,
-                      extraPeCost: 0,
-                    })
-                  : [];
+                      effPreRit,
+                      ordemSheetData.trail
+                    ),
+                  }
+                : { maxCircle: 4, peTurnLimit: 20 };
 
-                const prog =
-                  system === 'ordem-paranormal' && ordemSheetData
-                    ? {
-                        maxCircle:
-                          ordemSheetData.nex >= 85
-                            ? 4
-                            : ordemSheetData.nex >= 55
-                            ? 3
-                            : ordemSheetData.nex >= 25
-                            ? 2
-                            : 1,
-                        peTurnLimit: getOrdemRitualPeLimit(
+            const hasPrediletoPower = abilities.some(
+              (a) =>
+                a.isActive !== false &&
+                (a.id === 'ord-pwr-ocu-ritual-predileto' ||
+                  a.name.toLowerCase().includes('ritual predileto'))
+            );
+            const isGraduadoGrimoireAvailable = Boolean(
+              abilities.some(
+                (a) =>
+                  a.id === 'trail-graduado-40' ||
+                  a.name.toLowerCase().includes('grimório ritualístico') ||
+                  (ordemSheetData?.trail === 'graduado' && (ordemSheetData?.nex ?? 0) >= 40)
+              )
+            );
+            const hasRitualPotentePower = abilities.some(
+              (a) =>
+                a.isActive !== false &&
+                (a.id === 'ord-pwr-ocu-ritual-potente' ||
+                  a.name.toLowerCase().includes('ritual potente'))
+            );
+            const hasLaminaMalditaSpell = abilities.some(
+              (a) =>
+                a.isActive !== false &&
+                (a.id === 'trail-lamina_paranormal-10' ||
+                  a.name.toLowerCase().includes('lâmina maldita'))
+            );
+
+            return (
+              <div className="flex flex-col gap-2.5">
+                {listToRender.map((ab) => {
+                  const isPassive = ab.cost === 0 && !ab.damageFormula;
+                  const isOrdemRitual =
+                    activeSubTab === 'spells' &&
+                    system === 'ordem-paranormal' &&
+                    (ab.category === 'ritual' || ab.category === 'magia');
+
+                  const ritualDef = isOrdemRitual
+                    ? findOrdemRitualDef(ab.id) || findOrdemRitualDef(ab.name)
+                    : undefined;
+                  const ritualElLabel = ab.element || ritualDef?.element || '';
+                  const ritualElLower = ritualElLabel.toLowerCase();
+                  const ritualDtValue =
+                    isOrdemRitual && ordemSheetData
+                      ? getOrdemRitualDT(
                           ordemSheetData.nex,
-                          ordemSheetData.origin,
+                          effPreRit,
+                          ordemSheetData.trail,
                           abilities,
-                          Number(ordemSheetData.attributes?.pre ?? 1) + (bonuses?.attributes?.['pre'] || 0),
-                          ordemSheetData.trail
-                        ),
-                      }
-                    : { maxCircle: 4, peTurnLimit: 20 };
-
-                const ritualDef = isOrdemRitual
-                  ? findOrdemRitualDef(ab.id) || findOrdemRitualDef(ab.name)
-                  : undefined;
-                const ritualElLabel = ab.element || ritualDef?.element || '';
-                const ritualElLower = ritualElLabel.toLowerCase();
-                const effPreRit =
-                  isOrdemSystem && ordemSheetData
-                    ? Number(ordemSheetData.attributes?.pre ?? 1) + (bonuses?.attributes?.['pre'] || 0)
-                    : 0;
-                const ritualDtValue =
-                  isOrdemRitual && ordemSheetData
-                    ? getOrdemRitualDT(
-                        ordemSheetData.nex,
-                        effPreRit,
-                        ordemSheetData.trail,
+                          ordemSheetData.origin,
+                          ritualElLabel,
+                          ordemSheetData.sceneEffects
+                        )
+                      : null;
+                  const isSustainedRitual = Boolean(
+                    isOrdemRitual &&
+                      (ritualDef?.duration || ab.description || '').toLowerCase().includes('sustentad')
+                  );
+                  const isAmaldicoarArmaSpell = Boolean(
+                    isOrdemRitual && ab.name.toLowerCase().includes('amaldiçoar arma')
+                  );
+                  const laminaMovActive = Boolean(
+                    isAmaldicoarArmaSpell && hasLaminaMalditaSpell && ritualLaminaMovimentoMap[ab.id]
+                  );
+                  const extraMetamagicPe =
+                    (isOrdemRitual && ritualCamuflar ? 2 : 0) +
+                    (isOrdemRitual && ritualAmpliar ? 2 : 0) +
+                    (isOrdemRitual && ritualAcelerar ? 4 : 0) +
+                    (laminaMovActive ? 1 : 0);
+                  const computedRitualForms = isOrdemRitual
+                    ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula, {
+                        ritualId: ab.id,
+                        element: ritualElLabel,
+                        isFavoriteRitual: ab.isFavoriteRitual,
                         abilities,
-                        ordemSheetData.origin,
-                        ritualElLabel,
-                        ordemSheetData.sceneEffects
-                      )
-                    : null;
-                const isSustainedRitual = Boolean(
-                  isOrdemRitual &&
-                    (ritualDef?.duration || ab.description || '').toLowerCase().includes('sustentad')
-                );
-                const hasPrediletoPower = abilities.some(
-                  (a) =>
-                    a.isActive !== false &&
-                    (a.id === 'ord-pwr-ocu-ritual-predileto' ||
-                      a.name.toLowerCase().includes('ritual predileto'))
-                );
-                const isGraduadoGrimoireAvailable = Boolean(
-                  isOrdemRitual &&
-                    abilities.some(
-                      (a) =>
-                        a.id === 'trail-graduado-40' ||
-                        a.name.toLowerCase().includes('grimório ritualístico') ||
-                        (ordemSheetData?.trail === 'graduado' && (ordemSheetData?.nex ?? 0) >= 40)
-                    )
-                );
-                const hasRitualPotentePower = abilities.some(
-                  (a) =>
-                    a.isActive !== false &&
-                    (a.id === 'ord-pwr-ocu-ritual-potente' ||
-                      a.name.toLowerCase().includes('ritual potente'))
-                );
-                const hasLaminaMalditaSpell = abilities.some(
-                  (a) =>
-                    a.isActive !== false &&
-                    (a.id === 'trail-lamina_paranormal-10' ||
-                      a.name.toLowerCase().includes('lâmina maldita'))
-                );
-                const isAmaldicoarArmaSpell = Boolean(
-                  isOrdemRitual && ab.name.toLowerCase().includes('amaldiçoar arma')
-                );
-                const laminaMovActive = Boolean(
-                  isAmaldicoarArmaSpell && hasLaminaMalditaSpell && ritualLaminaMovimentoMap[ab.id]
-                );
-                const extraMetamagicPe =
-                  (isOrdemRitual && ritualCamuflar ? 2 : 0) +
-                  (isOrdemRitual && ritualAmpliar ? 2 : 0) +
-                  (isOrdemRitual && ritualAcelerar ? 4 : 0) +
-                  (laminaMovActive ? 1 : 0);
-                const computedRitualForms = isOrdemRitual
-                  ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula, {
-                      ritualId: ab.id,
-                      element: ritualElLabel,
-                      isFavoriteRitual: ab.isFavoriteRitual,
-                      abilities,
-                      extraPeCost: extraMetamagicPe,
-                      sceneEffects: ordemSheetData?.sceneEffects,
-                    })
-                  : [];
+                        extraPeCost: extraMetamagicPe,
+                        sceneEffects: ordemSheetData?.sceneEffects,
+                      })
+                    : [];
 
                 return (
                   <div
@@ -4570,7 +4600,8 @@ export function SheetExtras({
                 );
               })}
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 

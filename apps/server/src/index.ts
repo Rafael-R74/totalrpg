@@ -117,6 +117,9 @@ io.on('connection', (socket) => {
       batchShotNumber,
       batchIsCrit,
     }) => {
+      if (campaignId) {
+        socket.join(campaignId);
+      }
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
       const safeCount = isOrdemZeroDicePenalty
@@ -193,6 +196,9 @@ io.on('connection', (socket) => {
 
   // Poder Afortunado: Rerrola um resultado '1' (1x por rolagem)
   socket.on('dice:rerollOne', ({ campaignId, rollResult, dieIndex }) => {
+    if (campaignId) {
+      socket.join(campaignId);
+    }
     if (!rollResult || rollResult.rerolledAfortunado) return;
     const idx =
       typeof dieIndex === 'number' && rollResult.rolls[dieIndex] === 1
