@@ -6,6 +6,7 @@ import {
   PreparedAttack,
   RPGItem,
   RuleModifier,
+  SceneEffect,
   T20Attributes,
   T20SheetData,
   VitalBar,
@@ -137,7 +138,8 @@ export function getOrdemRitualDT(
   trailId?: string,
   abilities?: CharacterAbility[],
   _originIdOrName?: string,
-  ritualElement?: string
+  ritualElement?: string,
+  sceneEffects?: SceneEffect[]
 ): number {
   // Livro v1.3, p. 21 e p. 115: Universitário (Dedicação), Encarar a Morte e Presença Poderosa NÃO afetam a DT!
   const peLimitForDt =
@@ -159,7 +161,14 @@ export function getOrdemRitualDT(
   })
     ? 2
     : 0;
-  return 10 + peLimitForDt + effectivePre + graduadoBonus + especialistaBonus;
+  const cinerariaBonus = (sceneEffects || []).some(
+    (ef) =>
+      (ef.name || '').toLowerCase().includes('cinerária') ||
+      (ef.name || '').toLowerCase().includes('cineraria')
+  )
+    ? 5
+    : 0;
+  return 10 + peLimitForDt + effectivePre + graduadoBonus + especialistaBonus + cinerariaBonus;
 }
 
 export function getOrdemEffectiveCredit(
@@ -573,10 +582,11 @@ export function parseOrdemRitualForms(
     isFavoriteRitual?: boolean;
     abilities?: CharacterAbility[];
     extraPeCost?: number;
+    sceneEffects?: SceneEffect[];
   }
 ): OrdemRitualCastForm[] {
   const lowerName = ritualName.toLowerCase();
-  const def = findOrdemRitualDef(options?.ritualId || ritualName);
+  const def = findOrdemRitualDef(options?.ritualId) || findOrdemRitualDef(ritualName);
   const mech = def ? ORDEM_RITUAL_MECHANICS[def.id] : undefined;
   const effectiveElement = (options?.element || def?.element || '').toLowerCase();
   const abList = options?.abilities || [];
@@ -606,14 +616,40 @@ export function parseOrdemRitualForms(
         a.name.toLowerCase().includes('tatuagem ritualistica'))
   );
 
+  const hasCinerariaCostReduction = (options?.sceneEffects || []).some((ef) => {
+    const nm = (ef.name || '').toLowerCase();
+    if (!nm.includes('cinerária') && !nm.includes('cineraria')) return false;
+    const txt = `${ef.source || ''} ${ef.description || ''}`.toLowerCase();
+    return txt.includes('discente') || txt.includes('verdadeiro') || txt.includes('-2 pe') || txt.includes('–2 pe');
+  });
+
   const sharedReduction =
     (options?.isFavoriteRitual && hasPrediletoPower ? 1 : 0) +
-    (hasMestreElemento ? 1 : 0);
+    (hasMestreElemento ? 1 : 0) +
+    (hasCinerariaCostReduction ? 2 : 0);
 
   function computeFormTotalCost(rawCost: number, isPersonalSelf?: boolean): number {
     const tatRed = hasTatuagemRitualistica && isPersonalSelf ? 1 : 0;
     const reduced = Math.max(1, rawCost - sharedReduction - tatRed);
     return reduced + (options?.extraPeCost || 0);
+  }
+
+  function resolveVariantDuration(
+    baseDuration: string,
+    variantText?: string,
+    inheritDuration?: string
+  ): string {
+    if (!variantText) return baseDuration;
+    const durMatch = variantText.match(
+      /muda\s+(?:[^.]*?\s+e\s+)?a\s+dura[çc][ãa]o\s+para\s+[“"']?([^.”"'\n,;]+)[”"']?/i
+    );
+    if (durMatch) {
+      return durMatch[1].trim();
+    }
+    if (inheritDuration && /como\s+(?:em\s+|a\s+vers[ãa]o\s+)?discente/i.test(variantText)) {
+      return inheritDuration;
+    }
+    return baseDuration;
   }
 
   if (def) {
@@ -653,6 +689,10 @@ export function parseOrdemRitualForms(
       },
     ];
 
+    const discenteDuration = def.discente
+      ? resolveVariantDuration(def.duration, def.discente.text)
+      : def.duration;
+
     if (def.discente) {
       const dm = mech?.discente;
       const dPersonal = dm?.isPersonalSelf ?? false;
@@ -681,7 +721,7 @@ export function parseOrdemRitualForms(
         execution: def.execution,
         range: def.range,
         target: `${def.targetLabel}: ${def.target}`,
-        duration: def.duration,
+        duration: discenteDuration,
         resistance: def.resistance,
       });
     }
@@ -689,6 +729,11 @@ export function parseOrdemRitualForms(
     if (def.verdadeiro) {
       const vm = mech?.verdadeiro;
       const vPersonal = vm?.isPersonalSelf ?? false;
+      const verdadeiroDuration = resolveVariantDuration(
+        def.duration,
+        def.verdadeiro.text,
+        discenteDuration
+      );
       forms.push({
         mode: 'verdadeiro',
         label: 'Verdadeiro',
@@ -714,7 +759,7 @@ export function parseOrdemRitualForms(
         execution: def.execution,
         range: def.range,
         target: `${def.targetLabel}: ${def.target}`,
-        duration: def.duration,
+        duration: verdadeiroDuration,
         resistance: def.resistance,
       });
     }
@@ -762,7 +807,7 @@ export function parseOrdemRitualForms(
       description: normalText,
       damageFormula: isTempHpRitual || isAmaldicoarArma ? undefined : baseDamageFormula,
       tempHpFormula: lowerName.includes('consumir manancial') ? '3d6' : undefined,
-      tempHpFlat: lowerName.includes('tela de ruído') ? 15 : undefined,
+      tempHpFlat: lowerName.includes('tela de ruído') ? 30 : undefined,
       sceneDefenseBonus: lowerName.includes('armadura de sangue')
         ? 5
         : lowerName.includes('embaralhar')
@@ -817,7 +862,7 @@ export function parseOrdemRitualForms(
     if (lowerName.includes('consumir manancial')) {
       tempHpFormula = extractedFormula || (mode === 'discente' ? '6d6' : '10d6');
     } else if (lowerName.includes('tela de ruído')) {
-      tempHpFlat = mode === 'discente' ? 30 : 60;
+      tempHpFlat = mode === 'discente' ? 60 : undefined;
     }
 
     if (lowerName.includes('armadura de sangue')) {

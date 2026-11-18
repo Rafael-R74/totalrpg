@@ -1,4 +1,4 @@
-import type { RuleModifier, CompendiumEntryData } from './index';
+import type { RuleModifier, CompendiumEntryData, CharacterAbility } from './index';
 import { ORDEM_RITUALS_DATA } from './ordemRitualsData';
 
 export interface OrdemRitualFormDef {
@@ -70,6 +70,34 @@ export function findOrdemRitualDef(idOrName?: string): OrdemRitualDef | undefine
   return ORDEM_RITUALS_DATA.find((r) => normalizeRitualLookup(r.name) === normName);
 }
 
+export function isOrdemRitualAlreadyOwned(
+  entry: { id?: string; name: string },
+  abilities: CharacterAbility[]
+): boolean {
+  const entryLower = entry.name.trim().toLowerCase();
+  const isAmaldicoar =
+    entry.id === 'ord-rit-amaldicoar-arma' || entryLower.includes('amaldiçoar arma');
+
+  if (isAmaldicoar) {
+    return (['sangue', 'morte', 'conhecimento', 'energia'] as const).every((el) =>
+      abilities.some((ab) =>
+        ab.name.toLowerCase().includes(`amaldiçoar arma — ${el}`)
+      )
+    );
+  }
+
+  const targetDef = findOrdemRitualDef(entry.id) || findOrdemRitualDef(entry.name);
+  const targetNorm = normalizeRitualLookup(entry.name);
+
+  return abilities.some((ab) => {
+    if (ab.category !== 'ritual' && ab.category !== 'magia') return false;
+    if (ab.name.trim().toLowerCase() === entryLower) return true;
+    const abDef = findOrdemRitualDef(ab.id) || findOrdemRitualDef(ab.name);
+    if (targetDef && abDef && targetDef.id === abDef.id) return true;
+    return targetNorm.length > 0 && normalizeRitualLookup(ab.name) === targetNorm;
+  });
+}
+
 export function getOrdemCircleBaseCost(circle: number): number {
   switch (circle) {
     case 1:
@@ -115,9 +143,9 @@ export const ORDEM_RITUAL_MECHANICS: Record<string, OrdemRitualMechanics> = {
     verdadeiro: { isPersonalSelf: true },
   },
   'ord-rit-ouvir-sussurros': {
-    normal: { isPersonalSelf: true },
-    discente: { isPersonalSelf: true },
-    verdadeiro: { isPersonalSelf: true },
+    normal: { damageFormula: '1d6', isPersonalSelf: true },
+    discente: { damageFormula: '1d6', isPersonalSelf: true },
+    verdadeiro: { damageFormula: '1d6', isPersonalSelf: true },
   },
   'ord-rit-coincidencia-forcada': {
     normal: {
@@ -300,9 +328,9 @@ export const ORDEM_RITUAL_MECHANICS: Record<string, OrdemRitualMechanics> = {
     discente: { tempHpFlat: 60, isPersonalSelf: true },
   },
   'ord-rit-eco-espiral': {
-    normal: { damageFormula: '4d6' },
-    discente: { damageFormula: '4d6' },
-    verdadeiro: { damageFormula: '6d6' },
+    normal: {},
+    discente: {},
+    verdadeiro: {},
   },
   'ord-rit-miasma-entropico': {
     normal: { damageFormula: '4d8' },
@@ -452,6 +480,11 @@ export const ORDEM_RITUAL_MECHANICS: Record<string, OrdemRitualMechanics> = {
     },
     verdadeiro: {
       sceneDefenseBonus: 15,
+      sceneModifiers: [
+        { id: 'rit-ad-fort', targetType: 'skill_bonus', targetKey: 'fortitude', value: 15 },
+        { id: 'rit-ad-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: 15 },
+        { id: 'rit-ad-von', targetType: 'skill_bonus', targetKey: 'vontade', value: 15 },
+      ],
     },
   },
   'ord-rit-deflagracao-energia': {

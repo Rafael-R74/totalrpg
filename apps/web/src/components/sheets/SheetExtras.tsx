@@ -14,6 +14,7 @@ import {
   parseOrdemRitualForms,
   OrdemRitualCastForm,
   findOrdemRitualDef,
+  isOrdemRitualAlreadyOwned,
   getOrdemRitualDT,
   getOrdemRitualPeLimit,
   getOrdemCircleBaseCost,
@@ -75,6 +76,7 @@ interface SheetExtrasProps {
     }
   ) => void;
   onGrantTempPe?: (amount: number, label?: string) => void;
+  onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
   onTriggerOriginSpecial?: (originId: string) => void;
   vislumbresSuccessPending?: boolean;
   onRollVislumbresPe?: () => void;
@@ -213,6 +215,7 @@ export function SheetExtras({
   onRoll,
   onCastOrdemRitual,
   onGrantTempPe,
+  onUpdateSceneEffects,
   onTriggerOriginSpecial,
   vislumbresSuccessPending,
   onRollVislumbresPe,
@@ -908,7 +911,7 @@ export function SheetExtras({
         : entry.description;
 
       const newAb: CharacterAbility = {
-        id: newId,
+        id: `${entry.id}-${newId}`,
         name: finalName,
         category:
           entry.category === 'spell'
@@ -1171,6 +1174,11 @@ export function SheetExtras({
         const pB = getPriority(b);
         if (pA !== pB) return pA - pB;
       }
+      if (activeSubTab === 'spells' && system === 'ordem-paranormal') {
+        const ownedA = isOrdemRitualAlreadyOwned(a, abilities) ? 1 : 0;
+        const ownedB = isOrdemRitualAlreadyOwned(b, abilities) ? 1 : 0;
+        if (ownedA !== ownedB) return ownedA - ownedB;
+      }
       return a.name.localeCompare(b.name, 'pt-BR');
     });
 
@@ -1351,9 +1359,11 @@ export function SheetExtras({
 
                       const alreadyOwned =
                         entry.category !== 'item' &&
-                        abilities.some(
-                          (ab) => ab.name.trim().toLowerCase() === entry.name.trim().toLowerCase()
-                        );
+                        (entry.category === 'spell' && system === 'ordem-paranormal'
+                          ? isOrdemRitualAlreadyOwned(entry, abilities)
+                          : abilities.some(
+                              (ab) => ab.name.trim().toLowerCase() === entry.name.trim().toLowerCase()
+                            ));
 
                       return (
                         <div
@@ -3238,8 +3248,17 @@ export function SheetExtras({
 
           {activeSubTab === 'spells' && system === 'ordem-paranormal' && (() => {
             const effPreBar = Number(ordemSheetData?.attributes?.pre ?? 1) + (bonuses?.attributes?.['pre'] || 0);
+            const sceneEffectsBar = ordemSheetData?.sceneEffects || [];
             const ritualDtBar = ordemSheetData
-              ? getOrdemRitualDT(ordemSheetData.nex, effPreBar, ordemSheetData.trail, abilities, ordemSheetData.origin)
+              ? getOrdemRitualDT(
+                  ordemSheetData.nex,
+                  effPreBar,
+                  ordemSheetData.trail,
+                  abilities,
+                  ordemSheetData.origin,
+                  undefined,
+                  sceneEffectsBar
+                )
               : 10;
             const peRitualLimitBar = ordemSheetData
               ? getOrdemRitualPeLimit(ordemSheetData.nex, ordemSheetData.origin, abilities, effPreBar, ordemSheetData.trail)
@@ -3252,13 +3271,62 @@ export function SheetExtras({
             );
             const maxSustainedBar = hasFluxoPoderBar ? 2 : 1;
             const activeSustainedRituals = spellList.filter((s) => Boolean(s.isSustainedActive));
+            const recurringEffects = sceneEffectsBar.filter((ef) =>
+              Boolean(ef.isSustainedRitual || ef.recurringFormula || ef.usesOcultismoManeuver)
+            );
+            const orphanSustained = activeSustainedRituals.filter(
+              (s) =>
+                !recurringEffects.some(
+                  (ef) =>
+                    ef.ritualId === s.id ||
+                    ef.name.trim().toLowerCase() === s.name.trim().toLowerCase()
+                )
+            );
             const hasCamuflarPower = abilities.some((a) => a.isActive !== false && (a.id === 'ord-pwr-ocu-camuflar-ocultismo' || a.name.toLowerCase().includes('camuflar ocultismo')));
             const hasAmpliarPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-conduite-10' || a.name.toLowerCase().includes('ampliar ritual')));
             const hasAcelerarPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-conduite-40' || a.name.toLowerCase().includes('acelerar ritual')));
             const hasFlageloPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-flagelador-10' || a.name.toLowerCase().includes('poder do flagelo')));
             const hasLaminaMalditaPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-lamina_paranormal-10' || a.name.toLowerCase().includes('lâmina maldita')));
 
+            const rollOcultismoManeuver = (ritualTitle: string) => {
+              if (!ordemSheetData) return;
+              const ocultSk = ordemSheetData.skills.find((s) => s.id === 'ocultismo');
+              const ocultBonus =
+                (ocultSk?.trainingDegree || 0) +
+                (ocultSk?.otherModifier || 0) +
+                bonuses.skillBonusAll +
+                (bonuses.skillBonus['ocultismo'] || 0);
+              const ocultDice =
+                effInt + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0);
+              onRoll(`Manobra c/ Ocultismo (${ritualTitle})`, ocultDice, 20, ocultBonus);
+            };
+
+            const endActiveRitualEffect = (effectId?: string, ritualId?: string, ritualName?: string) => {
+              if (onUpdateSceneEffects && effectId) {
+                onUpdateSceneEffects(sceneEffectsBar.filter((e) => e.id !== effectId));
+              }
+              const lowerTarget = (ritualName || '').trim().toLowerCase();
+              if (
+                abilities.some(
+                  (a) =>
+                    a.isSustainedActive &&
+                    ((ritualId && a.id === ritualId) ||
+                      (lowerTarget && a.name.trim().toLowerCase() === lowerTarget))
+                )
+              ) {
+                onUpdateAbilities(
+                  abilities.map((a) =>
+                    (ritualId && a.id === ritualId) ||
+                    (lowerTarget && a.name.trim().toLowerCase() === lowerTarget)
+                      ? { ...a, isSustainedActive: false }
+                      : a
+                  )
+                );
+              }
+            };
+
             return (
+              <div className="space-y-2.5">
               <div className="bg-purple-950/30 border border-purple-800/50 px-3.5 py-2.5 rounded-xl text-[11px] text-purple-200 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
@@ -3284,7 +3352,7 @@ export function SheetExtras({
                               setAbilityUseFeedback(`🔄 Sustentação paga (-${cost} PE) para ${activeSustainedRituals.map((s) => s.name).join(', ')}.`);
                             }
                           }}
-                          className="px-2 py-0.5 rounded bg-indigo-700 hover:bg-indigo-600 text-white font-sans text-[10px] font-bold"
+                          className="px-2 py-0.5 rounded bg-indigo-700 hover:bg-indigo-600 text-white font-sans text-[10px] font-bold cursor-pointer"
                         >
                           Pagar Sustentação (-{activeSustainedRituals.length} PE)
                         </button>
@@ -3356,6 +3424,103 @@ export function SheetExtras({
                   </div>
                 )}
               </div>
+
+              {(recurringEffects.length > 0 || orphanSustained.length > 0) && (
+                <div className="bg-indigo-950/35 border border-indigo-600/60 px-3.5 py-2.5 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-indigo-300">
+                      🔄 Rituais Sustentados & Efeitos por Rodada Ativos
+                    </span>
+                    <span className="text-[10px] text-indigo-200/80">
+                      Role os dados por turno sem gastar PE de conjuração
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {recurringEffects.map((ef) => (
+                      <div
+                        key={ef.id}
+                        className="bg-zinc-950/80 border border-indigo-800/60 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-white">{ef.name}</span>
+                            {ef.source && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/60">
+                                {ef.source}
+                              </span>
+                            )}
+                            {ef.isSustainedRitual && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-200 border border-purple-700/60">
+                                Sustentado (1 PE/turno)
+                              </span>
+                            )}
+                          </div>
+                          {ef.description && (
+                            <p className="text-[11px] text-zinc-400 mt-0.5">{ef.description}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                          {ef.recurringFormula && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const parsed = parseDiceFormula(ef.recurringFormula!);
+                                onRoll(
+                                  `${ef.recurringLabel || ef.name} (${ef.source || 'Turno'}) [0 PE]`,
+                                  parsed.count,
+                                  parsed.sides,
+                                  parsed.modifier,
+                                  true
+                                );
+                              }}
+                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 rounded-lg text-[11px] font-extrabold transition cursor-pointer"
+                            >
+                              🎲 Rolar Efeito da Rodada ({ef.recurringFormula}) [0 PE]
+                            </button>
+                          )}
+                          {ef.usesOcultismoManeuver && (
+                            <button
+                              type="button"
+                              onClick={() => rollOcultismoManeuver(ef.name)}
+                              className="px-2.5 py-1 bg-purple-700 hover:bg-purple-600 text-white border border-purple-400 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                            >
+                              🐙 Manobra c/ Ocultismo
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => endActiveRitualEffect(ef.id, ef.ritualId, ef.name)}
+                            className="px-2 py-1 bg-zinc-900 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-700 hover:border-red-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                          >
+                            ✕ Encerrar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {orphanSustained.map((sab) => (
+                      <div
+                        key={sab.id}
+                        className="bg-zinc-950/80 border border-indigo-800/60 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">{sab.name}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-200 border border-purple-700/60">
+                            Sustentado (1 PE/turno)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => endActiveRitualEffect(undefined, sab.id, sab.name)}
+                          className="px-2 py-1 bg-zinc-900 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-700 hover:border-red-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                        >
+                          ✕ Encerrar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              </div>
             );
           })()}
 
@@ -3420,7 +3585,8 @@ export function SheetExtras({
                         ordemSheetData.trail,
                         abilities,
                         ordemSheetData.origin,
-                        ritualElLabel
+                        ritualElLabel,
+                        ordemSheetData.sceneEffects
                       )
                     : null;
                 const isSustainedRitual = Boolean(
@@ -3472,6 +3638,7 @@ export function SheetExtras({
                       isFavoriteRitual: ab.isFavoriteRitual,
                       abilities,
                       extraPeCost: extraMetamagicPe,
+                      sceneEffects: ordemSheetData?.sceneEffects,
                     })
                   : [];
 
@@ -3629,64 +3796,122 @@ export function SheetExtras({
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
                       {isOrdemRitual && onCastOrdemRitual ? (
-                        computedRitualForms.map((f) => {
-                          const circleOk = !f.requiredCircle || prog.maxCircle >= f.requiredCircle;
-                          const charAff = (ordemSheetData?.affinity || '').toLowerCase();
-                          const reqEl = (f.element || ritualElLower || '').toLowerCase();
-                          const affinityOk =
-                            !f.requiresAffinity ||
-                            Boolean(
-                              ordemSheetData &&
-                                ordemSheetData.nex >= 50 &&
-                                charAff &&
-                                charAff !== 'nenhuma' &&
-                                (!reqEl || reqEl === 'medo' || reqEl.includes(charAff))
+                        <>
+                          {computedRitualForms.map((f) => {
+                            const circleOk = !f.requiredCircle || prog.maxCircle >= f.requiredCircle;
+                            const charAff = (ordemSheetData?.affinity || '').toLowerCase();
+                            const reqEl = (f.element || ritualElLower || '').toLowerCase();
+                            const affinityOk =
+                              !f.requiresAffinity ||
+                              Boolean(
+                                ordemSheetData &&
+                                  ordemSheetData.nex >= 50 &&
+                                  charAff &&
+                                  charAff !== 'nenhuma' &&
+                                  (!reqEl || reqEl === 'medo' || reqEl.includes(charAff))
+                              );
+                            const peLimitOk = f.totalCost <= prog.peTurnLimit;
+                            const canCastForm = circleOk && affinityOk && peLimitOk;
+
+                            // Se o personagem não cumpre os requisitos para Discente ou Verdadeiro (Círculo, Afinidade ou Limite de PE), o botão não deve nem aparecer!
+                            if (f.mode !== 'normal' && !canCastForm) {
+                              return null;
+                            }
+
+                            const costText = ritualPoderFlagelo
+                              ? `-${f.totalCost * 2} PV`
+                              : `-${f.totalCost} PE`;
+
+                            return (
+                              <button
+                                key={f.mode}
+                                type="button"
+                                onClick={() =>
+                                  onCastOrdemRitual(ab, f, {
+                                    usePoderDoFlagelo: ritualPoderFlagelo,
+                                    camuflar: ritualCamuflar,
+                                    ampliar: ritualAmpliar,
+                                    acelerar: ritualAcelerar,
+                                  })
+                                }
+                                title={f.description}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap cursor-pointer ${
+                                  f.mode === 'normal'
+                                    ? 'bg-purple-950/60 hover:bg-purple-700 text-purple-200 hover:text-white border-purple-700/60'
+                                    : f.mode === 'discente'
+                                    ? 'bg-amber-950/60 hover:bg-amber-600 text-amber-300 hover:text-white border-amber-700/60'
+                                    : 'bg-red-950/60 hover:bg-red-700 text-red-300 hover:text-white border-red-700/60'
+                                }`}
+                              >
+                                {f.mode === 'normal' && `🔮 Normal (${costText})`}
+                                {f.mode === 'discente' &&
+                                  `🔥 Discente (${costText})${
+                                    f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
+                                  }${f.requiresAffinity ? ' [Afin.]' : ''}`}
+                                {f.mode === 'verdadeiro' &&
+                                  `👁️ Verdadeiro (${costText})${
+                                    f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
+                                  }${f.requiresAffinity ? ' [Afin.]' : ''}`}
+                              </button>
                             );
-                          const peLimitOk = f.totalCost <= prog.peTurnLimit;
-                          const canCastForm = circleOk && affinityOk && peLimitOk;
-
-                          // Se o personagem não cumpre os requisitos para Discente ou Verdadeiro (Círculo, Afinidade ou Limite de PE), o botão não deve nem aparecer!
-                          if (f.mode !== 'normal' && !canCastForm) {
-                            return null;
-                          }
-
-                          const costText = ritualPoderFlagelo
-                            ? `-${f.totalCost * 2} PV`
-                            : `-${f.totalCost} PE`;
-
-                          return (
-                            <button
-                              key={f.mode}
-                              type="button"
-                              onClick={() =>
-                                onCastOrdemRitual(ab, f, {
-                                  usePoderDoFlagelo: ritualPoderFlagelo,
-                                  camuflar: ritualCamuflar,
-                                  ampliar: ritualAmpliar,
-                                  acelerar: ritualAcelerar,
-                                })
-                              }
-                              title={f.description}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap cursor-pointer ${
-                                f.mode === 'normal'
-                                  ? 'bg-purple-950/60 hover:bg-purple-700 text-purple-200 hover:text-white border-purple-700/60'
-                                  : f.mode === 'discente'
-                                  ? 'bg-amber-950/60 hover:bg-amber-600 text-amber-300 hover:text-white border-amber-700/60'
-                                  : 'bg-red-950/60 hover:bg-red-700 text-red-300 hover:text-white border-red-700/60'
-                              }`}
-                            >
-                              {f.mode === 'normal' && `🔮 Normal (${costText})`}
-                              {f.mode === 'discente' &&
-                                `🔥 Discente (${costText})${
-                                  f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
-                                }${f.requiresAffinity ? ' [Afin.]' : ''}`}
-                              {f.mode === 'verdadeiro' &&
-                                `👁️ Verdadeiro (${costText})${
-                                  f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
-                                }${f.requiresAffinity ? ' [Afin.]' : ''}`}
-                            </button>
-                          );
-                        })
+                          })}
+                          {(() => {
+                            const charAff = (ordemSheetData?.affinity || '').toLowerCase();
+                            const unlockedWithFormula = computedRitualForms.filter((f) => {
+                              const rawF = f.damageFormula || f.healingFormula || f.tempHpFormula;
+                              if (!rawF) return false;
+                              if (f.mode === 'normal') return true;
+                              const circleOk = !f.requiredCircle || prog.maxCircle >= f.requiredCircle;
+                              const reqEl = (f.element || ritualElLower || '').toLowerCase();
+                              const affinityOk =
+                                !f.requiresAffinity ||
+                                Boolean(
+                                  ordemSheetData &&
+                                    ordemSheetData.nex >= 50 &&
+                                    charAff &&
+                                    charAff !== 'nenhuma' &&
+                                    (!reqEl || reqEl === 'medo' || reqEl.includes(charAff))
+                                );
+                              return circleOk && affinityOk && f.totalCost <= prog.peTurnLimit;
+                            });
+                            const baseEffectForm = unlockedWithFormula[0];
+                            if (!baseEffectForm || isAmaldicoarArmaSpell) return null;
+                            const rawFormula =
+                              baseEffectForm.healingFormula ||
+                              baseEffectForm.damageFormula ||
+                              baseEffectForm.tempHpFormula!;
+                            const parsed = parseDiceFormula(rawFormula);
+                            const isDmgOrHeal = Boolean(
+                              (baseEffectForm.damageFormula &&
+                                ritualDef?.id !== 'ord-rit-ouvir-sussurros') ||
+                                baseEffectForm.healingFormula
+                            );
+                            const finalMod =
+                              parsed.modifier +
+                              (isDmgOrHeal && hasRitualPotentePower && effInt > 0 ? effInt : 0);
+                            const formulaText = `${parsed.count}d${parsed.sides}${
+                              finalMod > 0 ? `+${finalMod}` : finalMod < 0 ? finalMod : ''
+                            }`;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onRoll(
+                                    `${ab.name} — Efeito (${baseEffectForm.label}) [0 PE]`,
+                                    parsed.count,
+                                    parsed.sides,
+                                    finalMod,
+                                    true
+                                  )
+                                }
+                                title="Rolar apenas os dados do efeito deste ritual sem gastar PE nem repetir O Custo do Paranormal"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold border bg-zinc-900 hover:bg-zinc-800 text-amber-300 border-zinc-700 hover:border-amber-500/70 transition whitespace-nowrap cursor-pointer"
+                              >
+                                🎲 Só Efeito ({formulaText})
+                              </button>
+                            );
+                          })()}
+                        </>
                       ) : (
                         <>
                           {ab.id === 'orig-amnesico' && onTriggerOriginSpecial && (
