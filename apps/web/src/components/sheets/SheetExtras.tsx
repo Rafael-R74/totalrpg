@@ -95,6 +95,48 @@ function parseDiceFormula(formula: string): { count: number; sides: number; modi
   };
 }
 
+function isHealingConsumableItem(name: string, description?: string): boolean {
+  const lowerName = (name || '').toLowerCase();
+  if (
+    lowerName.includes('cicatrizante') ||
+    lowerName.includes('spray médico') ||
+    lowerName.includes('spray medico')
+  ) {
+    return true;
+  }
+  const lowerDesc = (description || '').toLowerCase();
+  const hasHealPattern =
+    /(?:curar|cura|recupera)\s+\d+d\d+/i.test(lowerDesc) && /\bpv\b/i.test(lowerDesc);
+  const looksLikeWeapon = /alcance|impacto|corte|perfura|bal[ií]stic|cr[ií]tic/i.test(lowerDesc);
+  return hasHealPattern && !looksLikeWeapon;
+}
+
+function getConsumableHealFormula(
+  item: RPGItem,
+  compendiumEntries: CompendiumEntryData[]
+): string | null {
+  const compMatch = compendiumEntries.find(
+    (ce) =>
+      ce.category === 'item' &&
+      (ce.name.toLowerCase() === item.name.toLowerCase() ||
+        item.name.toLowerCase().includes(ce.name.toLowerCase()))
+  );
+  const combinedDesc = item.description || compMatch?.description || '';
+  if (!isHealingConsumableItem(item.name, combinedDesc)) {
+    return null;
+  }
+  const descMatch = combinedDesc.match(
+    /(?:curar|cura|recupera)\s+(\d+d\d+(?:\s*[+-]\s*\d+)?)/i
+  );
+  if (descMatch) {
+    return descMatch[1].replace(/\s+/g, '');
+  }
+  if (compMatch?.metadata?.damageFormula) {
+    return compMatch.metadata.damageFormula;
+  }
+  return '2d8+2';
+}
+
 function rollRitualWeaponDamageExtras(
   isMelee: boolean,
   sceneEffects: SceneEffect[]
@@ -899,7 +941,10 @@ export function SheetExtras({
       };
 
       let newAtk: PreparedAttack | undefined = undefined;
-      if (entry.metadata?.damageFormula) {
+      if (
+        entry.metadata?.damageFormula &&
+        !isHealingConsumableItem(entry.name, entry.description)
+      ) {
         const classif = classifyOrdemWeapon(
           entry.name,
           entry.description,
@@ -1744,7 +1789,7 @@ export function SheetExtras({
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            ⚔️ Ataques ({attacks.length})
+            ⚔️ Ataques ({attacks.filter((a) => !isHealingConsumableItem(a.name)).length})
           </button>
 
           <button
@@ -2133,13 +2178,15 @@ export function SheetExtras({
               );
             })()}
 
-          {attacks.length === 0 ? (
-            <p className="text-xs text-zinc-500 text-center py-4">
-              Nenhum ataque preparado. Adicione uma arma na aba &quot;🎒 Inventário&quot; para gerar seu ataque automaticamente!
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {attacks.map((atk) => {
+          {(() => {
+            const combatAttacks = attacks.filter((atk) => !isHealingConsumableItem(atk.name));
+            return combatAttacks.length === 0 ? (
+              <p className="text-xs text-zinc-500 text-center py-4">
+                Nenhum ataque preparado. Adicione uma arma na aba &quot;🎒 Inventário&quot; para gerar seu ataque automaticamente!
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {combatAttacks.map((atk) => {
                 // Classificação de arma (corpo a corpo, arremesso, disparo, arma de fogo, ágil, desarmado)
                 const lowerAtkName = atk.name.toLowerCase();
                 const invMatch = inventory.find(
@@ -3168,7 +3215,8 @@ export function SheetExtras({
                 );
               })}
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -4407,17 +4455,25 @@ export function SheetExtras({
             <p className="text-xs text-zinc-500 text-center py-4">Mochila vazia.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {inventory.map((item) => (
+              {[...inventory]
+                .sort((a, b) => Number(Boolean(b.isEquipped)) - Number(Boolean(a.isEquipped)))
+                .map((item) => (
                 <div
                   key={item.id}
-                  className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex justify-between items-center gap-4"
+                  className={`p-4 rounded-xl flex justify-between items-center gap-4 transition ${
+                    item.isEquipped
+                      ? 'bg-gradient-to-r from-emerald-950/35 via-zinc-950 to-zinc-950 border-2 border-emerald-500/70 shadow-lg shadow-emerald-950/25'
+                      : 'bg-zinc-950/80 border border-zinc-800/80 opacity-85 hover:opacity-100'
+                  }`}
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
                     {item.imageUrl ? (
                       <div
                         onClick={() => setZoomedItemImage({ name: item.name, url: item.imageUrl! })}
                         title="Clique para ampliar a imagem do item"
-                        className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-amber-500/60 shadow-lg shrink-0 bg-zinc-900 cursor-zoom-in group relative"
+                        className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 shadow-lg shrink-0 bg-zinc-900 cursor-zoom-in group relative ${
+                          item.isEquipped ? 'border-emerald-400/80' : 'border-amber-500/60'
+                        }`}
                       >
                         <img
                           src={item.imageUrl}
@@ -4426,8 +4482,14 @@ export function SheetExtras({
                         />
                       </div>
                     ) : (
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-3xl shrink-0">
-                        🎒
+                      <div
+                        className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border flex items-center justify-center text-3xl shrink-0 ${
+                          item.isEquipped
+                            ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                            : 'bg-zinc-900 border-zinc-800'
+                        }`}
+                      >
+                        {item.isEquipped ? '✋' : '🎒'}
                       </div>
                     )}
 
@@ -4437,6 +4499,15 @@ export function SheetExtras({
                           {item.quantity || 1}x
                         </span>
                         <p className="text-base font-bold text-white truncate">{item.name}</p>
+                        {item.isEquipped ? (
+                          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/70">
+                            ✋ EQUIPADO
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-700">
+                            🎒 MOCHILA
+                          </span>
+                        )}
                         <span className="text-[11px] font-mono text-zinc-500">
                           {hasMochilaUtilidades && item.isUtilityBackpackItem
                             ? `(${
@@ -4507,14 +4578,22 @@ export function SheetExtras({
                       )}
 
                       <div className="flex flex-wrap items-center gap-3 mt-2">
-                        <label className="flex items-center gap-1.5 text-[11px] text-emerald-400 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(item.isEquipped)}
-                            onChange={() => toggleItemEquipped(item.id)}
-                          />
-                          Equipado / Em mãos
-                        </label>
+                        <button
+                          type="button"
+                          onClick={() => toggleItemEquipped(item.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                            item.isEquipped
+                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-sm'
+                              : 'bg-zinc-900 hover:bg-emerald-950 text-zinc-300 hover:text-emerald-200 border-zinc-700 hover:border-emerald-500/60'
+                          }`}
+                          title={
+                            item.isEquipped
+                              ? 'Item equipado / em mãos. Clique para guardar na mochila.'
+                              : 'Item guardado na mochila. Clique para equipar e mover para o topo.'
+                          }
+                        >
+                          {item.isEquipped ? '✋ Equipado (Guardar)' : '🎒 Na Mochila (Equipar)'}
+                        </button>
 
                         {originId === 'engenheiro' &&
                           !attacks.some(
@@ -4635,6 +4714,61 @@ export function SheetExtras({
                   </div>
 
                   <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+                    {(() => {
+                      const healFormulaRaw = getConsumableHealFormula(item, compendiumEntries);
+                      if (!healFormulaRaw) return null;
+                      const parsed = parseDiceFormula(healFormulaRaw);
+                      const agenteSaudeBonus =
+                        system === 'ordem-paranormal' && originId === 'agente_saude'
+                          ? Math.max(0, effInt)
+                          : 0;
+                      const finalMod = parsed.modifier + agenteSaudeBonus;
+                      const displayFormula = `${parsed.count}d${parsed.sides}${
+                        finalMod > 0 ? `+${finalMod}` : finalMod < 0 ? finalMod : ''
+                      }`;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onRoll(
+                              `${item.name} — Cura PV`,
+                              parsed.count,
+                              parsed.sides,
+                              finalMod,
+                              true
+                            );
+                            const nextInventory =
+                              (item.quantity || 1) > 1
+                                ? inventory.map((i) =>
+                                    i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
+                                  )
+                                : inventory.filter((i) => i.id !== item.id);
+                            onUpdateInventory(nextInventory);
+                            if (
+                              attacks.some(
+                                (a) =>
+                                  isHealingConsumableItem(a.name) &&
+                                  a.name.toLowerCase() === item.name.toLowerCase()
+                              )
+                            ) {
+                              onUpdateAttacks(
+                                attacks.filter(
+                                  (a) =>
+                                    !(
+                                      isHealingConsumableItem(a.name) &&
+                                      a.name.toLowerCase() === item.name.toLowerCase()
+                                    )
+                                )
+                              );
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-400 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow"
+                          title={`Rolar cura (${displayFormula} PV) e consumir 1 unidade do inventário`}
+                        >
+                          💚 Usar ({displayFormula} PV • -1 un.)
+                        </button>
+                      );
+                    })()}
                     {canTrade && onInitiateTradeItem && (
                       <button
                         type="button"
