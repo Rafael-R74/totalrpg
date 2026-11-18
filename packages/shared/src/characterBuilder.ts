@@ -5,6 +5,7 @@ import {
   OrdemSheetData,
   PreparedAttack,
   RPGItem,
+  RuleModifier,
   T20Attributes,
   T20SheetData,
   VitalBar,
@@ -21,6 +22,11 @@ import {
   T20_ORIGINS,
   T20_RACES,
 } from './wizardData';
+import {
+  findOrdemRitualDef,
+  getOrdemCircleBaseCost,
+  ORDEM_RITUAL_MECHANICS,
+} from './ordemRituals';
 import { ORDEM_COMPENDIUM_ENTRIES } from './ordemCompendiumData';
 
 export interface OrdemVitalsCalcInput {
@@ -91,15 +97,38 @@ export function getOrdemPeLimit(
     (o) => o.id === normOrigin || o.name.toLowerCase() === normOrigin
   );
   const originBonus = origin?.extraPeLimit ? 1 : 0;
-  const encararMorteBonus = (abilities || []).some(
+  const encararAb = (abilities || []).find(
     (a) =>
       a.isActive !== false &&
       a.name.toLowerCase().includes('encarar a morte')
-  )
-    ? 1
+  );
+  const encararMorteBonus = encararAb
+    ? encararAb.hasAffinityUpgrade || encararAb.name.toLowerCase().includes('afinidade')
+      ? 3
+      : 1
     : 0;
 
   return baseLimit + originBonus + encararMorteBonus;
+}
+
+export function getOrdemRitualPeLimit(
+  nex: number,
+  originIdOrName?: string,
+  abilities?: CharacterAbility[],
+  effectivePre = 0,
+  trailId?: string
+): number {
+  const base = getOrdemPeLimit(nex, originIdOrName, abilities);
+  const hasPresencaPoderosa =
+    (trailId === 'intuitivo' && nex >= 40) ||
+    (abilities || []).some(
+      (a) =>
+        a.isActive !== false &&
+        (a.id === 'trail-intuitivo-40' ||
+          a.name.toLowerCase().includes('presença poderosa') ||
+          a.name.toLowerCase().includes('presenca poderosa'))
+    );
+  return hasPresencaPoderosa ? base + Math.max(0, effectivePre) : base;
 }
 
 export function getOrdemRitualDT(
@@ -107,16 +136,27 @@ export function getOrdemRitualDT(
   effectivePre: number,
   trailId?: string,
   abilities?: CharacterAbility[],
-  _originIdOrName?: string
+  _originIdOrName?: string,
+  ritualElement?: string
 ): number {
-  // Livro v1.3, p. 21 (Universitário — Dedicação): o +1 no limite de PE por turno NÃO afeta a DT de seus efeitos!
-  const peLimitForDt = getOrdemPeLimit(nex, undefined, abilities);
-  const graduadoBonus = trailId === 'graduado' && nex >= 65 ? 5 : 0;
-  const especialistaBonus = (abilities || []).some(
-    (a) =>
-      a.isActive !== false &&
-      a.name.toLowerCase().includes('especialista em elemento')
-  )
+  // Livro v1.3, p. 21 e p. 115: Universitário (Dedicação), Encarar a Morte e Presença Poderosa NÃO afetam a DT!
+  const peLimitForDt =
+    nex <= 0 ? 1 : nex === 99 ? 20 : Math.max(1, Math.floor(nex / 5));
+  const graduadoBonus =
+    (trailId === 'graduado' && nex >= 65) ||
+    (abilities || []).some(
+      (a) =>
+        a.isActive !== false &&
+        a.name.toLowerCase().includes('rituais eficientes')
+    )
+      ? 5
+      : 0;
+  const especialistaBonus = (abilities || []).some((a) => {
+    if (a.isActive === false) return false;
+    if (!a.name.toLowerCase().includes('especialista em elemento')) return false;
+    if (!ritualElement || !a.chosenElement) return true;
+    return ritualElement.toLowerCase().includes(a.chosenElement.toLowerCase());
+  })
     ? 2
     : 0;
   return 10 + peLimitForDt + effectivePre + graduadoBonus + especialistaBonus;
@@ -359,18 +399,17 @@ export function checkOrdemPowerRequirements(
     const match = reqText.match(elCheck.regex);
     if (match) {
       const requiredCount = Number(match[1]);
-      // Conta poderes paranormais e rituais daquele elemento que o personagem já possui
+      // Conta poderes paranormais (incluindo Aprender Ritual / Resistir a Elemento) daquele elemento que o personagem já possui
       const ownedCount = abilities.filter((ab) => {
+        const cleanAbName = ab.name.replace(/\s*\(afinidade\)$/i, '').trim().toLowerCase();
         const compMatch = ORDEM_COMPENDIUM_ENTRIES.find(
-          (ce) => ce.name.toLowerCase() === ab.name.toLowerCase()
+          (ce) => ce.name.toLowerCase() === cleanAbName || ce.name.toLowerCase() === ab.name.toLowerCase()
         );
-        const abElement = ab.element || compMatch?.metadata?.element || '';
-        return (
-          abElement.toLowerCase().includes(elCheck.element.toLowerCase()) &&
-          (ab.category === 'poder' ||
-            ab.category === 'poder_paranormal' ||
-            ab.category === 'ritual')
-        );
+        const isParanormal =
+          ab.category === 'poder_paranormal' || compMatch?.category === 'paranormal_power';
+        if (!isParanormal) return false;
+        const abElement = ab.chosenElement || ab.element || compMatch?.metadata?.element || '';
+        return abElement.toLowerCase().includes(elCheck.element.toLowerCase());
       }).length;
       if (ownedCount < requiredCount) {
         missing.push(`${elCheck.element} ${requiredCount} (possui ${ownedCount})`);
@@ -506,22 +545,187 @@ export interface OrdemRitualCastForm {
   requiresAffinity: boolean;
   description: string;
   damageFormula?: string;
+  healingFormula?: string;
   tempHpFormula?: string;
   tempHpFlat?: number;
   sceneDefenseBonus?: number;
+  sceneModifiers?: RuleModifier[];
+  weaponExtraDice?: string;
+  weaponCritThreatSteps?: number;
+  weaponCritMultiplierBoost?: number;
+  isPersonalSelf?: boolean;
+  element?: string;
+  execution?: string;
+  range?: string;
+  target?: string;
+  duration?: string;
+  resistance?: string;
 }
 
 export function parseOrdemRitualForms(
   ritualName: string,
   ritualDescription: string,
   baseCost: number,
-  baseDamageFormula?: string
+  baseDamageFormula?: string,
+  options?: {
+    ritualId?: string;
+    element?: string;
+    isFavoriteRitual?: boolean;
+    abilities?: CharacterAbility[];
+    extraPeCost?: number;
+  }
 ): OrdemRitualCastForm[] {
   const lowerName = ritualName.toLowerCase();
+  const def = findOrdemRitualDef(options?.ritualId || ritualName);
+  const mech = def ? ORDEM_RITUAL_MECHANICS[def.id] : undefined;
+  const effectiveElement = (options?.element || def?.element || '').toLowerCase();
+  const abList = options?.abilities || [];
+
+  const hasPrediletoPower = abList.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.includes('ritual-predileto') ||
+        a.name.toLowerCase().includes('ritual predileto'))
+  );
+  const hasMestreElemento = abList.some((a) => {
+    if (a.isActive === false) return false;
+    if (
+      !a.id.includes('mestre-elemento') &&
+      !a.name.toLowerCase().includes('mestre em elemento')
+    ) {
+      return false;
+    }
+    if (!a.chosenElement) return true;
+    return effectiveElement.includes(a.chosenElement.toLowerCase());
+  });
+  const hasTatuagemRitualistica = abList.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.includes('tatuagem-ritualistica') ||
+        a.name.toLowerCase().includes('tatuagem ritualística') ||
+        a.name.toLowerCase().includes('tatuagem ritualistica'))
+  );
+
+  const sharedReduction =
+    (options?.isFavoriteRitual && hasPrediletoPower ? 1 : 0) +
+    (hasMestreElemento ? 1 : 0);
+
+  function computeFormTotalCost(rawCost: number, isPersonalSelf?: boolean): number {
+    const tatRed = hasTatuagemRitualistica && isPersonalSelf ? 1 : 0;
+    const reduced = Math.max(1, rawCost - sharedReduction - tatRed);
+    return reduced + (options?.extraPeCost || 0);
+  }
+
+  if (def) {
+    const rawBaseCost = getOrdemCircleBaseCost(def.circle);
+    const defaultPersonal =
+      def.range.toLowerCase() === 'pessoal' &&
+      def.target.toLowerCase().includes('você');
+
+    const normMech = mech?.normal;
+    const normPersonal = normMech?.isPersonalSelf ?? defaultPersonal;
+
+    const forms: OrdemRitualCastForm[] = [
+      {
+        mode: 'normal',
+        label: 'Normal',
+        extraCost: 0,
+        totalCost: computeFormTotalCost(rawBaseCost, normPersonal),
+        requiredCircle: def.circle,
+        requiresAffinity: false,
+        description: def.description,
+        damageFormula: normMech?.damageFormula,
+        healingFormula: normMech?.healingFormula,
+        tempHpFormula: normMech?.tempHpFormula,
+        tempHpFlat: normMech?.tempHpFlat,
+        sceneDefenseBonus: normMech?.sceneDefenseBonus,
+        sceneModifiers: normMech?.sceneModifiers,
+        weaponExtraDice: normMech?.weaponExtraDice,
+        weaponCritThreatSteps: normMech?.weaponCritThreatSteps,
+        weaponCritMultiplierBoost: normMech?.weaponCritMultiplierBoost,
+        isPersonalSelf: normPersonal,
+        element: options?.element || def.element,
+        execution: def.execution,
+        range: def.range,
+        target: `${def.targetLabel}: ${def.target}`,
+        duration: def.duration,
+        resistance: def.resistance,
+      },
+    ];
+
+    if (def.discente) {
+      const dm = mech?.discente;
+      const dPersonal = dm?.isPersonalSelf ?? false;
+      forms.push({
+        mode: 'discente',
+        label: 'Discente',
+        extraCost: def.discente.extraCost,
+        totalCost: computeFormTotalCost(
+          rawBaseCost + def.discente.extraCost,
+          dPersonal
+        ),
+        requiredCircle: def.discente.requiredCircle,
+        requiresAffinity: def.discente.requiresAffinity,
+        description: def.discente.text,
+        damageFormula: dm?.damageFormula,
+        healingFormula: dm?.healingFormula,
+        tempHpFormula: dm?.tempHpFormula,
+        tempHpFlat: dm?.tempHpFlat,
+        sceneDefenseBonus: dm?.sceneDefenseBonus,
+        sceneModifiers: dm?.sceneModifiers,
+        weaponExtraDice: dm?.weaponExtraDice,
+        weaponCritThreatSteps: dm?.weaponCritThreatSteps,
+        weaponCritMultiplierBoost: dm?.weaponCritMultiplierBoost,
+        isPersonalSelf: dPersonal,
+        element: options?.element || def.element,
+        execution: def.execution,
+        range: def.range,
+        target: `${def.targetLabel}: ${def.target}`,
+        duration: def.duration,
+        resistance: def.resistance,
+      });
+    }
+
+    if (def.verdadeiro) {
+      const vm = mech?.verdadeiro;
+      const vPersonal = vm?.isPersonalSelf ?? false;
+      forms.push({
+        mode: 'verdadeiro',
+        label: 'Verdadeiro',
+        extraCost: def.verdadeiro.extraCost,
+        totalCost: computeFormTotalCost(
+          rawBaseCost + def.verdadeiro.extraCost,
+          vPersonal
+        ),
+        requiredCircle: def.verdadeiro.requiredCircle,
+        requiresAffinity: def.verdadeiro.requiresAffinity,
+        description: def.verdadeiro.text,
+        damageFormula: vm?.damageFormula,
+        healingFormula: vm?.healingFormula,
+        tempHpFormula: vm?.tempHpFormula,
+        tempHpFlat: vm?.tempHpFlat,
+        sceneDefenseBonus: vm?.sceneDefenseBonus,
+        sceneModifiers: vm?.sceneModifiers,
+        weaponExtraDice: vm?.weaponExtraDice,
+        weaponCritThreatSteps: vm?.weaponCritThreatSteps,
+        weaponCritMultiplierBoost: vm?.weaponCritMultiplierBoost,
+        isPersonalSelf: vPersonal,
+        element: options?.element || def.element,
+        execution: def.execution,
+        range: def.range,
+        target: `${def.targetLabel}: ${def.target}`,
+        duration: def.duration,
+        resistance: def.resistance,
+      });
+    }
+
+    return forms;
+  }
+
+  // Fallback para rituais customizados criados manualmente pelo usuário
   const baseCircle =
     baseCost >= 10 ? 4 : baseCost >= 6 ? 3 : baseCost >= 3 ? 2 : 1;
 
-  // Separa texto Normal, Discente e Verdadeiro
   const discIdx = ritualDescription.search(/Discente\s*\(/i);
   const verdIdx = ritualDescription.search(/Verdadeiro\s*\(/i);
 
@@ -552,7 +756,7 @@ export function parseOrdemRitualForms(
       mode: 'normal',
       label: 'Normal',
       extraCost: 0,
-      totalCost: Math.max(1, baseCost),
+      totalCost: computeFormTotalCost(Math.max(1, baseCost), false),
       requiredCircle: baseCircle,
       requiresAffinity: false,
       description: normalText,
@@ -564,6 +768,7 @@ export function parseOrdemRitualForms(
         : lowerName.includes('embaralhar')
         ? 6
         : undefined,
+      element: options?.element,
     },
   ];
 
@@ -625,7 +830,7 @@ export function parseOrdemRitualForms(
       mode,
       label: mode === 'discente' ? 'Discente' : 'Verdadeiro',
       extraCost,
-      totalCost: Math.max(1, baseCost) + extraCost,
+      totalCost: computeFormTotalCost(Math.max(1, baseCost) + extraCost, false),
       requiredCircle,
       requiresAffinity,
       description: effectDesc,
@@ -633,6 +838,7 @@ export function parseOrdemRitualForms(
       tempHpFormula,
       tempHpFlat,
       sceneDefenseBonus,
+      element: options?.element,
     };
   }
 

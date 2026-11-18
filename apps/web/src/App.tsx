@@ -246,7 +246,8 @@ export default function App() {
       batchRole: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
       batchShotNumber: number;
       batchIsCrit?: boolean;
-    }
+    },
+    hasAfortunadoAffinity?: boolean
   ) {
     if (!activeRoomId || !currentUser) return;
     const effectiveBatchMeta =
@@ -272,6 +273,7 @@ export default function App() {
       isSecret,
       fixedRolls,
       hasAfortunado,
+      hasAfortunadoAffinity,
       attackDamagePayload,
       forcaOpressoraPayload,
       ...(effectiveBatchMeta || {}),
@@ -383,7 +385,8 @@ export default function App() {
               batchId: sg.batchId,
               batchRole: 'segurar_gatilho_attack',
               batchShotNumber: shotNumber,
-            }
+            },
+            baseRoll.hasAfortunadoAffinity
           );
           return true;
         }}
@@ -428,7 +431,8 @@ export default function App() {
                 batchRole: 'segurar_gatilho_damage',
                 batchShotNumber: shotNum,
                 batchIsCrit: isCrit,
-              }
+              },
+              atkRoll.hasAfortunadoAffinity
             );
           });
         }}
@@ -459,7 +463,9 @@ export default function App() {
             fixedRolls,
             rollResult.hasAfortunado,
             undefined,
-            p.forcaOpressoraPayload
+            p.forcaOpressoraPayload,
+            undefined,
+            rollResult.hasAfortunadoAffinity
           );
         }}
         onRollForcaOpressora={(rollResult, maneuver) => {
@@ -482,7 +488,11 @@ export default function App() {
               false,
               rollResult.characterId,
               undefined,
-              rollResult.hasAfortunado
+              rollResult.hasAfortunado,
+              undefined,
+              undefined,
+              undefined,
+              rollResult.hasAfortunadoAffinity
             );
           } else {
             triggerRoll(
@@ -496,7 +506,11 @@ export default function App() {
               false,
               rollResult.characterId,
               undefined,
-              rollResult.hasAfortunado
+              rollResult.hasAfortunado,
+              undefined,
+              undefined,
+              undefined,
+              rollResult.hasAfortunadoAffinity
             );
           }
         }}

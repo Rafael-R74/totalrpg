@@ -953,25 +953,25 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 10,
         name: 'Ampliar Ritual (Conduíte 10%)',
-        cost: 2,
+        cost: 0,
         description: 'Ao lançar um ritual, pode gastar +2 PE para aumentar seu alcance em um passo ou dobrar sua área de efeito.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 40,
         name: 'Acelerar Ritual (Conduíte 40%)',
-        cost: 4,
+        cost: 0,
         description: 'Uma vez por rodada, pode aumentar o custo de um ritual em +4 PE para conjurá-lo como uma ação livre.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
         nex: 65,
         name: 'Anular Ritual (Conduíte 65%)',
-        cost: 1,
+        cost: 0,
         description: 'Quando for alvo de um ritual, pode gastar PE igual ao custo pago e fazer um teste oposto de Ocultismo para anulá-lo.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
@@ -1001,9 +1001,9 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
       {
         nex: 40,
         name: 'Abraçar a Dor (Flagelador 40%)',
-        cost: 2,
+        cost: 0,
         description: 'Sempre que sofrer dano não paranormal, pode gastar uma reação e 2 PE para reduzir esse dano à metade.',
-        isActive: false,
+        isActive: true,
         modifiers: [],
       },
       {
@@ -1076,7 +1076,11 @@ export const ORDEM_TRAILS: OrdemTrailDefinition[] = [
         cost: 0,
         description: 'Você recebe resistência paranormal +5 (+5 em testes de resistência contra efeitos paranormais).',
         isActive: true,
-        modifiers: [{ id: 'tr-int-10', targetType: 'skill_bonus', targetKey: 'vontade', value: 5 }],
+        modifiers: [
+          { id: 'tr-int-10-fort', targetType: 'skill_bonus', targetKey: 'fortitude', value: 5 },
+          { id: 'tr-int-10-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: 5 },
+          { id: 'tr-int-10-von', targetType: 'skill_bonus', targetKey: 'vontade', value: 5 },
+        ],
       },
       {
         nex: 40,
