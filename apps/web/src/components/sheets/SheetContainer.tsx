@@ -122,7 +122,12 @@ export function SheetContainer({
   const lastTurnKeyRef = useRef<string>('');
   const latestCharacterRef = useRef<FullCharacterResponse | null>(null);
   latestCharacterRef.current = character;
-  const autoSaveQueuedRef = useRef<boolean>(false);
+  const localMutationVersionRef = useRef<number>(0);
+  const saveDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightSaveCountRef = useRef<number>(0);
+  const pendingFollowUpSaveRef = useRef<boolean>(false);
+  const isEditModeRef = useRef<boolean>(isEditMode);
+  isEditModeRef.current = isEditMode;
   const latestSpendResourceRef = useRef<(amount: number) => boolean>(() => false);
 
   useEffect(() => {
@@ -131,15 +136,40 @@ export function SheetContainer({
     }
   }, [onRegisterSpendResource]);
 
-  function scheduleGameModeSave() {
-    if (autoSaveQueuedRef.current) return;
-    autoSaveQueuedRef.current = true;
-    queueMicrotask(() => {
-      autoSaveQueuedRef.current = false;
+  useEffect(() => {
+    return () => {
+      if (saveDebounceTimerRef.current) {
+        clearTimeout(saveDebounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  function scheduleGameModeSave(delayMs = 180) {
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+    }
+    saveDebounceTimerRef.current = setTimeout(() => {
+      saveDebounceTimerRef.current = null;
       if (latestCharacterRef.current) {
         handleSaveSheet(latestCharacterRef.current);
       }
-    });
+    }, delayMs);
+  }
+
+  function applyLocalCharacterUpdate(
+    updater: (base: FullCharacterResponse) => FullCharacterResponse,
+    shouldAutoSave = !isEditModeRef.current
+  ): FullCharacterResponse | null {
+    const base = latestCharacterRef.current;
+    if (!base) return null;
+    const nextChar = updater(base);
+    latestCharacterRef.current = nextChar;
+    localMutationVersionRef.current += 1;
+    setCharacter(nextChar);
+    if (shouldAutoSave) {
+      scheduleGameModeSave();
+    }
+    return nextChar;
   }
 
   function showHoverToast(msg: string) {
@@ -298,6 +328,8 @@ export function SheetContainer({
           });
         }
 
+        latestCharacterRef.current = charData;
+        localMutationVersionRef.current = 0;
         setCharacter(charData);
         if ((charData.campaign as any)?.combatState) {
           setLiveCombatState((charData.campaign as any).combatState);
@@ -370,8 +402,20 @@ export function SheetContainer({
       (externalReloadSignal.characterId === characterId ||
         externalReloadSignal.characterId === 'ALL')
     ) {
+      if (saveDebounceTimerRef.current || inFlightSaveCountRef.current > 0) {
+        return;
+      }
+      const versionBeforeFetch = localMutationVersionRef.current;
       fetchCharacterById(characterId)
         .then((freshData) => {
+          if (
+            localMutationVersionRef.current !== versionBeforeFetch ||
+            saveDebounceTimerRef.current ||
+            inFlightSaveCountRef.current > 0
+          ) {
+            return;
+          }
+          latestCharacterRef.current = freshData;
           setCharacter(freshData);
           if ((freshData.campaign as any)?.combatState !== undefined) {
             setLiveCombatState((freshData.campaign as any).combatState);
@@ -469,13 +513,15 @@ export function SheetContainer({
       const base = latestCharacterRef.current;
       if (!base || !detail || detail.amount <= 0) return;
       if (detail.characterId && detail.characterId !== base.id) return;
-      const nextVitals = base.vitals.map((v) =>
-        v.id === 'san' ? { ...v, current: Math.max(0, v.current - detail.amount) } : v
+      applyLocalCharacterUpdate(
+        (cur) => ({
+          ...cur,
+          vitals: cur.vitals.map((v) =>
+            v.id === 'san' ? { ...v, current: Math.max(0, v.current - detail.amount) } : v
+          ),
+        }),
+        true
       );
-      const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
-      latestCharacterRef.current = nextChar;
-      setCharacter(nextChar);
-      scheduleGameModeSave();
       showHoverToast(
         `👁️ O Preço da Maldição (${detail.element}): -${detail.amount} SAN descontados.`
       );
@@ -490,15 +536,15 @@ export function SheetContainer({
       const base = latestCharacterRef.current;
       if (!base || !detail || detail.amount <= 0) return;
       if (detail.characterId && detail.characterId !== base.id) return;
-      const prevRaw = (base.sheetData || {}) as Record<string, any>;
-      const nextTempHp = Math.max(Number(prevRaw.tempHp || 0), detail.amount);
-      const nextChar: FullCharacterResponse = {
-        ...base,
-        sheetData: { ...prevRaw, tempHp: nextTempHp },
-      };
-      latestCharacterRef.current = nextChar;
-      setCharacter(nextChar);
-      scheduleGameModeSave();
+      const updated = applyLocalCharacterUpdate((cur) => {
+        const prevRaw = (cur.sheetData || {}) as Record<string, any>;
+        const nextTempHp = Math.max(Number(prevRaw.tempHp || 0), detail.amount);
+        return {
+          ...cur,
+          sheetData: { ...prevRaw, tempHp: nextTempHp },
+        };
+      }, true);
+      const nextTempHp = Number((updated?.sheetData as any)?.tempHp || detail.amount);
       showHoverToast(
         `🛡️ ${detail.label || 'PV Temporários'}: ${nextTempHp} PV temporários ativos na ficha!`
       );
@@ -632,86 +678,89 @@ export function SheetContainer({
   }
 
   function handleLoseSanity(amount: number, reason: string) {
-    const base = latestCharacterRef.current;
-    if (!base || amount <= 0) return;
-    const nextVitals = base.vitals.map((v) =>
-      v.id === 'san' ? { ...v, current: Math.max(0, v.current - amount) } : v
-    );
-    const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
-    latestCharacterRef.current = nextChar;
-    setCharacter(nextChar);
-    if (!isEditMode) scheduleGameModeSave();
+    if (!latestCharacterRef.current || amount <= 0) return;
+    applyLocalCharacterUpdate((base) => ({
+      ...base,
+      vitals: base.vitals.map((v) =>
+        v.id === 'san' ? { ...v, current: Math.max(0, v.current - amount) } : v
+      ),
+    }));
     showHoverToast(`🧠 ${reason}: -${amount} SAN descontados.`);
   }
 
   function handleHealPv(amount: number, reason?: string) {
-    const base = latestCharacterRef.current;
-    if (!base || amount <= 0) return;
-    const nextVitals = base.vitals.map((v) => {
-      if (v.id !== 'pv') return v;
-      const effMax = v.max + (bonuses.vitalMax.pv || 0);
-      return { ...v, current: Math.min(effMax, v.current + amount) };
-    });
-    const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
-    latestCharacterRef.current = nextChar;
-    setCharacter(nextChar);
-    if (!isEditMode) scheduleGameModeSave();
+    if (!latestCharacterRef.current || amount <= 0) return;
+    applyLocalCharacterUpdate((base) => ({
+      ...base,
+      vitals: base.vitals.map((v) => {
+        if (v.id !== 'pv') return v;
+        const effMax = v.max + (bonuses.vitalMax.pv || 0);
+        return { ...v, current: Math.min(effMax, v.current + amount) };
+      }),
+    }));
     if (reason) showHoverToast(`💚 ${reason}: +${amount} PV recuperados.`);
   }
 
   function handleTakePvDamage(amount: number, reason?: string) {
-    const base = latestCharacterRef.current;
-    if (!base || amount <= 0) return;
-    const nextVitals = base.vitals.map((v) =>
-      v.id === 'pv' ? { ...v, current: Math.max(0, v.current - amount) } : v
-    );
-    const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
-    latestCharacterRef.current = nextChar;
-    setCharacter(nextChar);
-    if (!isEditMode) scheduleGameModeSave();
+    if (!latestCharacterRef.current || amount <= 0) return;
+    applyLocalCharacterUpdate((base) => ({
+      ...base,
+      vitals: base.vitals.map((v) =>
+        v.id === 'pv' ? { ...v, current: Math.max(0, v.current - amount) } : v
+      ),
+    }));
     if (reason) showHoverToast(`🩸 ${reason}: -${amount} PV.`);
   }
 
   function handleGrantTempPe(amount: number, reason?: string) {
-    const base = latestCharacterRef.current;
-    if (!base || amount <= 0) return;
-    const prevRaw = (base.sheetData || {}) as Record<string, any>;
-    const nextTempPe = Number(prevRaw.tempPe || 0) + amount;
-    const nextChar: FullCharacterResponse = {
-      ...base,
-      sheetData: { ...prevRaw, tempPe: nextTempPe },
-    };
-    latestCharacterRef.current = nextChar;
-    setCharacter(nextChar);
-    if (!isEditMode) scheduleGameModeSave();
+    if (!latestCharacterRef.current || amount <= 0) return;
+    applyLocalCharacterUpdate((base) => {
+      const prevRaw = (base.sheetData || {}) as Record<string, any>;
+      const nextTempPe = Number(prevRaw.tempPe || 0) + amount;
+      return {
+        ...base,
+        sheetData: { ...prevRaw, tempPe: nextTempPe },
+      };
+    });
     if (reason) showHoverToast(`⚡ ${reason}: +${amount} PE temporários!`);
   }
 
   function handleAddSceneEffect(effect: SceneEffect) {
-    const base = latestCharacterRef.current;
-    if (!base) return;
-    const prevRaw = (base.sheetData || {}) as Record<string, any>;
-    const prevEffects: SceneEffect[] = Array.isArray(prevRaw.sceneEffects)
-      ? prevRaw.sceneEffects
-      : [];
-    const filtered = prevEffects.filter((e) => e.id !== effect.id);
-    const nextChar: FullCharacterResponse = {
-      ...base,
-      sheetData: { ...prevRaw, sceneEffects: [...filtered, effect] },
-    };
-    latestCharacterRef.current = nextChar;
-    setCharacter(nextChar);
-    if (!isEditMode) scheduleGameModeSave();
+    applyLocalCharacterUpdate((base) => {
+      const prevRaw = (base.sheetData || {}) as Record<string, any>;
+      const prevEffects: SceneEffect[] = Array.isArray(prevRaw.sceneEffects)
+        ? prevRaw.sceneEffects
+        : [];
+      const filtered = prevEffects.filter((e) => e.id !== effect.id);
+      return {
+        ...base,
+        sheetData: { ...prevRaw, sceneEffects: [...filtered, effect] },
+      };
+    });
   }
 
   async function handleSaveSheet(overrideChar?: FullCharacterResponse) {
-    const target = overrideChar || character;
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
+    }
+    if (overrideChar) {
+      latestCharacterRef.current = overrideChar;
+    }
+    const target = latestCharacterRef.current;
     if (!target) return;
 
+    if (inFlightSaveCountRef.current > 0) {
+      pendingFollowUpSaveRef.current = true;
+      return;
+    }
+
+    const saveVersion = localMutationVersionRef.current;
+    inFlightSaveCountRef.current += 1;
     setIsSaving(true);
     setFeedbackMsg('');
     try {
-      const updated = await updateCharacter(target.id, {
+      await updateCharacter(target.id, {
         name: target.name,
         portraitUrl: target.portraitUrl,
         vitals: target.vitals,
@@ -719,16 +768,27 @@ export function SheetContainer({
         inventory: target.inventory,
         attacks: target.attacks,
       });
-      setCharacter((prev) => (prev ? { ...prev, ...updated } : updated));
       if (onCharacterSaved) {
         onCharacterSaved(target.id, target.campaignId);
       }
-      setFeedbackMsg('Salvo!');
-      setTimeout(() => setFeedbackMsg(''), 2000);
+      if (localMutationVersionRef.current === saveVersion) {
+        setFeedbackMsg('Salvo!');
+        setTimeout(() => setFeedbackMsg(''), 2000);
+      }
     } catch (err: any) {
       alert(err.message);
     } finally {
-      setIsSaving(false);
+      inFlightSaveCountRef.current = Math.max(0, inFlightSaveCountRef.current - 1);
+      if (inFlightSaveCountRef.current === 0) {
+        setIsSaving(false);
+      }
+      const hasNewerMutations = localMutationVersionRef.current > saveVersion;
+      if (pendingFollowUpSaveRef.current || hasNewerMutations) {
+        pendingFollowUpSaveRef.current = false;
+        if (latestCharacterRef.current) {
+          handleSaveSheet(latestCharacterRef.current);
+        }
+      }
     }
   }
 
@@ -791,74 +851,90 @@ export function SheetContainer({
     }
   }
 
-  function handleVitalChange(barId: string, field: 'current' | 'max', newValue: number) {
-    if (!character || !canEditVitals) return;
-
-    let nextTempHp = Number(rawSheet.tempHp || 0);
+  function computeUpdatedVitalChar(
+    base: FullCharacterResponse,
+    barId: string,
+    field: 'current' | 'max',
+    resolveTargetValue: (currentVal: number, effectiveMax: number) => number
+  ): FullCharacterResponse {
+    const baseRaw = (base.sheetData || {}) as Record<string, any>;
+    let nextTempHp = Number(baseRaw.tempHp || 0);
     let tempHpChanged = false;
-    let nextTempPe = Number(rawSheet.tempPe || 0);
+    let nextTempPe = Number(baseRaw.tempPe || 0);
     let tempPeChanged = false;
 
-    const updatedVitals = character.vitals.map((bar) => {
+    const updatedVitals = base.vitals.map((bar) => {
       if (bar.id !== barId) return bar;
       const bonusMax = bonuses.vitalMax[bar.id] || 0;
       const effectiveMax = Math.max(1, bar.max + bonusMax);
 
       if (field === 'max') {
-        const validMax = Math.max(1, newValue);
+        const validMax = Math.max(1, resolveTargetValue(bar.max, effectiveMax));
         return { ...bar, max: validMax };
-      } else {
-        let targetVal = newValue;
-        // Se for dano em PV e houver PV Temporários (ex.: Consumir Manancial), desconta primeiro dos PV Temporários!
-        if (barId === 'pv' && newValue < bar.current && nextTempHp > 0) {
-          const damage = bar.current - newValue;
-          const absorbed = Math.min(nextTempHp, damage);
-          nextTempHp -= absorbed;
-          const remainingDamage = damage - absorbed;
-          targetVal = bar.current - remainingDamage;
-          tempHpChanged = true;
-        }
-        // Se for gasto de PE e houver PE Temporários (ex.: Vislumbres do Passado do Amnésico), desconta primeiro dos PE Temporários!
-        if (barId === 'pe' && newValue < bar.current && nextTempPe > 0) {
-          const spent = bar.current - newValue;
-          const absorbed = Math.min(nextTempPe, spent);
-          nextTempPe -= absorbed;
-          const remainingSpent = spent - absorbed;
-          targetVal = bar.current - remainingSpent;
-          tempPeChanged = true;
-        }
-        const clampedCurrent = Math.max(0, Math.min(effectiveMax, targetVal));
-        return { ...bar, current: clampedCurrent };
       }
+
+      const requestedVal = resolveTargetValue(bar.current, effectiveMax);
+      let targetVal = requestedVal;
+      // Se for dano em PV e houver PV Temporários (ex.: Consumir Manancial), desconta primeiro dos PV Temporários!
+      if (barId === 'pv' && requestedVal < bar.current && nextTempHp > 0) {
+        const damage = bar.current - requestedVal;
+        const absorbed = Math.min(nextTempHp, damage);
+        nextTempHp -= absorbed;
+        const remainingDamage = damage - absorbed;
+        targetVal = bar.current - remainingDamage;
+        tempHpChanged = true;
+      }
+      // Se for gasto de PE e houver PE Temporários (ex.: Vislumbres do Passado do Amnésico), desconta primeiro dos PE Temporários!
+      if (barId === 'pe' && requestedVal < bar.current && nextTempPe > 0) {
+        const spent = bar.current - requestedVal;
+        const absorbed = Math.min(nextTempPe, spent);
+        nextTempPe -= absorbed;
+        const remainingSpent = spent - absorbed;
+        targetVal = bar.current - remainingSpent;
+        tempPeChanged = true;
+      }
+      const clampedCurrent = Math.max(0, Math.min(effectiveMax, targetVal));
+      return { ...bar, current: clampedCurrent };
     });
 
-    const nextChar: FullCharacterResponse = {
-      ...character,
+    return {
+      ...base,
       vitals: updatedVitals,
       sheetData:
         tempHpChanged || tempPeChanged
-          ? { ...rawSheet, tempHp: nextTempHp, tempPe: nextTempPe }
-          : character.sheetData,
+          ? { ...baseRaw, tempHp: nextTempHp, tempPe: nextTempPe }
+          : base.sheetData,
     };
-    setCharacter(nextChar);
+  }
 
-    if (!isEditMode) {
-      handleSaveSheet(nextChar);
-    }
+  function handleVitalChange(barId: string, field: 'current' | 'max', newValue: number) {
+    if (!latestCharacterRef.current || !canEditVitals) return;
+    applyLocalCharacterUpdate((base) =>
+      computeUpdatedVitalChar(base, barId, field, () => newValue)
+    );
+  }
+
+  function handleVitalDelta(barId: string, delta: number) {
+    if (!latestCharacterRef.current || !canEditVitals) return;
+    applyLocalCharacterUpdate((base) =>
+      computeUpdatedVitalChar(base, barId, 'current', (curr) => curr + delta)
+    );
   }
 
   function handleEndCharacterScene() {
-    if (!character) return;
-    const nextChar: FullCharacterResponse = {
-      ...character,
-      sheetData: {
-        ...rawSheet,
-        tempHp: 0,
-        tempPe: 0,
-        sceneEffects: [],
-      },
-    };
-    setCharacter(nextChar);
+    const nextChar = applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      return {
+        ...base,
+        sheetData: {
+          ...baseRaw,
+          tempHp: 0,
+          tempPe: 0,
+          sceneEffects: [],
+        },
+      };
+    }, false);
+    if (!nextChar) return;
     setFeedbackMsg('🎬 Cena encerrada! Efeitos de cena e PVs temporários limpos.');
     setTimeout(() => setFeedbackMsg(''), 3500);
     handleSaveSheet(nextChar);
@@ -1011,36 +1087,55 @@ export function SheetContainer({
       effectNotes.push(`✨ Efeito de ${ritual.name} ativo na cena!`);
     }
 
-    // 3. Atualiza PE (descontando PE Temp primeiro, se houver) e Sanidade
-    const absorbedTempPe = Math.min(nextTempPe, form.totalCost);
-    nextTempPe = Math.max(0, nextTempPe - absorbedTempPe);
-    const remainingPeCost = form.totalCost - absorbedTempPe;
-
-    const updatedVitals = character.vitals.map((bar) => {
-      if (bar.id === 'pe') {
-        return { ...bar, current: Math.max(0, bar.current - remainingPeCost) };
+    const nextChar = applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      let bTempHp = Number(baseRaw.tempHp || 0);
+      let bTempPe = Number(baseRaw.tempPe || 0);
+      const bSceneEffects: SceneEffect[] = Array.isArray(baseRaw.sceneEffects)
+        ? baseRaw.sceneEffects
+        : [];
+      let updatedEffects = [...bSceneEffects];
+      if (nextSceneEffects.length !== activeSceneEffects.length || nextSceneEffects.some((e, i) => e.id !== activeSceneEffects[i]?.id)) {
+        const addedEffects = nextSceneEffects.filter(
+          (e) => !activeSceneEffects.some((old) => old.id === e.id)
+        );
+        const removedNames = new Set(addedEffects.map((e) => e.name));
+        updatedEffects = [
+          ...bSceneEffects.filter((e) => !removedNames.has(e.name)),
+          ...addedEffects,
+        ];
       }
-      if (bar.id === 'san' && (sanLost > 0 || permSanLost > 0)) {
-        const nextMax = Math.max(1, bar.max - permSanLost);
-        const nextCurr = Math.max(0, Math.min(nextMax, bar.current - sanLost));
-        return { ...bar, max: nextMax, current: nextCurr };
-      }
-      return bar;
-    });
+      const deltaTempHp = nextTempHp - Number(rawSheet.tempHp || 0);
+      bTempHp = Math.max(0, bTempHp + deltaTempHp);
 
-    const nextChar: FullCharacterResponse = {
-      ...character,
-      vitals: updatedVitals,
-      sheetData: {
-        ...rawSheet,
-        tempHp: nextTempHp,
-        tempPe: nextTempPe,
-        sceneEffects: nextSceneEffects,
-      },
-    };
+      const absorbedPe = Math.min(bTempPe, form.totalCost);
+      bTempPe = Math.max(0, bTempPe - absorbedPe);
+      const remPe = form.totalCost - absorbedPe;
 
-    setCharacter(nextChar);
-    handleSaveSheet(nextChar);
+      const vitalsAfterCast = base.vitals.map((bar) => {
+        if (bar.id === 'pe') {
+          return { ...bar, current: Math.max(0, bar.current - remPe) };
+        }
+        if (bar.id === 'san' && (sanLost > 0 || permSanLost > 0)) {
+          const nextMax = Math.max(1, bar.max - permSanLost);
+          const nextCurr = Math.max(0, Math.min(nextMax, bar.current - sanLost));
+          return { ...bar, max: nextMax, current: nextCurr };
+        }
+        return bar;
+      });
+
+      return {
+        ...base,
+        vitals: vitalsAfterCast,
+        sheetData: {
+          ...baseRaw,
+          tempHp: bTempHp,
+          tempPe: bTempPe,
+          sceneEffects: updatedEffects,
+        },
+      };
+    }, true);
+    if (!nextChar) return;
 
     setRitualCastSummaryModal({
       ritualName: ritual.name,
@@ -1102,16 +1197,18 @@ export function SheetContainer({
   }
 
   function handleSpendResource(amount: number, extraSceneEffect?: SceneEffect): boolean {
-    if (!character) return false;
-    const targetBarId = character.system === 'ordem-paranormal' ? 'pe' : 'pm';
-    const resourceBar = character.vitals.find((b) => b.id === targetBarId);
+    const base = latestCharacterRef.current;
+    if (!base) return false;
+    const targetBarId = base.system === 'ordem-paranormal' ? 'pe' : 'pm';
+    const resourceBar = base.vitals.find((b) => b.id === targetBarId);
 
     if (!resourceBar) return true;
-    const availableTemp = targetBarId === 'pe' ? tempPe : 0;
-    if (resourceBar.current + availableTemp < amount) {
+    const baseRaw = (base.sheetData || {}) as Record<string, any>;
+    const currentTempPe = targetBarId === 'pe' ? Number(baseRaw.tempPe || 0) : 0;
+    if (resourceBar.current + currentTempPe < amount) {
       showHoverToast(
         `⚡ ${resourceBar.label} insuficiente! Necessário: ${amount} (Atual: ${
-          resourceBar.current + availableTemp
+          resourceBar.current + currentTempPe
         }).`
       );
       return false;
@@ -1120,74 +1217,83 @@ export function SheetContainer({
       return false;
     }
 
-    if (hasActiveInitiativeOrder && character.system === 'ordem-paranormal' && amount > 0) {
+    if (hasActiveInitiativeOrder && base.system === 'ordem-paranormal' && amount > 0) {
       setPeSpentThisTurn((prev) => prev + amount);
     }
 
-    let nextTempPe = Number(rawSheet.tempPe || 0);
-    let remainingToSpend = amount;
-    if (targetBarId === 'pe' && nextTempPe > 0 && remainingToSpend > 0) {
-      const absorbed = Math.min(nextTempPe, remainingToSpend);
-      nextTempPe -= absorbed;
-      remainingToSpend -= absorbed;
-    }
+    applyLocalCharacterUpdate((cur) => {
+      const curRaw = (cur.sheetData || {}) as Record<string, any>;
+      let nextTempPe = Number(curRaw.tempPe || 0);
+      let remainingToSpend = amount;
+      if (targetBarId === 'pe' && nextTempPe > 0 && remainingToSpend > 0) {
+        const absorbed = Math.min(nextTempPe, remainingToSpend);
+        nextTempPe -= absorbed;
+        remainingToSpend -= absorbed;
+      }
 
-    const updatedVitals = character.vitals.map((bar) => {
-      if (bar.id !== targetBarId) return bar;
+      const updatedVitals = cur.vitals.map((bar) => {
+        if (bar.id !== targetBarId) return bar;
+        return {
+          ...bar,
+          current: Math.max(0, bar.current - remainingToSpend),
+        };
+      });
+
+      const curEffects: SceneEffect[] = Array.isArray(curRaw.sceneEffects)
+        ? curRaw.sceneEffects
+        : [];
+      const nextSceneEffects = extraSceneEffect
+        ? [
+            ...curEffects.filter((e) => e.id !== extraSceneEffect.id),
+            extraSceneEffect,
+          ]
+        : curEffects;
+
       return {
-        ...bar,
-        current: Math.max(0, bar.current - remainingToSpend),
+        ...cur,
+        vitals: updatedVitals,
+        sheetData: {
+          ...curRaw,
+          tempPe: nextTempPe,
+          sceneEffects: nextSceneEffects,
+        },
       };
-    });
+    }, true);
 
-    const nextSceneEffects = extraSceneEffect
-      ? [
-          ...activeSceneEffects.filter((e) => e.id !== extraSceneEffect.id),
-          extraSceneEffect,
-        ]
-      : activeSceneEffects;
-
-    const nextChar: FullCharacterResponse = {
-      ...character,
-      vitals: updatedVitals,
-      sheetData: {
-        ...rawSheet,
-        tempPe: nextTempPe,
-        sceneEffects: nextSceneEffects,
-      },
-    };
-
-    setCharacter(nextChar);
-    handleSaveSheet(nextChar);
     return true;
   }
 
   latestSpendResourceRef.current = handleSpendResource;
 
   function handleRollVislumbresPe() {
-    if (!character || character.system !== 'ordem-paranormal') return;
+    const base = latestCharacterRef.current;
+    if (!base || base.system !== 'ordem-paranormal') return;
     const peRoll = Math.floor(Math.random() * 4) + 1;
-    const nextTempPe = Number(rawSheet.tempPe || 0) + peRoll;
-    const nextEffects: SceneEffect[] = [
-      ...activeSceneEffects.filter((e) => e.id !== 'orig-vislumbres'),
-      {
-        id: 'orig-vislumbres',
-        name: 'Vislumbres do Passado (Poder de Amnésico)',
-        source: 'Cena',
-        description: `+${peRoll} PE Temporários concedidos (Total: +${nextTempPe} PE Temp)`,
-      },
-    ];
-    const nextChar: FullCharacterResponse = {
-      ...character,
-      sheetData: {
-        ...rawSheet,
-        tempPe: nextTempPe,
-        sceneEffects: nextEffects,
-      },
-    };
-    setCharacter(nextChar);
+    applyLocalCharacterUpdate((cur) => {
+      const curRaw = (cur.sheetData || {}) as Record<string, any>;
+      const nextTempPe = Number(curRaw.tempPe || 0) + peRoll;
+      const curEffects: SceneEffect[] = Array.isArray(curRaw.sceneEffects)
+        ? curRaw.sceneEffects
+        : [];
+      const nextEffects: SceneEffect[] = [
+        ...curEffects.filter((e) => e.id !== 'orig-vislumbres'),
+        {
+          id: 'orig-vislumbres',
+          name: 'Vislumbres do Passado (Poder de Amnésico)',
+          source: 'Cena',
+          description: `+${peRoll} PE Temporários concedidos (Total: +${nextTempPe} PE Temp)`,
+        },
+      ];
+      return {
+        ...cur,
+        sheetData: {
+          ...curRaw,
+          tempPe: nextTempPe,
+          sceneEffects: nextEffects,
+        },
+      };
+    }, true);
     setVislumbresResult((prev) => (prev ? { ...prev, peGranted: peRoll } : null));
-    handleSaveSheet(nextChar);
 
     triggerCharacterRoll(
       'Vislumbres do Passado (+1d4 PE Temporários)',
@@ -1310,25 +1416,36 @@ export function SheetContainer({
       description: entry.description,
       modifiers: entry.modifiers || [],
     };
-    const nextConditions = [...activeConditions, newCond];
-    const nextChar: FullCharacterResponse = {
-      ...character!,
-      sheetData: { ...rawSheet, conditions: nextConditions },
-    };
-    setCharacter(nextChar);
+    const nextChar = applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      const baseConds: ActiveCondition[] = Array.isArray(baseRaw.conditions)
+        ? baseRaw.conditions
+        : [];
+      return {
+        ...base,
+        sheetData: { ...baseRaw, conditions: [...baseConds, newCond] },
+      };
+    }, false);
     setShowMasterConditionPicker(false);
-    handleSaveSheet(nextChar);
+    if (nextChar) handleSaveSheet(nextChar);
   }
 
   function handleRemoveCondition(condId: string) {
-    const nextConditions = activeConditions.filter((c) => c.id !== condId);
-    const nextChar: FullCharacterResponse = {
-      ...character!,
-      sheetData: { ...rawSheet, conditions: nextConditions },
-    };
-    setCharacter(nextChar);
+    const nextChar = applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      const baseConds: ActiveCondition[] = Array.isArray(baseRaw.conditions)
+        ? baseRaw.conditions
+        : [];
+      return {
+        ...base,
+        sheetData: {
+          ...baseRaw,
+          conditions: baseConds.filter((c) => c.id !== condId),
+        },
+      };
+    }, false);
     setSelectedConditionModal(null);
-    handleSaveSheet(nextChar);
+    if (nextChar) handleSaveSheet(nextChar);
   }
 
   const strengthVal =
@@ -1404,25 +1521,28 @@ export function SheetContainer({
     const peGain = (interludeSleep ? baseRecovery : 0) + extraPe;
     const sanGain = (interludeRelax ? baseRecovery : 0) + extraSan;
 
-    const updatedVitals = character.vitals.map((bar) => {
-      const bonusMax = bonuses.vitalMax[bar.id] || 0;
-      const effectiveMax = Math.max(1, bar.max + bonusMax);
-      if (bar.id === 'pv') {
-        return { ...bar, current: Math.min(effectiveMax, bar.current + pvGain) };
-      }
-      if (bar.id === 'pe') {
-        return { ...bar, current: Math.min(effectiveMax, bar.current + peGain) };
-      }
-      if (bar.id === 'san') {
-        return { ...bar, current: Math.min(effectiveMax, bar.current + sanGain) };
-      }
-      return bar;
-    });
-
-    const nextChar = { ...character, vitals: updatedVitals };
-    setCharacter(nextChar);
+    const nextChar = applyLocalCharacterUpdate(
+      (base) => ({
+        ...base,
+        vitals: base.vitals.map((bar) => {
+          const bonusMax = bonuses.vitalMax[bar.id] || 0;
+          const effectiveMax = Math.max(1, bar.max + bonusMax);
+          if (bar.id === 'pv') {
+            return { ...bar, current: Math.min(effectiveMax, bar.current + pvGain) };
+          }
+          if (bar.id === 'pe') {
+            return { ...bar, current: Math.min(effectiveMax, bar.current + peGain) };
+          }
+          if (bar.id === 'san') {
+            return { ...bar, current: Math.min(effectiveMax, bar.current + sanGain) };
+          }
+          return bar;
+        }),
+      }),
+      false
+    );
     setIsInterludeModalOpen(false);
-    handleSaveSheet(nextChar);
+    if (nextChar) handleSaveSheet(nextChar);
   }
 
   function handleOpenNexEvolutionModal() {
@@ -1721,26 +1841,28 @@ export function SheetContainer({
       return bar;
     });
 
-    const nextChar: FullCharacterResponse = {
-      ...character,
-      vitals: updatedVitals,
-      attacks: nextAttacks,
-      sheetData: {
-        ...rawSheet,
-        nex: nextNex,
-        trail: chosenTrailId,
-        affinity: milestone?.grantsAffinity ? evoAffinity : rawSheet.affinity,
-        transcendedCount: nextTranscendedCount,
-        proficiencies: nextProficiencies,
-        attributes: nextAttributes,
-        skills: nextSkills,
-        abilities: nextAbilities,
-      },
-    };
+    const nextChar = applyLocalCharacterUpdate(
+      (base) => ({
+        ...base,
+        vitals: updatedVitals,
+        attacks: nextAttacks,
+        sheetData: {
+          ...((base.sheetData || {}) as Record<string, any>),
+          nex: nextNex,
+          trail: chosenTrailId,
+          affinity: milestone?.grantsAffinity ? evoAffinity : rawSheet.affinity,
+          transcendedCount: nextTranscendedCount,
+          proficiencies: nextProficiencies,
+          attributes: nextAttributes,
+          skills: nextSkills,
+          abilities: nextAbilities,
+        },
+      }),
+      false
+    );
 
-    setCharacter(nextChar);
     setIsNexEvolutionOpen(false);
-    handleSaveSheet(nextChar);
+    if (nextChar) handleSaveSheet(nextChar);
   }
 
   const availableConditions = compendiumEntries.filter((e) => e.category === 'condition');
@@ -2369,7 +2491,7 @@ export function SheetContainer({
                         <button
                           key={delta}
                           type="button"
-                          onClick={() => handleVitalChange(bar.id, 'current', bar.current + delta)}
+                          onClick={() => handleVitalDelta(bar.id, delta)}
                           className={`flex-1 py-1 rounded text-xs font-mono font-bold transition cursor-pointer ${
                             delta < 0
                               ? 'bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-900/50'
@@ -3609,8 +3731,7 @@ export function SheetContainer({
           currentRoundNumber={currentRoundNumber}
           peSpentThisTurn={peSpentThisTurn}
           onChange={(updatedData) =>
-            setCharacter((prev) => {
-              if (!prev) return null;
+            applyLocalCharacterUpdate((prev) => {
               const prevRaw = (prev.sheetData || {}) as Record<string, any>;
               const prevNex = Number(prevRaw.nex ?? 5);
               const nextNexVal = Number(updatedData.nex ?? prevNex);
@@ -3734,8 +3855,7 @@ export function SheetContainer({
           canEditAttributes={canEditAttributes}
           canEditAbilities={canEditAbilities}
           onChange={(updatedData) =>
-            setCharacter((prev) => {
-              if (!prev) return null;
+            applyLocalCharacterUpdate((prev) => {
               const prevRaw = (prev.sheetData || {}) as Record<string, any>;
               return {
                 ...prev,
@@ -3775,45 +3895,27 @@ export function SheetContainer({
         abilities={characterAbilities}
         inventory={character.inventory || []}
         maxLoadSlots={maxLoadSlots}
-        onUpdateAttacks={(newAttacks) => {
-          const base = latestCharacterRef.current;
-          if (!base) return;
-          const nextChar: FullCharacterResponse = { ...base, attacks: newAttacks };
-          latestCharacterRef.current = nextChar;
-          setCharacter(nextChar);
-          if (!isEditMode) {
-            scheduleGameModeSave();
-          }
-        }}
+        onUpdateAttacks={(newAttacks) =>
+          applyLocalCharacterUpdate((base) => ({ ...base, attacks: newAttacks }))
+        }
         onUpdateAbilities={(newAbilities) =>
-          setCharacter((prev) => {
-            if (!prev) return null;
-            const prevRaw = (prev.sheetData || {}) as Record<string, any>;
+          applyLocalCharacterUpdate((base) => {
+            const baseRaw = (base.sheetData || {}) as Record<string, any>;
             return {
-              ...prev,
-              sheetData: { ...prevRaw, abilities: newAbilities },
+              ...base,
+              sheetData: { ...baseRaw, abilities: newAbilities },
             };
           })
         }
-        onUpdateInventory={(newInv) => {
-          const base = latestCharacterRef.current;
-          if (!base) return;
-          const nextChar: FullCharacterResponse = { ...base, inventory: newInv };
-          latestCharacterRef.current = nextChar;
-          setCharacter(nextChar);
-          if (!isEditMode) {
-            scheduleGameModeSave();
-          }
-        }}
+        onUpdateInventory={(newInv) =>
+          applyLocalCharacterUpdate((base) => ({ ...base, inventory: newInv }))
+        }
         onAddItemAndAttack={(newItem, newAttack) =>
-          setCharacter((prev) => {
-            if (!prev) return null;
-            return {
-              ...prev,
-              inventory: [...(prev.inventory || []), newItem],
-              attacks: newAttack ? [...(prev.attacks || []), newAttack] : prev.attacks,
-            };
-          })
+          applyLocalCharacterUpdate((base) => ({
+            ...base,
+            inventory: [...(base.inventory || []), newItem],
+            attacks: newAttack ? [...(base.attacks || []), newAttack] : base.attacks,
+          }))
         }
         onInitiateTradeItem={handleOpenTradeModal}
         onCheckResource={handleCheckResource}
