@@ -5,6 +5,7 @@ import {
   OrdemSkill,
   CharacterAbility,
   SceneEffect,
+  CursePricePrompt,
   createDefaultOrdemSheet,
   ComputedBonuses,
   SystemSkillDefinition,
@@ -12,6 +13,7 @@ import {
   ORDEM_TRAILS,
   ORDEM_PATENTS,
   ORDEM_SKILLS_METADATA,
+  ORDEM_PROFICIENCY_OPTIONS,
   getOrdemPeLimit,
   getOrdemRitualPeLimit,
   getOrdemRitualDT,
@@ -39,8 +41,15 @@ interface OrdemSheetProps {
   onOpenInterlude?: () => void;
   onCheckResource?: (amount: number, powerLabel?: string) => boolean;
   onSpendResource?: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
+  onLoseSanity?: (amount: number, reason: string) => void;
   onHealPv?: (amount: number, label?: string) => void;
-  onRoll: (label: string, count: number, sides: number, modifier: number) => void;
+  onRoll: (
+    label: string,
+    count: number,
+    sides: number,
+    modifier: number,
+    cursePricePrompt?: CursePricePrompt
+  ) => void;
 }
 
 const ATTRIBUTE_LABELS: Record<keyof OrdemAttributes, string> = {
@@ -72,10 +81,14 @@ export function OrdemSheet({
   onOpenInterlude,
   onCheckResource,
   onSpendResource,
+  onLoseSanity,
   onHealPv,
   onRoll,
 }: OrdemSheetProps) {
   const [armOriginBoost, setArmOriginBoost] = useState(false);
+  // Controle por perícia para ignorar a penalidade -5 de Kit (caso o uso específico não exija kit)
+  const [ignoreMissingKitBySkill, setIgnoreMissingKitBySkill] = useState<Record<string, boolean>>({});
+  const [customProfInput, setCustomProfInput] = useState('');
 
   const fallback = createDefaultOrdemSheet().sheetData;
   const baseSkills = data?.skills && data.skills.length > 0 ? data.skills : fallback.skills;
@@ -268,19 +281,33 @@ export function OrdemSheet({
     effectivePre,
     safeData.trail
   );
-  const ritualDT = getOrdemRitualDT(
-    safeData.nex,
-    effectivePre,
-    safeData.trail,
-    abilities,
-    safeData.origin,
-    undefined,
-    safeData.sceneEffects
-  );
+  const ritualDT =
+    getOrdemRitualDT(
+      safeData.nex,
+      effectivePre,
+      safeData.trail,
+      abilities,
+      safeData.origin,
+      undefined,
+      safeData.sceneEffects
+    ) + (bonuses.ritualDtBonus || 0);
   const effectiveDisplacement = Math.max(
     0,
-    (safeData.displacement || 9) - (isOverloaded ? 3 : 0)
+    (safeData.displacement || 9) + (bonuses.displacementBonus || 0) - (isOverloaded ? 3 : 0)
   );
+
+  const buildCursePricePromptForAttr = (
+    attrKey: keyof OrdemAttributes
+  ): CursePricePrompt | undefined => {
+    const info = bonuses.cursePriceByAttr?.[attrKey];
+    if (!info || info.curseCount <= 0) return undefined;
+    return {
+      element: info.element,
+      attributeLabel: info.attrLabel,
+      curseCount: info.curseCount,
+      sanLossOnFail: info.sanLoss,
+    };
+  };
 
   const classTrails = ORDEM_TRAILS.filter(
     (t) => t.classId === safeData.characterClass
@@ -513,6 +540,7 @@ export function OrdemSheet({
               </span>
               <span className="text-[10px] text-zinc-500">
                 10 + Limite Base + PRE ({effectivePre})
+                {bonuses.ritualDtBonus > 0 ? ` + ${bonuses.ritualDtBonus} (Potência)` : ''}
               </span>
             </div>
             <span className="text-xl font-black font-mono text-purple-300">
@@ -541,6 +569,220 @@ export function OrdemSheet({
               {effectiveDisplacement}m
             </span>
           </div>
+        </div>
+
+        {/* Resistências a Dano (RD), Proficiências & Alerta de O Preço da Maldição */}
+        <div className="flex flex-col gap-2 pt-1">
+          {/* Painel de Proficiências (Armas e Proteções, p. 54 e p. 62) */}
+          <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] uppercase font-black tracking-wider text-amber-400 mr-1">
+                  🎖️ Proficiências:
+                </span>
+                {bonuses.effectiveProficiencies.map((prof) => {
+                  const isManualEditable = allowAttrEdit || allowSkillEdit;
+                  return (
+                    <span
+                      key={prof}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-200 border border-zinc-700"
+                    >
+                      <span>{prof}</span>
+                      {isManualEditable &&
+                        Array.isArray(safeData.proficiencies) &&
+                        safeData.proficiencies.some(
+                          (p) => p.trim().toLowerCase() === prof.trim().toLowerCase()
+                        ) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextList = bonuses.effectiveProficiencies.filter(
+                                (p) => p.trim().toLowerCase() !== prof.trim().toLowerCase()
+                              );
+                              onChange({ ...safeData, proficiencies: nextList });
+                            }}
+                            className="text-zinc-500 hover:text-red-400 text-[10px] font-bold cursor-pointer ml-0.5"
+                            title="Remover proficiência"
+                          >
+                            ✕
+                          </button>
+                        )}
+                    </span>
+                  );
+                })}
+              </div>
+              {!(allowAttrEdit || allowSkillEdit) && (
+                <span className="text-[10px] text-zinc-500">
+                  Armas/proteções sem proficiência sofrem -2d20
+                </span>
+              )}
+            </div>
+
+            {(allowAttrEdit || allowSkillEdit) && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-zinc-800/80">
+                <span className="text-[10px] font-bold text-zinc-400 mr-1">
+                  Alternar:
+                </span>
+                {ORDEM_PROFICIENCY_OPTIONS.map((opt) => {
+                  const hasProf = bonuses.effectiveProficiencies.some(
+                    (p) =>
+                      p.trim().toLowerCase() === opt.label.toLowerCase() ||
+                      (opt.id === 'protecoes_pesadas' &&
+                        (p.toLowerCase().includes('proteções pesadas') ||
+                          p.toLowerCase().includes('protecoes pesadas')))
+                  );
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        const baseList =
+                          Array.isArray(safeData.proficiencies) && safeData.proficiencies.length > 0
+                            ? [...safeData.proficiencies]
+                            : [...bonuses.effectiveProficiencies];
+                        const matchFn = (p: string) =>
+                          p.trim().toLowerCase() === opt.label.toLowerCase() ||
+                          (opt.id === 'protecoes_pesadas' &&
+                            (p.toLowerCase().includes('proteções pesadas') ||
+                              p.toLowerCase().includes('protecoes pesadas')));
+                        const nextList = hasProf
+                          ? baseList.filter((p) => !matchFn(p))
+                          : [...baseList, opt.label];
+                        onChange({ ...safeData, proficiencies: nextList });
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition cursor-pointer ${
+                        hasProf
+                          ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600'
+                      }`}
+                    >
+                      {hasProf ? '✓ ' : '+ '}
+                      {opt.label}
+                    </button>
+                  );
+                })}
+                <div className="flex items-center gap-1 ml-auto">
+                  <input
+                    type="text"
+                    value={customProfInput}
+                    onChange={(e) => setCustomProfInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customProfInput.trim()) {
+                        e.preventDefault();
+                        const baseList =
+                          Array.isArray(safeData.proficiencies) && safeData.proficiencies.length > 0
+                            ? [...safeData.proficiencies]
+                            : [...bonuses.effectiveProficiencies];
+                        onChange({
+                          ...safeData,
+                          proficiencies: [...baseList, customProfInput.trim()],
+                        });
+                        setCustomProfInput('');
+                      }
+                    }}
+                    placeholder="Proficiência extra (ex.: Katana)..."
+                    className="bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-[10px] text-white w-40"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!customProfInput.trim()) return;
+                      const baseList =
+                        Array.isArray(safeData.proficiencies) && safeData.proficiencies.length > 0
+                          ? [...safeData.proficiencies]
+                          : [...bonuses.effectiveProficiencies];
+                      onChange({
+                        ...safeData,
+                        proficiencies: [...baseList, customProfInput.trim()],
+                      });
+                      setCustomProfInput('');
+                    }}
+                    className="px-2 py-0.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px] font-bold cursor-pointer"
+                  >
+                    + Add
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {bonuses.hasProtectionProficiencyPenalty && (
+            <div className="bg-red-950/55 border border-red-600/80 rounded-lg px-3 py-2 text-[11px] text-red-200 font-semibold">
+              ⚠️ <strong>Penalidade por Não Proficiência em Proteção (p. 62):</strong> Você está equipando{' '}
+              <strong>
+                {bonuses.nonProficientProtections.map((np) => np.itemName).join(', ')}
+              </strong>{' '}
+              sem proficiência — sofrendo automaticamente <strong>-2d20</strong> em todos os testes baseados em <strong>Força e Agilidade</strong>!
+            </div>
+          )}
+
+          {bonuses.damageResistances.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">
+              <span className="text-[10px] uppercase font-black tracking-wider text-cyan-400 mr-1">
+                🛡️ Resistências a Dano (RD):
+              </span>
+              {bonuses.damageResistances.map((rd) => (
+                <span
+                  key={rd.type}
+                  title={rd.source}
+                  className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-950/70 text-cyan-200 border border-cyan-700/60"
+                >
+                  {rd.type} {rd.value}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {bonuses.vestimentaLimitExceeded && (
+            <div className="bg-amber-950/50 border border-amber-600/70 rounded-lg px-3 py-1.5 text-[11px] text-amber-200 font-semibold">
+              🧥 <strong>Limite de Vestimentas (p. 63):</strong> Você tem mais de 2 vestimentas equipadas. Apenas as 2 primeiras concedem bônus simultaneamente.
+            </div>
+          )}
+
+          {bonuses.totalCursesCarried > 0 && (
+            <div className="bg-purple-950/40 border border-purple-700/70 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-purple-200">
+                <span className="font-black uppercase tracking-wider text-purple-300">
+                  👁️ O Preço da Maldição ({bonuses.totalCursesCarried}):
+                </span>
+                {(['int', 'agi', 'pre', 'for'] as const).map((ak) => {
+                  const info = bonuses.cursePriceByAttr[ak];
+                  if (!info) return null;
+                  const attrLabel = ak === 'for' ? 'FOR/VIG' : ak.toUpperCase();
+                  return (
+                    <span
+                      key={ak}
+                      className="inline-flex items-center gap-1 bg-zinc-950 border border-purple-700/60 rounded px-2 py-0.5 text-[10px] font-mono font-bold"
+                    >
+                      <span className="text-purple-300">
+                        {info.element} ({info.curseCount}): falha em {attrLabel} → -{info.sanLoss} SAN
+                      </span>
+                      {onLoseSanity && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onLoseSanity(
+                              info.sanLoss,
+                              `O Preço da Maldição (${info.element} • falha em ${attrLabel})`
+                            )
+                          }
+                          className="ml-1 px-1.5 py-0.5 rounded bg-red-950 hover:bg-red-700 text-red-200 border border-red-700 text-[9px] font-extrabold cursor-pointer"
+                          title={`Descontar -${info.sanLoss} SAN agora`}
+                        >
+                          -{info.sanLoss} SAN
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+                {bonuses.hasFearCurse && (
+                  <span className="bg-zinc-950 border border-zinc-700 rounded px-2 py-0.5 text-[10px] font-mono text-zinc-300">
+                    Medo: preço definido pelo Mestre
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Indicadores Passivos Especiais (Origem / Tropa de Choque / Especialista / Ocultista / Paranormal) */}
@@ -708,7 +950,8 @@ export function OrdemSheet({
                       `Teste de ${ATTRIBUTE_LABELS[attrKey]}${labelSuffix}`,
                       rawTotalDice,
                       20,
-                      attrMod
+                      attrMod,
+                      buildCursePricePromptForAttr(attrKey)
                     );
                   }
                 }}
@@ -1104,13 +1347,22 @@ export function OrdemSheet({
               baseAttr + extraDice + (isPrimeiraImpressaoEligible ? 2 : 0);
 
             const autoBonus = bonuses.skillBonusAll + (bonuses.skillBonus[skill.id] || 0);
-            const loadSkillPenalty = meta?.armorPenalty && isOverloaded ? -5 : 0;
+            const ignoresLoadPenalty = bonuses.ignoresLoadPenaltySkills.includes(skill.id);
+            const loadSkillPenalty =
+              meta?.armorPenalty && isOverloaded && !ignoresLoadPenalty ? -5 : 0;
+            const isMissingKit = bonuses.missingSkillKits.some((k) => k.skillId === skill.id);
+            const applyMissingKitPenalty = isMissingKit && !ignoreMissingKitBySkill[skill.id];
+            const missingKitPenalty = applyMissingKitPenalty ? -5 : 0;
             const effectiveTraining =
               armedEcleticoDegree > 0 && skill.trainingDegree < armedEcleticoDegree
                 ? armedEcleticoDegree
                 : skill.trainingDegree;
             const totalBonus =
-              effectiveTraining + skill.otherModifier + autoBonus + loadSkillPenalty;
+              effectiveTraining +
+              skill.otherModifier +
+              autoBonus +
+              loadSkillPenalty +
+              missingKitPenalty;
 
             const isUntrainedLocked =
               Boolean(meta?.trainedOnly) && effectiveTraining === 0;
@@ -1231,9 +1483,19 @@ export function OrdemSheet({
               if (usedPerito) setArmPerito(false);
               if (armOriginBoost) setArmOriginBoost(false);
 
+              if (applyMissingKitPenalty) {
+                suffixParts.push('Sem Kit -5');
+              }
+
               const rollSuffix =
                 suffixParts.length > 0 ? ` [${suffixParts.join(' • ')}]` : '';
-              onRoll(`Perícia: ${skill.name}${rollSuffix}`, rawDiceCount, 20, rollMod);
+              onRoll(
+                `Perícia: ${skill.name}${rollSuffix}`,
+                rawDiceCount,
+                20,
+                rollMod,
+                buildCursePricePromptForAttr(skill.attribute)
+              );
             }
 
             return (
@@ -1306,12 +1568,36 @@ export function OrdemSheet({
                         </span>
                       )}
                       {meta?.requiresKit && (
-                        <span
-                          className="text-[9px] font-bold px-1 rounded bg-zinc-900 text-zinc-400 border border-zinc-800"
-                          title="Requer Kit de Perícia para certas ações (sem kit: -5)"
-                        >
-                          🧰
-                        </span>
+                        isMissingKit ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setIgnoreMissingKitBySkill((prev) => ({
+                                ...prev,
+                                [skill.id]: !prev[skill.id],
+                              }))
+                            }
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded border cursor-pointer transition ${
+                              applyMissingKitPenalty
+                                ? 'bg-red-950 text-red-300 border-red-700 hover:bg-red-900'
+                                : 'bg-zinc-900 text-amber-300 border-amber-700/60 hover:bg-zinc-800'
+                            }`}
+                            title={
+                              applyMissingKitPenalty
+                                ? 'Sem Kit na mochila (-5 aplicado). Clique para dispensar o -5 se esta ação específica não exigir kit.'
+                                : 'Sem Kit na mochila (-5 dispensado manualmente para esta ação). Clique para reativar -5.'
+                            }
+                          >
+                            {applyMissingKitPenalty ? '🧰 Sem Kit (-5)' : '🧰 Sem Kit (0)'}
+                          </button>
+                        ) : (
+                          <span
+                            className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/70"
+                            title="Kit de Perícia ou Acessório Instrumental presente na mochila!"
+                          >
+                            🧰 Kit OK
+                          </span>
+                        )
                       )}
                       {isPeritoSkill && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">

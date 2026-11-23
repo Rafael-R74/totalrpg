@@ -116,6 +116,11 @@ export function DMScreen({
 
   // Trava que impede sobrescrever o banco SQLite antes do carregamento inicial terminar
   const isHydratedRef = useRef(false);
+  const latestCampaignRef = useRef<DMScreenCampaignData | null>(null);
+  latestCampaignRef.current = campaign;
+  const pendingCharVitalSaveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const inFlightCharVitalSavesRef = useRef<Record<string, number>>({});
+  const charMutationVersionRef = useRef<Record<string, number>>({});
 
   const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes' | 'monitor'>('table');
   const [conditionPickerCharId, setConditionPickerCharId] = useState<string | null>(null);
@@ -154,7 +159,26 @@ export function DMScreen({
     if (!silent) setIsLoading(true);
     try {
       const data = await fetchDMScreenData(campaignId);
-      setCampaign(data);
+      setCampaign((prev) => {
+        if (!silent || !prev) return data;
+        const localById = new Map(prev.characters.map((c) => [c.id, c]));
+        return {
+          ...data,
+          characters: data.characters.map((serverChar) => {
+            const hasPendingLocal =
+              Boolean(pendingCharVitalSaveTimersRef.current[serverChar.id]) ||
+              (inFlightCharVitalSavesRef.current[serverChar.id] || 0) > 0;
+            if (!hasPendingLocal) return serverChar;
+            const localChar = localById.get(serverChar.id);
+            if (!localChar) return serverChar;
+            return {
+              ...serverChar,
+              vitals: localChar.vitals,
+              sheetData: localChar.sheetData,
+            };
+          }),
+        };
+      });
 
       // Na primeira abertura da tela, hidrata os estados com os dados vindos do SQLite
       // (com fallback inteligente para migrar dados que estavam no localStorage anteriormente)
@@ -215,6 +239,13 @@ export function DMScreen({
     isHydratedRef.current = false;
     loadScreenData();
   }, [campaignId]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(pendingCharVitalSaveTimersRef.current).forEach((t) => clearTimeout(t));
+      pendingCharVitalSaveTimersRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     if (lastUpdatedCharSignal) loadScreenData(true);
@@ -483,19 +514,22 @@ async function handleDeliverItemToCharacter(
     }
   }
 
-  async function handleQuickVitalChange(char: DMScreenCharacter, barId: string, delta: number) {
-    const rawSheet = (char.sheetData || {}) as Record<string, any>;
+  function handleQuickVitalChange(char: DMScreenCharacter, barId: string, delta: number) {
+    const activeCampaign = latestCampaignRef.current;
+    const targetChar =
+      activeCampaign?.characters.find((c) => c.id === char.id) || char;
+    const rawSheet = (targetChar.sheetData || {}) as Record<string, any>;
     const abilities: CharacterAbility[] = Array.isArray(rawSheet.abilities) ? rawSheet.abilities : [];
     const conditions: ActiveCondition[] = Array.isArray(rawSheet.conditions) ? rawSheet.conditions : [];
     const sceneEffects = Array.isArray(rawSheet.sceneEffects) ? rawSheet.sceneEffects : [];
     const levelOrNex =
-      char.system === 'ordem-paranormal' ? Number(rawSheet.nex ?? 5) : Number(rawSheet.level ?? 1);
+      targetChar.system === 'ordem-paranormal' ? Number(rawSheet.nex ?? 5) : Number(rawSheet.level ?? 1);
 
     const bonuses = calculateActiveBonuses(
-      char.system,
+      targetChar.system,
       levelOrNex,
       abilities,
-      char.inventory || [],
+      targetChar.inventory || [],
       conditions,
       sceneEffects
     );
@@ -522,7 +556,7 @@ async function handleDeliverItemToCharacter(
       tempPeChanged = true;
     }
 
-    const updatedVitals = char.vitals.map((bar) => {
+    const updatedVitals = targetChar.vitals.map((bar) => {
       if (bar.id !== barId) return bar;
       const effectiveMax = Math.max(1, bar.max + (bonuses.vitalMax[bar.id] || 0));
       const nextCurrent = Math.max(0, Math.min(effectiveMax, bar.current + effectiveDelta));
@@ -534,30 +568,51 @@ async function handleDeliverItemToCharacter(
         ? { ...rawSheet, tempHp: nextTempHp, tempPe: nextTempPe }
         : rawSheet;
 
-    setCampaign((prev) =>
-      prev
-        ? {
-            ...prev,
-            characters: prev.characters.map((c) =>
-              c.id === char.id
-                ? { ...c, vitals: updatedVitals, sheetData: nextSheetData }
-                : c
-            ),
-          }
-        : null
-    );
-
-    try {
-      await updateCharacter(
-        char.id,
-        tempHpChanged || tempPeChanged
-          ? { vitals: updatedVitals, sheetData: nextSheetData }
-          : { vitals: updatedVitals }
-      );
-      onBroadcastCharacterSync(char.id);
-    } catch (err: any) {
-      alert(err.message);
+    if (activeCampaign) {
+      const nextCampaign: DMScreenCampaignData = {
+        ...activeCampaign,
+        characters: activeCampaign.characters.map((c) =>
+          c.id === targetChar.id
+            ? { ...c, vitals: updatedVitals, sheetData: nextSheetData }
+            : c
+        ),
+      };
+      latestCampaignRef.current = nextCampaign;
+      setCampaign(nextCampaign);
     }
+
+    const nextVer = (charMutationVersionRef.current[targetChar.id] || 0) + 1;
+    charMutationVersionRef.current[targetChar.id] = nextVer;
+
+    if (pendingCharVitalSaveTimersRef.current[targetChar.id]) {
+      clearTimeout(pendingCharVitalSaveTimersRef.current[targetChar.id]);
+    }
+
+    pendingCharVitalSaveTimersRef.current[targetChar.id] = setTimeout(async () => {
+      delete pendingCharVitalSaveTimersRef.current[targetChar.id];
+      const latestChar =
+        latestCampaignRef.current?.characters.find((c) => c.id === targetChar.id);
+      if (!latestChar) return;
+      const saveVer = charMutationVersionRef.current[targetChar.id] || 0;
+      inFlightCharVitalSavesRef.current[targetChar.id] =
+        (inFlightCharVitalSavesRef.current[targetChar.id] || 0) + 1;
+      try {
+        await updateCharacter(latestChar.id, {
+          vitals: latestChar.vitals,
+          sheetData: latestChar.sheetData,
+        });
+        if ((charMutationVersionRef.current[targetChar.id] || 0) === saveVer) {
+          onBroadcastCharacterSync(latestChar.id);
+        }
+      } catch (err: any) {
+        alert(err.message);
+      } finally {
+        inFlightCharVitalSavesRef.current[targetChar.id] = Math.max(
+          0,
+          (inFlightCharVitalSavesRef.current[targetChar.id] || 1) - 1
+        );
+      }
+    }, 200);
   }
 
   async function handleEndSceneForAll() {

@@ -8,3 +8,4 @@ dist/
 apps/server/uploads/
 *.pdf
 .agents/
+apps/server/prisma/dev.db

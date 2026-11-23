@@ -1,6 +1,7 @@
 export * from './ruleEngine';
 export * from './defaults';
 export * from './wizardData';
+export * from './ordemEquipmentData';
 export * from './ordemRituals';
 export * from './ordemCompendiumData';
 export * from './characterBuilder';
@@ -34,6 +35,38 @@ export interface PreparedAttack {
   isWorkTool?: boolean;  // Operário — Ferramenta de Trabalho (+1 ataque, +1 dano, +1 margem de ameaça)
   isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita
   isUnarmed?: boolean;             // Artista Marcial — Ataque Desarmado
+  linkedItemId?: string;           // ID do item correspondente no inventário (sincroniza modificações e maldições)
+}
+
+export type OrdemElement = 'Sangue' | 'Morte' | 'Conhecimento' | 'Energia' | 'Medo';
+
+export type OrdemItemKind =
+  | 'weapon_melee'
+  | 'weapon_ranged'
+  | 'weapon_firearm'
+  | 'ammo'
+  | 'protection_light'
+  | 'protection_heavy'
+  | 'shield'
+  | 'accessory'
+  | 'explosive'
+  | 'operational'
+  | 'paranormal'
+  | 'cursed_special';
+
+export interface OrdemAppliedAccessoryChoice {
+  accessoryType?: 'utensilio' | 'vestimenta';
+  primarySkill?: string;
+  secondarySkill?: string;
+  instrumentalSkill?: string;
+  aprimoradoPrimary?: boolean;
+  aprimoradoSecondary?: boolean;
+}
+
+export interface OrdemAppliedCurse {
+  curseId: string;
+  chosenElement?: OrdemElement;
+  chosenRitualName?: string;
 }
 
 // Molde de itens
@@ -43,6 +76,8 @@ export interface RPGItem {
   slots: number;
   quantity: number;
   category?: number;
+  baseCategory?: number;
+  baseSlots?: number;
   price?: number;
   imageUrl?: string;
   description?: string;
@@ -52,6 +87,22 @@ export interface RPGItem {
   isParanormalTool?: boolean;      // Ocultista — Ferramentas Paranormais (-I Categoria em item paranormal)
   ignorePatentLimit?: boolean;     // Criminoso — O Crime Compensa (isento do limite de patente)
   isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita (-I / -II / -III Categoria)
+  isParanormal?: boolean;          // Separa equipamentos paranormais/amaldiçoados dos normais
+  isCursedSpecial?: boolean;       // Item amaldiçoado especial (Cap. 6) — conta como 1 maldição p/ Preço da Maldição
+  itemKind?: OrdemItemKind;
+  element?: OrdemElement;
+  modifications?: string[];        // IDs de modificações (Cap. 3)
+  curses?: OrdemAppliedCurse[];    // Maldições aplicadas (Cap. 6)
+  accessoryConfig?: OrdemAppliedAccessoryChoice;
+  storedRitualName?: string;       // Selo Paranormal ou arma Ritualística
+  storedRitualCircle?: number;     // Círculo do ritual no selo (1 a 4)
+  storedRitualCost?: number;       // PE do ritual armazenado
+  storedRitualElement?: string;
+  storedRitualDescription?: string;
+  storedBloodPv?: number;          // Frasco de Vitalidade (até 20 PV)
+  storedPe?: number;               // Coletora (até 20 PE)
+  dailyUses?: number;              // Contador diário para DT crescente (Crânio Espiral, Coração Pulsante, etc.)
+  remainingCharges?: number;       // Cargas restantes (Spray de Pimenta, Taser, Pistola de Dardos/Sinalizadora)
   modifiers?: RuleModifier[];
 }
 
@@ -116,8 +167,20 @@ export interface AttackDamageRollPayload {
   damageModifier: number;
   maximizeCritDamage?: boolean;
   damageLabelSuffix?: string;
+  explodingDieSide?: number;           // Motosserra: sempre que cair 6 no d6, rola +1d6 extra
+  extraDiceNormal?: { count: number; sides: number; label: string }[]; // Lancinante, Erosiva, Explosiva, Antielemento
+  extraDiceCrit?: { count: number; sides: number; label: string }[];   // Lancinante multiplica no crítico!
+  sanguinariaCritTempHp?: boolean;     // Sanguinária: crítico dá 2d10 PV temporários
+  ritualisticaStoredName?: string;     // Ritualística: lembrar/descarregar ritual no acerto
   forcaOpressoraPayload?: ForcaOpressoraRollPayload;
   segurarGatilhoPayload?: SegurarGatilhoPayload;
+}
+
+export interface CursePricePrompt {
+  element: OrdemElement;
+  attributeLabel: string;
+  curseCount: number;
+  sanLossOnFail: number; // 2 * curseCount
 }
 
 // Rolagem de dados
@@ -130,6 +193,8 @@ export interface DiceRollResult {
   label: string;
   formula: string;
   rolls: number[];
+  explodedRolls?: number[];
+  extraDiceResults?: Array<{ label: string; formula: string; rolls: number[]; subtotal: number }>;
   sides?: number;
   modifier: number;
   total: number;
@@ -141,6 +206,7 @@ export interface DiceRollResult {
   rerolledAfortunado?: boolean;
   attackDamagePayload?: AttackDamageRollPayload;
   forcaOpressoraPayload?: ForcaOpressoraRollPayload;
+  cursePricePrompt?: CursePricePrompt;
   ritualEffectPayload?: RitualEffectRollPayload;
   batchId?: string;
   batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
@@ -196,10 +262,13 @@ export interface ClientToServerEvents {
     system: SystemId;
     isSecret?: boolean;
     fixedRolls?: number[];
+    explodingDieSide?: number;
+    extraDice?: Array<{ count: number; sides: number; label: string }>;
     hasAfortunado?: boolean;
     hasAfortunadoAffinity?: boolean;
     attackDamagePayload?: AttackDamageRollPayload;
     forcaOpressoraPayload?: ForcaOpressoraRollPayload;
+    cursePricePrompt?: CursePricePrompt;
     ritualEffectPayload?: RitualEffectRollPayload;
     batchId?: string;
     batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
@@ -288,6 +357,21 @@ export interface SceneEffect {
   usesOcultismoManeuver?: boolean;
 }
 
+export interface CharacterPersonalProfile {
+  age?: string;
+  pronouns?: string;
+  height?: string;
+  weight?: string;
+  birthplace?: string;
+  occupation?: string;
+  appearance?: string;
+  personality?: string;
+  backstory?: string;
+  goals?: string;
+  bonds?: string;
+  personalNotes?: string;
+}
+
 export interface OrdemSheetData {
   origin: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -309,6 +393,7 @@ export interface OrdemSheetData {
   skills: OrdemSkill[];
   abilities?: CharacterAbility[];
   activeConditions?: ActiveCondition[];
+  personalProfile?: CharacterPersonalProfile;
 }
 
 // Estrutura Específica de Ficha: Tormenta 20
@@ -335,12 +420,14 @@ export interface T20SheetData {
   level: number;
   deity: string;
   origin: string;
+  proficiencies?: string[];
   tempHp?: number;
   sceneEffects?: SceneEffect[];
   attributes: T20Attributes;
   skills: T20Skill[];
   abilities?: CharacterAbility[];
   activeConditions?: ActiveCondition[];
+  personalProfile?: CharacterPersonalProfile;
 }
 
 // Modelo unificado de personagem com dados completos
@@ -417,6 +504,11 @@ export interface CompendiumEntryData {
     slots?: number;         // Espaços ocupados no inventário
     categoryLevel?: number; // Categoria de item em Ordem Paranormal (0, 1, 2, 3, 4)
     requirements?: string;  // Pré-requisitos em texto
+    isParanormal?: boolean; // Equipamento Paranormal / Item Amaldiçoado Especial
+    isCursedSpecial?: boolean;
+    itemSubtype?: OrdemItemKind;
+    isWeapon?: boolean;     // Diferencia armas de consumíveis/granadas que também têm damageFormula
+    uses?: number;          // Cargas padrão (Spray de Pimenta = 2, Taser = 2, etc.)
   };
 }
 

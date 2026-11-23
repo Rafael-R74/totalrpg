@@ -14,6 +14,7 @@ import {
   DiceRollResult,
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
+  CursePricePrompt,
   RitualEffectRollPayload,
   SheetPermissions,
   StickyPostIt,
@@ -126,6 +127,13 @@ export default function App() {
           setActiveRollModal(newRoll);
         }
 
+        if (newRoll.label.startsWith('🛡️ PV Temporários')) {
+          window.dispatchEvent(
+            new CustomEvent('totalrpg:grant-temp-hp', {
+              detail: { characterId: newRoll.characterId, amount: newRoll.total, label: newRoll.label },
+            })
+          );
+        }
         if (newRoll.label.startsWith('🛡️ Vida Temporária:')) {
           window.dispatchEvent(
             new CustomEvent('totalrpg:ritual-temp-hp', { detail: newRoll })
@@ -261,6 +269,11 @@ export default function App() {
       batchShotNumber: number;
       batchIsCrit?: boolean;
     },
+    extraRollOpts?: {
+      explodingDieSide?: number;
+      extraDice?: Array<{ count: number; sides: number; label: string }>;
+      cursePricePrompt?: CursePricePrompt;
+    },
     hasAfortunadoAffinity?: boolean,
     ritualEffectPayload?: RitualEffectRollPayload
   ) {
@@ -287,10 +300,13 @@ export default function App() {
       system,
       isSecret,
       fixedRolls,
+      explodingDieSide: extraRollOpts?.explodingDieSide,
+      extraDice: extraRollOpts?.extraDice,
       hasAfortunado,
       hasAfortunadoAffinity,
       attackDamagePayload,
       forcaOpressoraPayload,
+      cursePricePrompt: extraRollOpts?.cursePricePrompt,
       ritualEffectPayload,
       ...(effectiveBatchMeta || {}),
     });
@@ -402,6 +418,7 @@ export default function App() {
               batchRole: 'segurar_gatilho_attack',
               batchShotNumber: shotNumber,
             },
+            undefined,
             baseRoll.hasAfortunadoAffinity
           );
           return true;
@@ -448,6 +465,7 @@ export default function App() {
                 batchShotNumber: shotNum,
                 batchIsCrit: isCrit,
               },
+              undefined,
               atkRoll.hasAfortunadoAffinity
             );
           });
@@ -480,6 +498,43 @@ export default function App() {
             rollResult.hasAfortunado,
             undefined,
             p.forcaOpressoraPayload,
+            undefined,
+            {
+              explodingDieSide: p.explodingDieSide,
+              extraDice: isCrit ? p.extraDiceCrit : p.extraDiceNormal,
+            },
+            rollResult.hasAfortunadoAffinity
+          );
+        }}
+        onApplyCurseSanLoss={(rollResult) => {
+          if (!rollResult.cursePricePrompt) return;
+          window.dispatchEvent(
+            new CustomEvent('totalrpg:curse-san-loss', {
+              detail: {
+                characterId: rollResult.characterId,
+                amount: rollResult.cursePricePrompt.sanLossOnFail,
+                element: rollResult.cursePricePrompt.element,
+                label: rollResult.label,
+              },
+            })
+          );
+        }}
+        onRollSanguinariaTempHp={(rollResult) => {
+          triggerRoll(
+            rollResult.characterName,
+            rollResult.system,
+            `🛡️ PV Temporários (Sanguinária • Crítico): ${rollResult.attackDamagePayload?.weaponName || 'Arma'}`,
+            2,
+            10,
+            0,
+            rollResult.isSecret,
+            false,
+            rollResult.characterId,
+            undefined,
+            rollResult.hasAfortunado,
+            undefined,
+            undefined,
+            undefined,
             undefined,
             rollResult.hasAfortunadoAffinity
           );
@@ -523,6 +578,7 @@ export default function App() {
             undefined,
             undefined,
             undefined,
+            undefined,
             rollResult.hasAfortunadoAffinity
           );
         }}
@@ -550,6 +606,7 @@ export default function App() {
               undefined,
               undefined,
               undefined,
+              undefined,
               rollResult.hasAfortunadoAffinity
             );
           } else {
@@ -565,6 +622,7 @@ export default function App() {
               rollResult.characterId,
               undefined,
               rollResult.hasAfortunado,
+              undefined,
               undefined,
               undefined,
               undefined,

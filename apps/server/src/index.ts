@@ -107,10 +107,13 @@ io.on('connection', (socket) => {
       system,
       isSecret,
       fixedRolls,
+      explodingDieSide,
+      extraDice,
       hasAfortunado,
       hasAfortunadoAffinity,
       attackDamagePayload,
       forcaOpressoraPayload,
+      cursePricePrompt,
       ritualEffectPayload,
       batchId,
       batchRole,
@@ -120,6 +123,7 @@ io.on('connection', (socket) => {
       if (campaignId) {
         socket.join(campaignId);
       }
+
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
       const safeCount = isOrdemZeroDicePenalty
@@ -136,20 +140,68 @@ io.on('connection', (socket) => {
         }
       }
 
+      // Dados explosivos (ex.: Motosserra — sempre que cair 6 no d6, rola +1d6 adicional em cadeia)
+      const explodedRolls: number[] = [];
+      if (explodingDieSide && explodingDieSide === sides && sides >= 2) {
+        let pendingExplosions = rolls.filter((v) => v === explodingDieSide).length;
+        const maxExplosions = 30;
+        while (pendingExplosions > 0 && explodedRolls.length < maxExplosions) {
+          pendingExplosions -= 1;
+          const extraVal = Math.floor(Math.random() * sides) + 1;
+          explodedRolls.push(extraVal);
+          if (extraVal === explodingDieSide) {
+            pendingExplosions += 1;
+          }
+        }
+      }
+
+      // Dados extras de maldições/munições (Lancinante +1d8/+3d8, Erosiva +1d8, Explosiva +2d6, Antielemento +4d8)
+      const extraDiceResults: Array<{
+        label: string;
+        formula: string;
+        rolls: number[];
+        subtotal: number;
+      }> = [];
+      let extraDiceGrandTotal = 0;
+      if (Array.isArray(extraDice) && extraDice.length > 0) {
+        for (const group of extraDice) {
+          const gCount = Math.max(1, Math.min(30, Number(group.count) || 1));
+          const gSides = Math.max(2, Math.min(100, Number(group.sides) || 6));
+          const gRolls: number[] = [];
+          for (let i = 0; i < gCount; i++) {
+            gRolls.push(Math.floor(Math.random() * gSides) + 1);
+          }
+          const subtotal = gRolls.reduce((acc, v) => acc + v, 0);
+          extraDiceGrandTotal += subtotal;
+          extraDiceResults.push({
+            label: group.label,
+            formula: `${gCount}d${gSides}`,
+            rolls: gRolls,
+            subtotal,
+          });
+        }
+      }
+
       let diceTotal = 0;
       if (isOrdemZeroDicePenalty) {
         diceTotal = Math.min(...rolls);
       } else if (system === 'ordem-paranormal' && sides === 20) {
         diceTotal = Math.max(...rolls);
       } else {
-        diceTotal = rolls.reduce((acc, curr) => acc + curr, 0);
+        diceTotal =
+          rolls.reduce((acc, curr) => acc + curr, 0) +
+          explodedRolls.reduce((acc, curr) => acc + curr, 0);
       }
 
-      const total = diceTotal + modifier;
+      const total = diceTotal + extraDiceGrandTotal + modifier;
       const modString = modifier !== 0 ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : '';
       const baseFormula = isOrdemZeroDicePenalty
         ? '2d20 (menor)'
         : `${safeCount}d${sides}`;
+      const extraFormulaStr =
+        extraDiceResults.length > 0
+          ? ' + ' + extraDiceResults.map((e) => e.formula).join(' + ')
+          : '';
 
       const result: DiceRollResult = {
         id: Math.random().toString(36).substring(2, 9),
@@ -158,8 +210,10 @@ io.on('connection', (socket) => {
         isInitiativeRoll: Boolean(isInitiativeRoll),
         characterName,
         label,
-        formula: `${baseFormula}${modString}`,
+        formula: `${baseFormula}${extraFormulaStr}${modString}`,
         rolls,
+        explodedRolls: explodedRolls.length > 0 ? explodedRolls : undefined,
+        extraDiceResults: extraDiceResults.length > 0 ? extraDiceResults : undefined,
         sides,
         modifier,
         total,
@@ -170,6 +224,7 @@ io.on('connection', (socket) => {
         hasAfortunadoAffinity: Boolean(hasAfortunadoAffinity),
         attackDamagePayload,
         forcaOpressoraPayload,
+        cursePricePrompt,
         ritualEffectPayload,
         batchId,
         batchRole,
