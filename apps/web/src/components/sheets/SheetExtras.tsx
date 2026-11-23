@@ -24,13 +24,20 @@ import {
   parseCritRange,
   classifyOrdemWeapon,
   isOrdemCompendiumItemParanormal,
+  isOrdemItemParanormal,
   isOrdemItemWeaponEntry,
   inferOrdemItemKind,
   getOrdemItemEffectiveSlots,
   getOrdemItemEffectiveCategory,
+  computeOrdemWeaponBonusesFromItem,
+  doubleCritThreatRange,
+  findOrdemModificationDef,
+  findOrdemCurseDef,
+  ORDEM_ACCESSORY_ELIGIBLE_SKILLS,
   OrdemElement,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
+import { ItemCustomizationModal } from './ItemCustomizationModal';
 
 interface SheetExtrasProps {
   system: SystemId;
@@ -114,6 +121,11 @@ export function SheetExtras({
   onInitiateTradeItem,
   onCheckResource,
   onSpendResource,
+  onHealPv,
+  onTakePvDamage,
+  onGrantTempPe,
+  onLoseSanity,
+  onAddSceneEffect,
   onRoll,
   onCastOrdemRitual,
   onTriggerOriginSpecial,
@@ -365,6 +377,17 @@ export function SheetExtras({
   const [armedGolpeDemolidor, setArmedGolpeDemolidor] = useState<boolean>(false);
   const [segurarGatilhoStep, setSegurarGatilhoStep] = useState<number>(1);
   const [aimingByAttackId, setAimingByAttackId] = useState<Record<string, boolean>>({});
+  const [rajadaByAttackId, setRajadaByAttackId] = useState<Record<string, boolean>>({});
+  const [energeticaByAttackId, setEnergeticaByAttackId] = useState<Record<string, boolean>>({});
+  const [antielementoByAttackId, setAntielementoByAttackId] = useState<Record<string, boolean>>({});
+  const [empuxoByAttackId, setEmpuxoByAttackId] = useState<Record<string, boolean>>({});
+  const [ammoModByAttackId, setAmmoModByAttackId] = useState<
+    Record<string, 'none' | 'dumdum' | 'explosiva' | 'jurada'>
+  >({});
+  const [arcabuzDieByAttackId, setArcabuzDieByAttackId] = useState<Record<string, number>>({});
+  const [customizingItemId, setCustomizingItemId] = useState<string | null>(null);
+  const [inventoryRealmFilter, setInventoryRealmFilter] = useState<'ALL' | 'normal' | 'paranormal'>('ALL');
+  const [inventoryFeedback, setInventoryFeedback] = useState<string>('');
   const [secAmplo, setSecAmplo] = useState<boolean>(false);
   const [secDestruidor, setSecDestruidor] = useState<boolean>(false);
   const [secLetal, setSecLetal] = useState<0 | 1 | 2>(0);
@@ -1580,12 +1603,16 @@ export function SheetExtras({
               {attacks.map((atk) => {
                 // Classificação de arma (corpo a corpo, arremesso, disparo, arma de fogo, ágil, desarmado)
                 const lowerAtkName = atk.name.toLowerCase();
-                const invMatch = inventory.find(
-                  (it) =>
-                    it.name.toLowerCase() === lowerAtkName ||
-                    lowerAtkName.includes(it.name.toLowerCase()) ||
-                    it.name.toLowerCase().includes(lowerAtkName)
-                );
+                const invMatch =
+                  (atk.linkedItemId
+                    ? inventory.find((it) => it.id === atk.linkedItemId)
+                    : undefined) ||
+                  inventory.find(
+                    (it) =>
+                      it.name.toLowerCase() === lowerAtkName ||
+                      lowerAtkName.includes(it.name.toLowerCase()) ||
+                      it.name.toLowerCase().includes(lowerAtkName)
+                  );
                 const compMatch = compendiumEntries.find(
                   (ce) =>
                     ce.category === 'item' &&
@@ -1595,6 +1622,21 @@ export function SheetExtras({
                 );
                 const descLower = (invMatch?.description || compMatch?.description || '').toLowerCase();
                 const isUnarmed = Boolean(atk.isUnarmed || lowerAtkName.includes('desarmado'));
+
+                // Regra da Soqueira / Punhos Enraivecidos (p. 66 / p. 148):
+                // Aplica modificações e maldições da soqueira equipada aos ataques desarmados!
+                const soqueiraEquipped = isUnarmed
+                  ? inventory.find(
+                      (it) =>
+                        it.isEquipped &&
+                        (it.name.toLowerCase().includes('soqueira') ||
+                          it.name.toLowerCase().includes('punhos enraivecidos'))
+                    )
+                  : undefined;
+
+                const weaponMods = isOrdemSystem
+                  ? computeOrdemWeaponBonusesFromItem(invMatch, soqueiraEquipped)
+                  : computeOrdemWeaponBonusesFromItem(undefined, undefined);
 
                 const weaponClass = classifyOrdemWeapon(
                   atk.name,
@@ -1611,6 +1653,33 @@ export function SheetExtras({
                 const isThrown = weaponClass.isThrown;
                 const isAgile = weaponClass.isAgile || (isUnarmed && hasArtistaMarcial);
                 const isArcoComposto = weaponClass.isArcoComposto;
+                const isMotosserra = lowerAtkName.includes('motosserra');
+                const isArcabuz = lowerAtkName.includes('arcabuz dos moretti');
+
+                const isRajadaActive = Boolean(
+                  isOrdemSystem && isFirearm && weaponMods.isAutomatic && rajadaByAttackId[atk.id]
+                );
+                const isEnergeticaActive = Boolean(
+                  isOrdemSystem && weaponMods.hasEnergetica && energeticaByAttackId[atk.id]
+                );
+                const isAntielementoActive = Boolean(
+                  isOrdemSystem && weaponMods.antielementoChosen && antielementoByAttackId[atk.id]
+                );
+                const isEmpuxoThrown = Boolean(
+                  isOrdemSystem && weaponMods.hasEmpuxo && empuxoByAttackId[atk.id]
+                );
+
+                // Munições modificadas / Jurada disponíveis na mochila (para armas de fogo)
+                const hasDumDumAmmo = isFirearm && inventory.some(
+                  (it) => (it.modifications || []).includes('mod-dum-dum')
+                );
+                const hasExplosivaAmmo = isFirearm && inventory.some(
+                  (it) => (it.modifications || []).includes('mod-explosiva')
+                );
+                const hasMunicaoJurada = isFirearm && inventory.some(
+                  (it) => it.name.toLowerCase().includes('munição jurada') || it.name.toLowerCase().includes('municao jurada')
+                );
+                const activeAmmoMod = isFirearm ? ammoModByAttackId[atk.id] || 'none' : 'none';
 
                 const isAniqFav =
                   hasAFavorita &&
@@ -1619,19 +1688,31 @@ export function SheetExtras({
                       invMatch?.isAniquiladorFavorite
                   );
 
-                // Base do dano (atualiza dado do Artista Marcial conforme NEX: 1d6 -> 1d8 -> 1d10)
+                // Base do dano (atualiza dado do Artista Marcial conforme NEX ou Arcabuz dos Moretti 1d6)
                 const rawDmgParsed = parseDiceFormula(atk.damageFormula);
                 const artMarcialSides = ordemNex >= 70 ? 10 : ordemNex >= 35 ? 8 : 6;
-                const effectiveDamageSides =
-                  isUnarmed && hasArtistaMarcial ? artMarcialSides : rawDmgParsed.sides;
+                const arcabuzSides = isArcabuz ? arcabuzDieByAttackId[atk.id] || 8 : rawDmgParsed.sides;
+                const effectiveDamageSides = isArcabuz
+                  ? arcabuzSides
+                  : isUnarmed && hasArtistaMarcial
+                  ? artMarcialSides
+                  : rawDmgParsed.sides;
 
-                // Dados de Dano extras: Golpe Pesado (+1 dado arma corpo a corpo) e Máquina de Matar (+1 dado A Favorita)
+                // Dados de Dano extras: Golpe Pesado, Máquina de Matar, Calibre Grosso, Rajada, Empuxo (arremesso)
                 const golpePesadoExtraDice =
                   hasGolpePesado && isMelee && !isUnarmed ? 1 : 0;
                 const maquinaMatarExtraDice =
                   isAniqFav && hasMaquinaMatar ? 1 : 0;
+                const calibreGrossoExtraDice = weaponMods.extraDamageDiceCount;
+                const rajadaExtraDice = isRajadaActive ? 1 : 0;
+                const empuxoExtraDice = isEmpuxoThrown ? 1 : 0;
                 const baseDamageDiceCount =
-                  rawDmgParsed.count + golpePesadoExtraDice + maquinaMatarExtraDice;
+                  (isArcabuz ? 2 : rawDmgParsed.count) +
+                  golpePesadoExtraDice +
+                  maquinaMatarExtraDice +
+                  calibreGrossoExtraDice +
+                  rajadaExtraDice +
+                  empuxoExtraDice;
 
                 // Perícias de Ataque em Ordem Paranormal: Pontaria para fogo/disparo, Luta para corpo a corpo
                 const pontariaSk = ordemSheetData?.skills.find((s) => s.id === 'pontaria');
@@ -1650,32 +1731,55 @@ export function SheetExtras({
                   (bonuses.skillBonus['luta'] || 0);
 
                 const meleeBaseAttr = isAgile ? Math.max(effFor, effAgi) : effFor;
+                const attackAttrKey: 'agi' | 'for' = isRanged
+                  ? 'agi'
+                  : isAgile && effAgi > effFor
+                  ? 'agi'
+                  : 'for';
+                const attackCursePrice = isOrdemSystem
+                  ? bonuses.cursePriceByAttr?.[attackAttrKey]
+                  : null;
+                const attackCursePrompt =
+                  attackCursePrice && attackCursePrice.curseCount > 0
+                    ? {
+                        element: attackCursePrice.element,
+                        attributeLabel: attackCursePrice.attrLabel,
+                        curseCount: attackCursePrice.curseCount,
+                        sanLossOnFail: attackCursePrice.sanLoss,
+                      }
+                    : undefined;
 
                 // Dados de Ataque (d20):
-                // - Armas de fogo e de disparo usam Agilidade (effAgi) + bônus de dados de Pontaria
-                // - Armas corpo a corpo usam Força (ou Agilidade se ágil) + bônus de dados de Luta
+                // Motosserra impõe -1d20; Rajada sem Compensador impõe -1d20
+                const motosserraDicePenalty = isOrdemSystem && isMotosserra ? -1 : 0;
+                const rajadaDicePenalty =
+                  isRajadaActive && !weaponMods.hasCompensador ? -1 : 0;
                 const rawAttackDice = isOrdemSystem
                   ? isRanged
                     ? effAgi + bonuses.skillDiceAll + (bonuses.skillDice['pontaria'] || 0)
                     : meleeBaseAttr + bonuses.skillDiceAll + (bonuses.skillDice['luta'] || 0)
                   : atk.diceCount || 1;
-                const finalAttackDice = rawAttackDice + bonuses.attackDiceBonus;
+                const finalAttackDice =
+                  rawAttackDice +
+                  bonuses.attackDiceBonus +
+                  motosserraDicePenalty +
+                  rajadaDicePenalty;
 
                 // Bônus de Ataque (+X):
-                // - Armas de fogo e de disparo usam o teste de Pontaria
-                // - Armas corpo a corpo usam o teste de Luta
                 const workToolAtkBonus = atk.isWorkTool || invMatch?.isFavoriteTool ? 1 : 0;
                 const combatSkillBonus = isRanged ? pontariaSkillBonus : lutaSkillBonus;
+                const energeticaAtkBonus = isEnergeticaActive ? 5 : 0;
+                const juradaAtkBonus = activeAmmoMod === 'jurada' ? 10 : 0;
                 const finalAttackBonus = isOrdemSystem
-                  ? combatSkillBonus + bonuses.attackBonus + workToolAtkBonus
+                  ? combatSkillBonus +
+                    bonuses.attackBonus +
+                    workToolAtkBonus +
+                    weaponMods.attackBonus +
+                    energeticaAtkBonus +
+                    juradaAtkBonus
                   : atk.attackBonus + bonuses.attackBonus + workToolAtkBonus;
 
                 // Modificador de Dano:
-                // Em Ordem Paranormal:
-                // - Armas corpo a corpo somam FOR (ou AGI se ágil).
-                // - Armas de arremesso somam FOR.
-                // - Arco Composto soma FOR.
-                // - Armas de fogo e outras armas de disparo (arco simples, besta, balestra) NÃO somam força ao dano!
                 const specificTypeDamageBonus =
                   (isMelee ? bonuses.meleeDamageBonus : 0) +
                   (isFirearm ? bonuses.firearmDamageBonus : 0);
@@ -1697,7 +1801,8 @@ export function SheetExtras({
                   bonuses.damageBonus +
                   specificTypeDamageBonus +
                   tiroCerteiroBonus +
-                  workToolDmgBonus;
+                  workToolDmgBonus +
+                  weaponMods.damageBonus;
 
                 const isFuzilPrecisao =
                   lowerAtkName.includes('fuzil de precisão') ||
@@ -1706,8 +1811,13 @@ export function SheetExtras({
                   descLower.includes('veterano em pontaria ao mirar');
                 const isAimingFuzil = Boolean(isFuzilPrecisao && aimingByAttackId[atk.id]);
 
-                // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta, Mirar (+5)
-                let critThreatSteps = 0;
+                // Margem e Multiplicador Crítico:
+                // Regra oficial p. 146: efeitos que DUPLICAM a margem (Predadora, Munição Jurada) aplicam-se ANTES de efeitos que a aumentam!
+                let critBaseAfterDouble = atk.critRange;
+                if (weaponMods.doublesCritThreat || activeAmmoMod === 'jurada') {
+                  critBaseAfterDouble = doubleCritThreatRange(critBaseAfterDouble);
+                }
+                let critThreatSteps = weaponMods.critThreatBonus; // Perigosa (+2) / Mira Laser (+2)
                 if (hasTecnicaLetal && isMelee) critThreatSteps += 2;
                 if (isAniqFav && hasMaquinaMatar) critThreatSteps += 2;
                 if (isAniqFav && hasTecnicaSublime) {
@@ -1715,12 +1825,51 @@ export function SheetExtras({
                   if (secLetal === 2) critThreatSteps += 5;
                 }
                 if (isAimingFuzil) critThreatSteps += 5;
-                let effectiveCritRange = boostCritRangeBySteps(atk.critRange, critThreatSteps);
-                if (isAniqFav && hasTecnicaSecreta && secDestruidor) {
-                  effectiveCritRange = boostCritMultiplier(effectiveCritRange, 1);
+                let effectiveCritRange = boostCritRangeBySteps(critBaseAfterDouble, critThreatSteps);
+                let extraCritMult = 0;
+                if (isAniqFav && hasTecnicaSecreta && secDestruidor) extraCritMult += 1;
+                if (activeAmmoMod === 'dumdum') extraCritMult += 1;
+                if (extraCritMult > 0) {
+                  effectiveCritRange = boostCritMultiplier(effectiveCritRange, extraCritMult);
                 }
                 const critParsed = parseCritRange(effectiveCritRange);
                 const critBaseDamageDiceCount = baseDamageDiceCount * critParsed.multiplier;
+
+                // Dados Extras de Maldições / Munições (Lancinante multiplica no crítico!)
+                const extraDiceNormal: Array<{ count: number; sides: number; label: string }> = [];
+                const extraDiceCrit: Array<{ count: number; sides: number; label: string }> = [];
+                for (const ed of weaponMods.extraDamageDice) {
+                  extraDiceNormal.push({ count: ed.count, sides: ed.sides, label: ed.label });
+                  extraDiceCrit.push({
+                    count: ed.multipliesOnCrit ? ed.count * critParsed.multiplier : ed.count,
+                    sides: ed.sides,
+                    label: ed.multipliesOnCrit
+                      ? `${ed.label} [Crít x${critParsed.multiplier}]`
+                      : ed.label,
+                  });
+                }
+                if (activeAmmoMod === 'explosiva') {
+                  extraDiceNormal.push({ count: 2, sides: 6, label: 'Munição Explosiva' });
+                  extraDiceCrit.push({ count: 2, sides: 6, label: 'Munição Explosiva' });
+                }
+                if (activeAmmoMod === 'jurada') {
+                  extraDiceNormal.push({ count: 6, sides: 12, label: 'Munição Jurada (Conhecimento)' });
+                  extraDiceCrit.push({ count: 6, sides: 12, label: 'Munição Jurada (Conhecimento)' });
+                }
+                if (isAntielementoActive && weaponMods.antielementoChosen) {
+                  const lbl = `Antielemento (${weaponMods.antielementoChosen})`;
+                  extraDiceNormal.push({ count: 4, sides: 8, label: lbl });
+                  extraDiceCrit.push({ count: 4, sides: 8, label: lbl });
+                }
+                const extraDiceNormalText =
+                  extraDiceNormal.length > 0
+                    ? ' + ' + extraDiceNormal.map((e) => `${e.count}d${e.sides}`).join(' + ')
+                    : '';
+                const extraDiceCritText =
+                  extraDiceCrit.length > 0
+                    ? ' + ' + extraDiceCrit.map((e) => `${e.count}d${e.sides}`).join(' + ')
+                    : '';
+                const explodingDieSide = isOrdemSystem && isMotosserra ? 6 : undefined;
 
                 const previewPendingDmg =
                   pendingSpecialDamageBonus && pendingSpecialDamageBonus.attackId === atk.id
@@ -1746,7 +1895,10 @@ export function SheetExtras({
                 const aeMult = hasPotenciaMaxima && isMelee ? 2 : 1;
                 const appliedAeAtk = aeAtkInvest * aeMult;
                 const appliedAeDmg = aeDmgInvest * aeMult;
-                const totalAeConfirmPe = aePeCostCalculated + tecnicaSecretaCost;
+                const weaponActiveCursePeCost =
+                  (isEnergeticaActive ? 2 : 0) + (isAntielementoActive ? 2 : 0);
+                const totalAeConfirmPe =
+                  aePeCostCalculated + tecnicaSecretaCost + weaponActiveCursePeCost;
 
                 const foPayload: ForcaOpressoraRollPayload | undefined =
                   isOrdemSystem && hasForcaOpressora && isMelee
@@ -1831,7 +1983,34 @@ export function SheetExtras({
                   if (isAniqFav && hasTecnicaSublime && secPerfurante) {
                     suffixParts.push('Perfurante: Ignora 5 RD');
                   }
+                  if (isEnergeticaActive) {
+                    suffixParts.push('Energética: Dano de Energia / Ignora RD');
+                  }
+                  if (isAntielementoActive && weaponMods.antielementoChosen) {
+                    suffixParts.push(`Antielemento (${weaponMods.antielementoChosen})`);
+                  }
+                  if (isMotosserra) {
+                    suffixParts.push('Motosserra: 6 explode');
+                  }
+                  if (activeAmmoMod === 'dumdum') {
+                    suffixParts.push('Dum-Dum');
+                  } else if (activeAmmoMod === 'explosiva') {
+                    suffixParts.push('Explosiva');
+                  } else if (activeAmmoMod === 'jurada') {
+                    suffixParts.push('Munição Jurada');
+                  }
+                  if (weaponMods.sanguinariaCritTempHp) {
+                    suffixParts.push(
+                      isCrit
+                        ? 'Sanguinária: Fraco + Sangrando + 2d10 PV Temp'
+                        : 'Sanguinária: Sangrando (1d6/rod)'
+                    );
+                  }
+                  if (weaponMods.ritualisticaStored) {
+                    suffixParts.push(`Ritualística: ${weaponMods.ritualisticaStored}`);
+                  }
 
+                  const extraDiceToUse = isCrit ? extraDiceCrit : extraDiceNormal;
                   const labelSuffix =
                     suffixParts.length > 0 ? ` [${suffixParts.join(' • ')}]` : '';
                   onRoll(
@@ -1841,7 +2020,13 @@ export function SheetExtras({
                     dmgModToUse,
                     true,
                     undefined,
-                    foPayload
+                    foPayload,
+                    explodingDieSide || extraDiceToUse.length > 0
+                      ? {
+                          explodingDieSide,
+                          extraDice: extraDiceToUse.length > 0 ? extraDiceToUse : undefined,
+                        }
+                      : undefined
                   );
                 }
 
@@ -1849,7 +2034,11 @@ export function SheetExtras({
                   <div
                     key={atk.id}
                     className={`bg-zinc-950 border p-3.5 rounded-xl flex flex-col gap-2.5 ${
-                      isAniqFav ? 'border-red-600/80' : 'border-zinc-800'
+                      isAniqFav
+                        ? 'border-red-600/80'
+                        : weaponMods.activeCurses.length > 0
+                        ? 'border-purple-700/70'
+                        : 'border-zinc-800'
                     }`}
                   >
                     <div className="flex flex-wrap justify-between items-center gap-2">
@@ -1859,6 +2048,16 @@ export function SheetExtras({
                           {isAniqFav && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-700">
                               🗡️ A Favorita
+                            </span>
+                          )}
+                          {isMotosserra && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700">
+                              🪚 -1d20 Atq • 6 explode
+                            </span>
+                          )}
+                          {isUnarmed && soqueiraEquipped && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-amber-300 border border-amber-700/60">
+                              🥊 {soqueiraEquipped.name}
                             </span>
                           )}
                           {golpePesadoExtraDice > 0 && (
@@ -1886,10 +2085,27 @@ export function SheetExtras({
                               🎯 Mirando (+5 Crít)
                             </span>
                           )}
+                          {weaponMods.badges.map((b, bIdx) => (
+                            <span
+                              key={bIdx}
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                b.startsWith('👁️')
+                                  ? 'bg-purple-950/70 text-purple-200 border-purple-700/70'
+                                  : 'bg-zinc-900 text-amber-200 border-zinc-700'
+                              }`}
+                            >
+                              {b}
+                            </span>
+                          ))}
                         </div>
                         <span className="text-[11px] font-mono text-zinc-500">
                           Crítico: {effectiveCritRange}
                           {effectiveCritRange !== atk.critRange ? ` (base ${atk.critRange})` : ''}
+                          {weaponMods.ritualisticaStored && (
+                            <span className="ml-2 text-purple-300">
+                              • 🔮 Ritualística: {weaponMods.ritualisticaStored}
+                            </span>
+                          )}
                         </span>
 
                         {hasAFavorita && !isAniqFav && canChangeAniquiladorFavorite && (
@@ -1953,17 +2169,49 @@ export function SheetExtras({
                             if (isAimingFuzil) {
                               suffixParts.push('🎯 Mirando (+5 Crít)');
                             }
+                            if (isRajadaActive) {
+                              suffixParts.push('🔫 Rajada (+1 dado)');
+                            }
+                            if (isEmpuxoThrown) {
+                              suffixParts.push('🪃 Empuxo Arremesso (+1 dado)');
+                            }
+                            if (activeAmmoMod === 'dumdum') {
+                              suffixParts.push('Dum-Dum (+1x Crít)');
+                              dmgSuffixParts.push('Dum-Dum');
+                            } else if (activeAmmoMod === 'explosiva') {
+                              suffixParts.push('Munição Explosiva (+2d6)');
+                              dmgSuffixParts.push('Explosiva');
+                            } else if (activeAmmoMod === 'jurada') {
+                              suffixParts.push('Munição Jurada (+10 Atq, 2x Crít, +6d12)');
+                              dmgSuffixParts.push('Munição Jurada');
+                            }
 
-                            if (tecnicaSecretaCost > 0) {
-                              if (isOrdemSystem && tecnicaSecretaCost > peTurnLimit) {
+                            const totalAtkPeCost = tecnicaSecretaCost + weaponActiveCursePeCost;
+                            if (totalAtkPeCost > 0) {
+                              if (isOrdemSystem && totalAtkPeCost > peTurnLimit) {
                                 setCombatTabFeedback(
-                                  `⚠️ Custo da Técnica Secreta (${tecnicaSecretaCost} PE) excede seu limite de ${peTurnLimit} PE/turno!`
+                                  `⚠️ Custo total de PE (${totalAtkPeCost} PE) excede seu limite de ${peTurnLimit} PE/turno!`
                                 );
                                 return;
                               }
-                              if (!onSpendResource(tecnicaSecretaCost)) return;
+                              if (!onSpendResource(totalAtkPeCost)) return;
                               const tsLabel = buildTecnicaSecretaLabels(dmgSuffixParts);
                               if (tsLabel) suffixParts.push(tsLabel);
+                            }
+
+                            if (isEnergeticaActive) {
+                              suffixParts.push('⚡ Energética (+5 Atq, Energia)');
+                              dmgSuffixParts.push('Energética: Energia / Ignora RD');
+                            }
+                            if (isAntielementoActive && weaponMods.antielementoChosen) {
+                              suffixParts.push(`🧿 Antielemento ${weaponMods.antielementoChosen}`);
+                              dmgSuffixParts.push(`Antielemento (${weaponMods.antielementoChosen})`);
+                            }
+                            if (isMotosserra) {
+                              dmgSuffixParts.push('Motosserra: 6 explode');
+                            }
+                            if (weaponMods.sanguinariaCritTempHp) {
+                              dmgSuffixParts.push('Sanguinária: Sangrando');
                             }
 
                             setPendingSpecialDamageBonus(null);
@@ -1991,7 +2239,18 @@ export function SheetExtras({
                                     : undefined,
                                 forcaOpressoraPayload: foPayload,
                                 segurarGatilhoPayload: buildSegurarGatilhoPayload(batchId),
-                              }
+                                explodingDieSide,
+                                extraDiceNormal:
+                                  extraDiceNormal.length > 0 ? extraDiceNormal : undefined,
+                                extraDiceCrit:
+                                  extraDiceCrit.length > 0 ? extraDiceCrit : undefined,
+                                sanguinariaCritTempHp: weaponMods.sanguinariaCritTempHp || undefined,
+                                ritualisticaStoredName: weaponMods.ritualisticaStored,
+                              },
+                              undefined,
+                              attackCursePrompt
+                                ? { cursePricePrompt: attackCursePrompt }
+                                : undefined
                             );
                           }}
                           className="px-2.5 py-1.5 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold transition cursor-pointer"
@@ -2002,6 +2261,7 @@ export function SheetExtras({
                             ? '2d20(menor)'
                             : `${finalAttackDice}d20`}
                           {finalAttackBonus >= 0 ? `+${finalAttackBonus}` : finalAttackBonus}
+                          {weaponActiveCursePeCost > 0 && ` (-${weaponActiveCursePeCost} PE)`}
                         </button>
 
                         {hasAtaqueEspecial && (
@@ -2044,6 +2304,7 @@ export function SheetExtras({
                               ? `+${displayedDmgMod}`
                               : displayedDmgMod
                             : ''}
+                          {extraDiceNormalText}
                         </button>
 
                         <button
@@ -2058,6 +2319,7 @@ export function SheetExtras({
                               ? `+${displayedDmgMod}`
                               : displayedDmgMod
                             : ''}
+                          {extraDiceCritText}
                         </button>
 
                         {allowInv && (
@@ -2071,6 +2333,226 @@ export function SheetExtras({
                         )}
                       </div>
                     </div>
+
+                    {/* Barra Contextual de Modificações, Munições e Maldições da Arma */}
+                    {isOrdemSystem &&
+                      (isArcabuz ||
+                        (isFirearm && weaponMods.isAutomatic) ||
+                        (isFirearm && (hasDumDumAmmo || hasExplosivaAmmo || hasMunicaoJurada)) ||
+                        weaponMods.hasEnergetica ||
+                        weaponMods.antielementoChosen ||
+                        weaponMods.hasEmpuxo ||
+                        weaponMods.hasVibrante ||
+                        weaponMods.hasSenciente ||
+                        weaponMods.hasRepulsora ||
+                        weaponMods.hasErosiva ||
+                        weaponMods.hasConsumidora) && (
+                        <div className="pt-2 border-t border-zinc-800/80 flex flex-wrap items-center gap-2 text-[11px]">
+                          {isArcabuz && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const d6 = Math.floor(Math.random() * 6) + 1;
+                                const dieMap: Record<number, number> = {
+                                  1: 4,
+                                  2: 6,
+                                  3: 8,
+                                  4: 10,
+                                  5: 12,
+                                  6: 20,
+                                };
+                                const nextSides = dieMap[d6];
+                                setArcabuzDieByAttackId((prev) => ({
+                                  ...prev,
+                                  [atk.id]: nextSides,
+                                }));
+                                setCombatTabFeedback(
+                                  `🎲 Arcabuz dos Moretti rolou ${d6} no 1d6 → dano definido como 2d${nextSides} de Energia!`
+                                );
+                              }}
+                              className="px-2 py-0.5 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded font-bold cursor-pointer"
+                            >
+                              🎲 Arcabuz 1d6 (Atual: 2d{arcabuzSides})
+                            </button>
+                          )}
+
+                          {isFirearm && weaponMods.isAutomatic && (
+                            <label className="flex items-center gap-1 text-amber-300 font-bold cursor-pointer bg-zinc-900 border border-zinc-700 px-2 py-0.5 rounded">
+                              <input
+                                type="checkbox"
+                                checked={isRajadaActive}
+                                onChange={(e) =>
+                                  setRajadaByAttackId((prev) => ({
+                                    ...prev,
+                                    [atk.id]: e.target.checked,
+                                  }))
+                                }
+                              />
+                              🔫 Rajada (+1 dado{weaponMods.hasCompensador ? ', Compensador' : ', -1d20'})
+                            </label>
+                          )}
+
+                          {isFirearm && (hasDumDumAmmo || hasExplosivaAmmo || hasMunicaoJurada) && (
+                            <select
+                              value={activeAmmoMod}
+                              onChange={(e) =>
+                                setAmmoModByAttackId((prev) => ({
+                                  ...prev,
+                                  [atk.id]: e.target.value as 'none' | 'dumdum' | 'explosiva' | 'jurada',
+                                }))
+                              }
+                              className="bg-zinc-900 border border-amber-700/60 rounded px-2 py-0.5 text-[10px] font-bold text-amber-200"
+                            >
+                              <option value="none">Munição: Padrão</option>
+                              {hasDumDumAmmo && <option value="dumdum">Dum-Dum (+1x Crít)</option>}
+                              {hasExplosivaAmmo && <option value="explosiva">Explosiva (+2d6 Dano)</option>}
+                              {hasMunicaoJurada && (
+                                <option value="jurada">Munição Jurada (+10 Atq, 2x Crít, +6d12)</option>
+                              )}
+                            </select>
+                          )}
+
+                          {weaponMods.hasEnergetica && (
+                            <label className="flex items-center gap-1 text-purple-200 font-bold cursor-pointer bg-purple-950/60 border border-purple-700/70 px-2 py-0.5 rounded">
+                              <input
+                                type="checkbox"
+                                checked={isEnergeticaActive}
+                                onChange={(e) =>
+                                  setEnergeticaByAttackId((prev) => ({
+                                    ...prev,
+                                    [atk.id]: e.target.checked,
+                                  }))
+                                }
+                              />
+                              ⚡ Energética (-2 PE: +5 Atq, Energia, Ignora RD)
+                            </label>
+                          )}
+
+                          {weaponMods.antielementoChosen && (
+                            <label className="flex items-center gap-1 text-purple-200 font-bold cursor-pointer bg-purple-950/60 border border-purple-700/70 px-2 py-0.5 rounded">
+                              <input
+                                type="checkbox"
+                                checked={isAntielementoActive}
+                                onChange={(e) =>
+                                  setAntielementoByAttackId((prev) => ({
+                                    ...prev,
+                                    [atk.id]: e.target.checked,
+                                  }))
+                                }
+                              />
+                              🧿 Antielemento {weaponMods.antielementoChosen} (-2 PE: +4d8)
+                            </label>
+                          )}
+
+                          {weaponMods.hasEmpuxo && (
+                            <label className="flex items-center gap-1 text-cyan-200 font-bold cursor-pointer bg-cyan-950/50 border border-cyan-700/70 px-2 py-0.5 rounded">
+                              <input
+                                type="checkbox"
+                                checked={isEmpuxoThrown}
+                                onChange={(e) =>
+                                  setEmpuxoByAttackId((prev) => ({
+                                    ...prev,
+                                    [atk.id]: e.target.checked,
+                                  }))
+                                }
+                              />
+                              🪃 Arremesso Empuxo (+1 dado, retorna)
+                            </label>
+                          )}
+
+                          {weaponMods.hasVibrante && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!onSpendResource(2)) return;
+                                setCombatTabFeedback(
+                                  `⚡ Vibrante (${atk.name}): -2 PE gastos — você pode realizar 1 ataque adicional nesta ação Agredir!`
+                                );
+                              }}
+                              className="px-2 py-0.5 bg-purple-950/70 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded font-bold cursor-pointer"
+                            >
+                              ⚡ Vibrante: Ataque Extra (-2 PE)
+                            </button>
+                          )}
+
+                          {weaponMods.hasSenciente && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!onSpendResource(2)) return;
+                                setCombatTabFeedback(
+                                  `🧠 Senciente (${atk.name}): -2 PE gastos — a arma flutua e ataca sozinha (1 PE/rodada para manter)!`
+                                );
+                              }}
+                              className="px-2 py-0.5 bg-purple-950/70 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded font-bold cursor-pointer"
+                            >
+                              🧠 Senciente: Ativar (-2 PE)
+                            </button>
+                          )}
+
+                          {weaponMods.hasRepulsora && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const eff: SceneEffect = {
+                                  id: `repulsora-${atk.id}-${Date.now()}`,
+                                  name: `Repulsora (${atk.name})`,
+                                  description: '+5 Defesa no bloqueio (dura até próximo turno).',
+                                  modifiers: [
+                                    {
+                                      id: `rep-def-${atk.id}`,
+                                      targetType: 'defense',
+                                      targetKey: 'defense',
+                                      value: 5,
+                                    },
+                                  ],
+                                };
+                                if (!onSpendResource(2, eff)) return;
+                                setCombatTabFeedback(
+                                  `🛡️ Repulsora (${atk.name}): -2 PE gastos → +5 na Defesa aplicado na cena!`
+                                );
+                              }}
+                              className="px-2 py-0.5 bg-cyan-950/70 hover:bg-cyan-800 text-cyan-200 border border-cyan-700 rounded font-bold cursor-pointer"
+                            >
+                              🛡️ Repulsora: +5 Def (-2 PE)
+                            </button>
+                          )}
+
+                          {weaponMods.hasErosiva && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!onSpendResource(2)) return;
+                                onRoll(
+                                  `⏳ Erosiva (${atk.name}): +2d4 Morte (1d4 rodadas)`,
+                                  2,
+                                  4,
+                                  0,
+                                  true
+                                );
+                              }}
+                              className="px-2 py-0.5 bg-zinc-900 hover:bg-purple-900 text-purple-200 border border-purple-700/70 rounded font-bold cursor-pointer"
+                            >
+                              ⏳ Erosiva: +2d4 Morte (-2 PE)
+                            </button>
+                          )}
+
+                          {weaponMods.hasConsumidora && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!onSpendResource(2)) return;
+                                setCombatTabFeedback(
+                                  `🖤 Consumidora (${atk.name}): -2 PE gastos — alvo atingido fica IMÓVEL por 1 rodada!`
+                                );
+                              }}
+                              className="px-2 py-0.5 bg-zinc-900 hover:bg-purple-900 text-purple-200 border border-purple-700/70 rounded font-bold cursor-pointer"
+                            >
+                              🖤 Consumidora: Imóvel (-2 PE)
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                     {/* Interface Contextual Dinâmica de Ataque Especial */}
                     {isAeOpen && (
@@ -2209,6 +2691,20 @@ export function SheetExtras({
 
                                 const tsLabel = buildTecnicaSecretaLabels(dmgSuffixParts);
                                 if (tsLabel) suffixParts.push(tsLabel);
+                                if (isRajadaActive) suffixParts.push('🔫 Rajada (+1 dado)');
+                                if (isEmpuxoThrown) suffixParts.push('🪃 Empuxo (+1 dado)');
+                                if (isEnergeticaActive) {
+                                  suffixParts.push('⚡ Energética (+5 Atq)');
+                                  dmgSuffixParts.push('Energética: Energia / Ignora RD');
+                                }
+                                if (isAntielementoActive && weaponMods.antielementoChosen) {
+                                  suffixParts.push(`🧿 Antielemento ${weaponMods.antielementoChosen}`);
+                                  dmgSuffixParts.push(`Antielemento (${weaponMods.antielementoChosen})`);
+                                }
+                                if (isMotosserra) dmgSuffixParts.push('Motosserra: 6 explode');
+                                if (weaponMods.sanguinariaCritTempHp) {
+                                  dmgSuffixParts.push('Sanguinária: Sangrando');
+                                }
 
                                 const batchId = `sg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
                                 const labelSuffix = ` [${suffixParts.join(' • ')}]`;
@@ -2233,7 +2729,18 @@ export function SheetExtras({
                                         : undefined,
                                     forcaOpressoraPayload: foPayload,
                                     segurarGatilhoPayload: buildSegurarGatilhoPayload(batchId),
-                                  }
+                                    explodingDieSide,
+                                    extraDiceNormal:
+                                      extraDiceNormal.length > 0 ? extraDiceNormal : undefined,
+                                    extraDiceCrit:
+                                      extraDiceCrit.length > 0 ? extraDiceCrit : undefined,
+                                    sanguinariaCritTempHp: weaponMods.sanguinariaCritTempHp || undefined,
+                                    ritualisticaStoredName: weaponMods.ritualisticaStored,
+                                  },
+                                  undefined,
+                                  attackCursePrompt
+                                    ? { cursePricePrompt: attackCursePrompt }
+                                    : undefined
                                 );
                               }}
                               className="px-3 py-1 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-lg text-xs font-extrabold cursor-pointer shadow"
@@ -2565,9 +3072,61 @@ export function SheetExtras({
         </div>
       )}
 
-      {/* CONTEÚDO DA ABA 4: INVENTÁRIO (Com Imagens em Destaque, Quantidades xN e Troca entre Aliados) */}
+      {/* MODAL DE CUSTOMIZAÇÃO (MODIFICAÇÕES & MALDIÇÕES) */}
+      {customizingItemId && (() => {
+        const targetItem = inventory.find((i) => i.id === customizingItemId);
+        if (!targetItem) return null;
+        return (
+          <ItemCustomizationModal
+            item={targetItem}
+            compendiumEntries={compendiumEntries}
+            onClose={() => setCustomizingItemId(null)}
+            onSave={(updatedItem) => {
+              onUpdateInventory(
+                inventory.map((i) => (i.id === updatedItem.id ? updatedItem : i))
+              );
+              // Garante que ataques correspondentes fiquem vinculados por linkedItemId
+              const matchAtk = attacks.find(
+                (a) =>
+                  a.linkedItemId === updatedItem.id ||
+                  a.name.toLowerCase() === targetItem.name.toLowerCase()
+              );
+              if (matchAtk && !matchAtk.linkedItemId) {
+                onUpdateAttacks(
+                  attacks.map((a) =>
+                    a.id === matchAtk.id ? { ...a, linkedItemId: updatedItem.id } : a
+                  )
+                );
+              }
+              setCustomizingItemId(null);
+              setInventoryFeedback(
+                `⚙️ "${updatedItem.name}" atualizado (Cat. ${
+                  ['0', 'I', 'II', 'III', 'IV', 'V', 'VI'][
+                    getOrdemItemEffectiveCategory(updatedItem)
+                  ] || getOrdemItemEffectiveCategory(updatedItem)
+                } • ${getOrdemItemEffectiveSlots(updatedItem)} esp.).`
+              );
+            }}
+          />
+        );
+      })()}
+
+      {/* CONTEÚDO DA ABA 4: INVENTÁRIO (Com Imagens em Destaque, Equipados no Topo, Modificações/Maldições e Trocas) */}
       {activeSubTab === 'inventory' && (
         <div className="flex flex-col gap-4">
+          {inventoryFeedback && (
+            <div className="bg-emerald-950/80 border border-emerald-600 text-emerald-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2">
+              <span>{inventoryFeedback}</span>
+              <button
+                type="button"
+                onClick={() => setInventoryFeedback('')}
+                className="text-emerald-400 hover:text-white ml-2 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-wrap justify-between items-center bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-zinc-400">Capacidade de Carga:</span>
@@ -2582,7 +3141,7 @@ export function SheetExtras({
                   ORDEM_PATENTS[0];
                 const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
                 for (const it of inventory) {
-                  const rawCat = it.category || 0;
+                  const rawCat = Math.min(4, getOrdemItemEffectiveCategory(it));
                   const qty = it.quantity || 1;
                   const reduction = it.isFavoriteTool
                     ? 1
@@ -2629,213 +3188,421 @@ export function SheetExtras({
             </span>
           </div>
 
+          {system === 'ordem-paranormal' && inventory.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setInventoryRealmFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                    inventoryRealmFilter === 'ALL'
+                      ? 'bg-zinc-800 text-white border-zinc-600'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                  }`}
+                >
+                  Todos ({inventory.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInventoryRealmFilter('normal')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                    inventoryRealmFilter === 'normal'
+                      ? 'bg-amber-600/20 text-amber-300 border-amber-600'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-amber-300'
+                  }`}
+                >
+                  🎒 Normais ({inventory.filter((it) => !isOrdemItemParanormal(it)).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInventoryRealmFilter('paranormal')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                    inventoryRealmFilter === 'paranormal'
+                      ? 'bg-purple-600/25 text-purple-200 border-purple-500'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-purple-300'
+                  }`}
+                >
+                  👁️ Paranormais & Amaldiçoados ({inventory.filter((it) => isOrdemItemParanormal(it)).length})
+                </button>
+              </div>
+              <span className="text-[11px] text-zinc-500">
+                ✓ Itens equipados ficam sempre no topo
+              </span>
+            </div>
+          )}
+
           {inventory.length === 0 ? (
             <p className="text-xs text-zinc-500 text-center py-4">Mochila vazia.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {inventory.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex justify-between items-center gap-4"
-                >
-                  <div className="flex items-center gap-4 min-w-0 flex-1">
-                    {item.imageUrl ? (
-                      <div
-                        onClick={() => setZoomedItemImage({ name: item.name, url: item.imageUrl! })}
-                        title="Clique para ampliar a imagem do item"
-                        className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-amber-500/60 shadow-lg shrink-0 bg-zinc-900 cursor-zoom-in group relative"
-                      >
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-3xl shrink-0">
-                        🎒
-                      </div>
-                    )}
+          ) : (() => {
+            const visibleInventory = inventory
+              .filter((it) => {
+                if (system !== 'ordem-paranormal' || inventoryRealmFilter === 'ALL') return true;
+                const isPara = isOrdemItemParanormal(it);
+                return inventoryRealmFilter === 'paranormal' ? isPara : !isPara;
+              })
+              .sort((a, b) => Number(Boolean(b.isEquipped)) - Number(Boolean(a.isEquipped)));
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-mono font-extrabold bg-amber-950/70 text-amber-400 border border-amber-800/60 px-1.5 py-0.5 rounded">
-                          {item.quantity || 1}x
-                        </span>
-                        <p className="text-base font-bold text-white truncate">{item.name}</p>
-                        <span className="text-[11px] font-mono text-zinc-500">
-                          ({item.slots * (item.quantity || 1)} esp.)
-                        </span>
-                        {system === 'ordem-paranormal' && (
-                          allowInv ? (
-                            <select
-                              value={item.category ?? 0}
-                              onChange={(e) =>
+            if (visibleInventory.length === 0) {
+              return (
+                <p className="text-xs text-zinc-500 text-center py-4">
+                  Nenhum item nesta categoria de filtro.
+                </p>
+              );
+            }
+
+            const catRoman = ['0', 'I', 'II', 'III', 'IV', 'V', 'VI'];
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {visibleInventory.map((item) => {
+                  const isPara = system === 'ordem-paranormal' && isOrdemItemParanormal(item);
+                  const effCat =
+                    system === 'ordem-paranormal'
+                      ? getOrdemItemEffectiveCategory(item)
+                      : item.category ?? 0;
+                  const effSlotsSingle =
+                    system === 'ordem-paranormal'
+                      ? getOrdemItemEffectiveSlots(item)
+                      : item.slots;
+                  const effSlotsTotal = effSlotsSingle * (item.quantity || 1);
+                  const hasModsOrCurses =
+                    (item.modifications?.length || 0) > 0 || (item.curses?.length || 0) > 0;
+
+                  const accSkillName = (id?: string) =>
+                    id
+                      ? ORDEM_ACCESSORY_ELIGIBLE_SKILLS.find((s) => s.id === id)?.name || id
+                      : '';
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-4 rounded-xl flex flex-col gap-3 border transition ${
+                        item.isEquipped
+                          ? 'bg-emerald-950/15 border-emerald-500/70 shadow-md shadow-emerald-950/30'
+                          : isPara
+                          ? 'bg-purple-950/10 border-purple-800/60'
+                          : 'bg-zinc-950 border-zinc-800'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                          {item.imageUrl ? (
+                            <div
+                              onClick={() => setZoomedItemImage({ name: item.name, url: item.imageUrl! })}
+                              title="Clique para ampliar a imagem do item"
+                              className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 shadow-lg shrink-0 bg-zinc-900 cursor-zoom-in group relative ${
+                                item.isEquipped
+                                  ? 'border-emerald-500/80'
+                                  : isPara
+                                  ? 'border-purple-500/70'
+                                  : 'border-amber-500/60'
+                              }`}
+                            >
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border flex items-center justify-center text-2xl shrink-0 ${
+                                item.isEquipped
+                                  ? 'bg-emerald-950/50 border-emerald-600/60'
+                                  : isPara
+                                  ? 'bg-purple-950/50 border-purple-700/60'
+                                  : 'bg-zinc-900 border-zinc-800'
+                              }`}
+                            >
+                              {isPara ? '👁️' : '🎒'}
+                            </div>
+                          )}
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs font-mono font-extrabold bg-amber-950/70 text-amber-400 border border-amber-800/60 px-1.5 py-0.5 rounded">
+                                {item.quantity || 1}x
+                              </span>
+                              <p className="text-sm sm:text-base font-bold text-white truncate">
+                                {item.name}
+                              </p>
+                              <span className="text-[11px] font-mono text-zinc-400">
+                                ({effSlotsTotal} esp.)
+                              </span>
+                              {system === 'ordem-paranormal' && (
+                                allowInv && !hasModsOrCurses ? (
+                                  <select
+                                    value={item.baseCategory ?? item.category ?? 0}
+                                    onChange={(e) =>
+                                      onUpdateInventory(
+                                        inventory.map((i) =>
+                                          i.id === item.id
+                                            ? {
+                                                ...i,
+                                                baseCategory: Number(e.target.value),
+                                                category: Number(e.target.value),
+                                              }
+                                            : i
+                                        )
+                                      )
+                                    }
+                                    className="bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] font-mono text-amber-300"
+                                    title="Categoria Base do Item (Patente)"
+                                  >
+                                    <option value={0}>Cat. 0</option>
+                                    <option value={1}>Cat. I</option>
+                                    <option value={2}>Cat. II</option>
+                                    <option value={3}>Cat. III</option>
+                                    <option value={4}>Cat. IV</option>
+                                  </select>
+                                ) : (
+                                  <span
+                                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                                      isPara
+                                        ? 'bg-purple-950/80 text-purple-200 border-purple-700'
+                                        : 'bg-zinc-900 text-amber-300 border-zinc-800'
+                                    }`}
+                                    title="Categoria Efetiva (Base + Modificações + Maldições)"
+                                  >
+                                    Cat. {catRoman[effCat] || effCat}
+                                  </span>
+                                )
+                              )}
+                              {isPara && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
+                                  👁️ {item.element ? item.element : 'Paranormal'}
+                                </span>
+                              )}
+                              {item.isFavoriteTool && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
+                                  🔧 Ferramenta Favorita (-1 Cat.)
+                                </span>
+                              )}
+                              {item.isAniquiladorFavorite && aniquiladorCatReduction > 0 && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-700">
+                                  🗡️ A Favorita (-{aniquiladorCatReduction} Cat.)
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Badges de Modificações, Maldições, Acessórios e Rituais Armazenados */}
+                            {system === 'ordem-paranormal' &&
+                              ((item.modifications && item.modifications.length > 0) ||
+                                (item.curses && item.curses.length > 0) ||
+                                item.accessoryConfig?.primarySkill ||
+                                item.storedRitualName) && (
+                                <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                                  {(item.modifications || []).map((modId) => {
+                                    const def = findOrdemModificationDef(modId);
+                                    return (
+                                      <span
+                                        key={modId}
+                                        title={def?.description}
+                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-200 border border-amber-700/60"
+                                      >
+                                        🛠️ {def?.name || modId}
+                                      </span>
+                                    );
+                                  })}
+                                  {(item.curses || []).map((c) => {
+                                    const def = findOrdemCurseDef(c.curseId);
+                                    const extra =
+                                      c.chosenElement || c.chosenRitualName
+                                        ? ` (${c.chosenElement || c.chosenRitualName})`
+                                        : '';
+                                    return (
+                                      <span
+                                        key={c.curseId}
+                                        title={def?.description}
+                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-200 border border-purple-600/70"
+                                      >
+                                        👁️ {def?.name || c.curseId}
+                                        {extra}
+                                      </span>
+                                    );
+                                  })}
+                                  {item.accessoryConfig?.primarySkill && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-200 border border-cyan-700/60">
+                                      🧰 {accSkillName(item.accessoryConfig.primarySkill)}{' '}
+                                      {(item.modifications || []).includes('mod-aprimorado')
+                                        ? '+5'
+                                        : '+2'}
+                                    </span>
+                                  )}
+                                  {item.accessoryConfig?.secondarySkill && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-200 border border-cyan-700/60">
+                                      🧰 2ª: {accSkillName(item.accessoryConfig.secondarySkill)}{' '}
+                                      {(item.modifications || []).includes('mod-aprimorado-2')
+                                        ? '+5'
+                                        : '+2'}
+                                    </span>
+                                  )}
+                                  {item.accessoryConfig?.instrumentalSkill && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-200 border border-emerald-700/60">
+                                      🔧 Kit: {accSkillName(item.accessoryConfig.instrumentalSkill)}
+                                    </span>
+                                  )}
+                                  {item.storedRitualName && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-950/80 text-fuchsia-200 border border-fuchsia-600/70">
+                                      🔮 Selo: {item.storedRitualName}
+                                      {item.storedRitualCircle ? ` (${item.storedRitualCircle}ºC)` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                            {item.description && (
+                              <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2">{item.description}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => toggleItemEquipped(item.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition cursor-pointer whitespace-nowrap ${
+                              item.isEquipped
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-950/60'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-700'
+                            }`}
+                          >
+                            {item.isEquipped ? '✓ Equipado' : 'Equipar'}
+                          </button>
+
+                          {system === 'ordem-paranormal' && allowInv && (
+                            <button
+                              type="button"
+                              onClick={() => setCustomizingItemId(item.id)}
+                              className="px-2.5 py-1 bg-zinc-900 hover:bg-purple-900/70 text-amber-300 hover:text-white border border-zinc-700 hover:border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer whitespace-nowrap"
+                              title="Aplicar Modificações Normais, Maldições Paranormais ou Configurar Acessório/Selo"
+                            >
+                              ⚙️ Modificar / Amaldiçoar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Rodapé do Card: Controles secundários, Imagem, Trocas e Exclusão */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/70">
+                        <div className="flex flex-wrap items-center gap-3">
+                          {(originId === 'engenheiro' || hasMochilaUtilidades) &&
+                            !attacks.some(
+                              (a) => a.name.toLowerCase() === item.name.toLowerCase()
+                            ) && (
+                              <label className="flex items-center gap-1.5 text-[11px] text-amber-300 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(item.isFavoriteTool)}
+                                  onChange={() =>
+                                    onUpdateInventory(
+                                      inventory.map((i) => ({
+                                        ...i,
+                                        isFavoriteTool:
+                                          i.id === item.id ? !i.isFavoriteTool : false,
+                                      }))
+                                    )
+                                  }
+                                />
+                                🔧 Ferramenta Favorita (-1 Cat.)
+                              </label>
+                            )}
+
+                          {hasAFavorita &&
+                            canChangeAniquiladorFavorite &&
+                            attacks.some(
+                              (a) => a.name.toLowerCase() === item.name.toLowerCase()
+                            ) && (
+                              <label className="flex items-center gap-1.5 text-[11px] text-red-300 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(item.isAniquiladorFavorite)}
+                                  onChange={() => {
+                                    const nextChecked = !item.isAniquiladorFavorite;
+                                    onUpdateInventory(
+                                      inventory.map((i) => ({
+                                        ...i,
+                                        isAniquiladorFavorite:
+                                          i.id === item.id ? nextChecked : false,
+                                      }))
+                                    );
+                                    onUpdateAttacks(
+                                      attacks.map((a) => ({
+                                        ...a,
+                                        isAniquiladorFavorite:
+                                          a.name.toLowerCase() === item.name.toLowerCase()
+                                            ? nextChecked
+                                            : false,
+                                      }))
+                                    );
+                                  }}
+                                />
+                                🗡️ A Favorita (-{aniquiladorCatReduction} Cat.)
+                              </label>
+                            )}
+
+                          {allowInv && (
+                            <ImageUploadField
+                              compact
+                              value={item.imageUrl || ''}
+                              onChange={(newUrl) =>
                                 onUpdateInventory(
                                   inventory.map((i) =>
-                                    i.id === item.id
-                                      ? { ...i, category: Number(e.target.value) }
-                                      : i
+                                    i.id === item.id ? { ...i, imageUrl: newUrl || undefined } : i
                                   )
                                 )
                               }
-                              className="bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] font-mono text-amber-300"
-                              title="Categoria do Item (Patente)"
+                            />
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          {canTrade && onInitiateTradeItem && (
+                            <button
+                              type="button"
+                              onClick={() => onInitiateTradeItem(item)}
+                              className="px-2.5 py-1 bg-blue-900/60 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700/60 rounded-lg text-[11px] font-bold transition cursor-pointer whitespace-nowrap"
+                              title="Entregar este item para outro jogador da mesa"
                             >
-                              <option value={0}>Cat. 0</option>
-                              <option value={1}>Cat. I</option>
-                              <option value={2}>Cat. II</option>
-                              <option value={3}>Cat. III</option>
-                              <option value={4}>Cat. IV</option>
-                            </select>
-                          ) : (
-                            <span className="text-[10px] font-mono bg-zinc-900 text-amber-300 border border-zinc-800 px-1.5 py-0.5 rounded">
-                              Cat. {item.category ? ['0', 'I', 'II', 'III', 'IV'][item.category] || item.category : '0'}
-                            </span>
-                          )
-                        )}
-                        {item.isFavoriteTool && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
-                            🔧 Ferramenta Favorita (-1 Cat.)
-                          </span>
-                        )}
-                        {item.isAniquiladorFavorite && aniquiladorCatReduction > 0 && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-700">
-                            🗡️ A Favorita (-{aniquiladorCatReduction} Cat.)
-                          </span>
-                        )}
-                      </div>
-
-                      {item.description && (
-                        <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{item.description}</p>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-3 mt-2">
-                        <label className="flex items-center gap-1.5 text-[11px] text-emerald-400 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(item.isEquipped)}
-                            onChange={() => toggleItemEquipped(item.id)}
-                          />
-                          Equipado / Em mãos
-                        </label>
-
-                        {(originId === 'engenheiro' || hasMochilaUtilidades) &&
-                          !attacks.some(
-                            (a) => a.name.toLowerCase() === item.name.toLowerCase()
-                          ) && (
-                            <label className="flex items-center gap-1.5 text-[11px] text-amber-300 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(item.isFavoriteTool)}
-                                onChange={() =>
-                                  onUpdateInventory(
-                                    inventory.map((i) => ({
-                                      ...i,
-                                      isFavoriteTool:
-                                        i.id === item.id ? !i.isFavoriteTool : false,
-                                    }))
-                                  )
-                                }
-                              />
-                              🔧 Ferramenta Favorita (-1 Cat.)
-                            </label>
+                              🤝 Passar p/ Aliado
+                            </button>
                           )}
 
-                        {hasAFavorita &&
-                          canChangeAniquiladorFavorite &&
-                          attacks.some(
-                            (a) => a.name.toLowerCase() === item.name.toLowerCase()
-                          ) && (
-                            <label className="flex items-center gap-1.5 text-[11px] text-red-300 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(item.isAniquiladorFavorite)}
-                                onChange={() => {
-                                  const nextChecked = !item.isAniquiladorFavorite;
-                                  onUpdateInventory(
-                                    inventory.map((i) => ({
-                                      ...i,
-                                      isAniquiladorFavorite:
-                                        i.id === item.id ? nextChecked : false,
-                                    }))
-                                  );
-                                  onUpdateAttacks(
-                                    attacks.map((a) => ({
-                                      ...a,
-                                      isAniquiladorFavorite:
-                                        a.name.toLowerCase() === item.name.toLowerCase()
-                                          ? nextChecked
-                                          : false,
-                                    }))
-                                  );
-                                }}
-                              />
-                              🗡️ A Favorita (-{aniquiladorCatReduction} Cat.)
-                            </label>
+                          {allowInv && (
+                            <div className="flex items-center gap-1">
+                              {item.quantity > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateInventory(
+                                      inventory.map((i) =>
+                                        i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
+                                      )
+                                    )
+                                  }
+                                  className="px-1.5 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded text-[10px] font-mono font-bold cursor-pointer"
+                                  title="Consumir / Reduzir 1 unidade"
+                                >
+                                  -1
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => onUpdateInventory(inventory.filter((i) => i.id !== item.id))}
+                                className="text-xs text-zinc-600 hover:text-red-400 px-1.5 cursor-pointer"
+                              >
+                                Excluir
+                              </button>
+                            </div>
                           )}
-
-                        {allowInv && (
-                          <ImageUploadField
-                            compact
-                            value={item.imageUrl || ''}
-                            onChange={(newUrl) =>
-                              onUpdateInventory(
-                                inventory.map((i) =>
-                                  i.id === item.id ? { ...i, imageUrl: newUrl || undefined } : i
-                                )
-                              )
-                            }
-                          />
-                        )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
-                    {canTrade && onInitiateTradeItem && (
-                      <button
-                        type="button"
-                        onClick={() => onInitiateTradeItem(item)}
-                        className="px-2.5 py-1.5 bg-blue-900/60 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700/60 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                        title="Entregar este item para outro jogador da mesa"
-                      >
-                        🤝 Passar p/ Aliado
-                      </button>
-                    )}
-
-                    {allowInv && (
-                      <div className="flex items-center gap-1">
-                        {item.quantity > 1 && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onUpdateInventory(
-                                inventory.map((i) =>
-                                  i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
-                                )
-                              )
-                            }
-                            className="px-1.5 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded text-[10px] font-mono font-bold cursor-pointer"
-                            title="Consumir / Reduzir 1 unidade"
-                          >
-                            -1
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onUpdateInventory(inventory.filter((i) => i.id !== item.id))}
-                          className="text-xs text-zinc-600 hover:text-red-400 px-1.5 cursor-pointer"
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
