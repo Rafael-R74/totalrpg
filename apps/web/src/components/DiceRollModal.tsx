@@ -8,6 +8,8 @@ interface DiceRollModalProps {
   onRerollOne?: (roll: DiceRollResult, dieIndex: number) => void;
   onRollDamage?: (roll: DiceRollResult, isCrit: boolean) => void;
   onRollForcaOpressora?: (roll: DiceRollResult, maneuver: 'empurrar' | 'derrubar') => void;
+  onApplyCurseSanLoss?: (roll: DiceRollResult) => void;
+  onRollSanguinariaTempHp?: (roll: DiceRollResult) => void;
   onTriggerSegurarGatilhoShot?: (
     baseRoll: DiceRollResult,
     shotNumber: number,
@@ -46,11 +48,15 @@ export function DiceRollModal({
   onRerollOne,
   onRollDamage,
   onRollForcaOpressora,
+  onApplyCurseSanLoss,
+  onRollSanguinariaTempHp,
   onTriggerSegurarGatilhoShot,
   onTriggerSegurarGatilhoDamageBatch,
 }: DiceRollModalProps) {
   const [isAnimating, setIsAnimating] = useState(true);
   const [fakeNumber, setFakeNumber] = useState(20);
+  const [curseSanAppliedForRollId, setCurseSanAppliedForRollId] = useState<string>('');
+  const [sanguinariaRolledForRollId, setSanguinariaRolledForRollId] = useState<string>('');
 
   // Estados do modo Segurar o Gatilho (Sequência de Disparos em Lote)
   const [spinningIds, setSpinningIds] = useState<Record<string, boolean>>({});
@@ -813,7 +819,93 @@ export function DiceRollModal({
                   🍀 Dado 1 rerrolado com Afortunado!
                 </span>
               )}
+
+              {/* Dados Explosivos (Motosserra: cada 6 no d6 gera +1d6 extra) */}
+              {roll.explodedRolls && roll.explodedRolls.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-zinc-800 flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-orange-400 font-extrabold">
+                    🪚 Explosões da Motosserra (+{roll.explodedRolls.length} dado{roll.explodedRolls.length > 1 ? 's' : ''} = +{roll.explodedRolls.reduce((a, b) => a + b, 0)})
+                  </span>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {roll.explodedRolls.map((val, idx) => (
+                      <span
+                        key={idx}
+                        className={`w-8 h-8 rounded-lg font-mono font-bold text-xs flex items-center justify-center border ${
+                          val === (roll.sides || 6)
+                            ? 'bg-orange-600/40 border-orange-400 text-orange-200'
+                            : 'bg-orange-950/60 border-orange-700 text-orange-300'
+                        }`}
+                      >
+                        +{val}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Dados Extras de Maldições / Munições (Lancinante, Erosiva, Explosiva, Antielemento) */}
+              {roll.extraDiceResults && roll.extraDiceResults.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-zinc-800 flex flex-col gap-1.5 text-left">
+                  {roll.extraDiceResults.map((ex, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-2 text-[11px] bg-zinc-900/90 border border-purple-800/50 rounded-lg px-2.5 py-1"
+                    >
+                      <span className="font-bold text-purple-300 truncate">
+                        👁️ {ex.label} ({ex.formula})
+                      </span>
+                      <span className="font-mono text-xs font-extrabold text-amber-300 shrink-0">
+                        [{ex.rolls.join(', ')}] = +{ex.subtotal}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Alerta Interativo: O Preço da Maldição (Cap. 6, p. 145) */}
+            {roll.cursePricePrompt && (
+              <div className="w-full bg-purple-950/50 border border-purple-600/70 rounded-xl p-3 flex flex-col gap-2 text-left">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-purple-300">
+                    👁️ O Preço da Maldição ({roll.cursePricePrompt.element})
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-purple-900/70 text-purple-200 px-2 py-0.5 rounded">
+                    {roll.cursePricePrompt.curseCount} maldiç{roll.cursePricePrompt.curseCount > 1 ? 'ões' : 'ão'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-300">
+                  Teste baseado em <strong>{roll.cursePricePrompt.attributeLabel}</strong>. Se você <strong>falhou</strong> neste teste, perde{' '}
+                  <strong className="text-red-300">{roll.cursePricePrompt.sanLossOnFail} de Sanidade</strong>.
+                </p>
+                {onApplyCurseSanLoss && (
+                  <button
+                    type="button"
+                    disabled={curseSanAppliedForRollId === roll.id}
+                    onClick={() => {
+                      onApplyCurseSanLoss(roll);
+                      setCurseSanAppliedForRollId(roll.id);
+                    }}
+                    className={`w-full py-2 px-3 rounded-lg text-xs font-extrabold border transition ${
+                      curseSanAppliedForRollId === roll.id
+                        ? 'bg-zinc-900 border-zinc-700 text-zinc-500 cursor-not-allowed'
+                        : 'bg-red-950/80 hover:bg-red-700 border-red-600 text-red-200 hover:text-white cursor-pointer'
+                    }`}
+                  >
+                    {curseSanAppliedForRollId === roll.id
+                      ? `✓ -${roll.cursePricePrompt.sanLossOnFail} SAN aplicados`
+                      : `🧠 Falhei no Teste (-${roll.cursePricePrompt.sanLossOnFail} SAN)`}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Lembrete de Arma Ritualística */}
+            {dmgPayload?.ritualisticaStoredName && (
+              <div className="w-full bg-purple-950/40 border border-purple-700/60 rounded-xl px-3 py-2 text-[11px] text-purple-200 font-semibold">
+                🔮 <strong>Ritualística:</strong> se acertar, você pode descarregar <em>{dmgPayload.ritualisticaStoredName}</em> como ação livre no alvo!
+              </div>
+            )}
 
             {/* Botão Direto de Rolagem de Dano / Dano Crítico após Rolagem de Acerto */}
             {dmgPayload && onRollDamage && (
@@ -829,6 +921,27 @@ export function DiceRollModal({
                 {isCriticalHit
                   ? `💥 Rolar Dano Crítico (${dmgPayload.critDiceCount}d${dmgPayload.dieSides}${dmgModStr}) [x${dmgPayload.critMultiplier}]`
                   : `🩸 Rolar Dano (${dmgPayload.normalDiceCount}d${dmgPayload.dieSides}${dmgModStr})`}
+              </button>
+            )}
+
+            {/* Sanguinária em Crítico: 2d10 PV Temporários */}
+            {isCriticalHit && dmgPayload?.sanguinariaCritTempHp && onRollSanguinariaTempHp && (
+              <button
+                type="button"
+                disabled={sanguinariaRolledForRollId === roll.id}
+                onClick={() => {
+                  onRollSanguinariaTempHp(roll);
+                  setSanguinariaRolledForRollId(roll.id);
+                }}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold border transition ${
+                  sanguinariaRolledForRollId === roll.id
+                    ? 'bg-zinc-900 border-zinc-700 text-zinc-500 cursor-not-allowed'
+                    : 'bg-red-950/80 hover:bg-red-700 border-red-500 text-red-200 hover:text-white cursor-pointer'
+                }`}
+              >
+                {sanguinariaRolledForRollId === roll.id
+                  ? '✓ PV Temporários da Sanguinária rolados'
+                  : '🩸 Sanguinária (Crítico): Rolar 2d10 PV Temporários (Alvo fica Fraco)'}
               </button>
             )}
 

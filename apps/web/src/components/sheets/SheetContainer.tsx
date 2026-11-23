@@ -27,6 +27,8 @@ import {
   OrdemRitualCastForm,
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
+  CursePricePrompt,
+  getOrdemItemEffectiveSlots,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -59,7 +61,13 @@ interface SheetContainerProps {
     fixedRolls?: number[],
     hasAfortunado?: boolean,
     attackDamagePayload?: AttackDamageRollPayload,
-    forcaOpressoraPayload?: ForcaOpressoraRollPayload
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload,
+    batchMeta?: any,
+    extraRollOpts?: {
+      explodingDieSide?: number;
+      extraDice?: Array<{ count: number; sides: number; label: string }>;
+      cursePricePrompt?: CursePricePrompt;
+    }
   ) => void;
   onRegisterSpendResource?: (fn: (amount: number) => boolean) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
@@ -449,6 +457,61 @@ export function SheetContainer({
     }
   }, [liveCombatState, character?.id, character?.campaignId]);
 
+  // Listeners globais para efeitos disparados a partir do Modal de Dados (Preço da Maldição e Sanguinária)
+  useEffect(() => {
+    function handleCurseSanEvent(e: Event) {
+      const detail = (e as CustomEvent<{
+        characterId?: string;
+        amount: number;
+        element: string;
+        label?: string;
+      }>).detail;
+      const base = latestCharacterRef.current;
+      if (!base || !detail || detail.amount <= 0) return;
+      if (detail.characterId && detail.characterId !== base.id) return;
+      const nextVitals = base.vitals.map((v) =>
+        v.id === 'san' ? { ...v, current: Math.max(0, v.current - detail.amount) } : v
+      );
+      const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
+      latestCharacterRef.current = nextChar;
+      setCharacter(nextChar);
+      scheduleGameModeSave();
+      showHoverToast(
+        `👁️ O Preço da Maldição (${detail.element}): -${detail.amount} SAN descontados.`
+      );
+    }
+
+    function handleTempHpEvent(e: Event) {
+      const detail = (e as CustomEvent<{
+        characterId?: string;
+        amount: number;
+        label?: string;
+      }>).detail;
+      const base = latestCharacterRef.current;
+      if (!base || !detail || detail.amount <= 0) return;
+      if (detail.characterId && detail.characterId !== base.id) return;
+      const prevRaw = (base.sheetData || {}) as Record<string, any>;
+      const nextTempHp = Math.max(Number(prevRaw.tempHp || 0), detail.amount);
+      const nextChar: FullCharacterResponse = {
+        ...base,
+        sheetData: { ...prevRaw, tempHp: nextTempHp },
+      };
+      latestCharacterRef.current = nextChar;
+      setCharacter(nextChar);
+      scheduleGameModeSave();
+      showHoverToast(
+        `🛡️ ${detail.label || 'PV Temporários'}: ${nextTempHp} PV temporários ativos na ficha!`
+      );
+    }
+
+    window.addEventListener('totalrpg:curse-san-loss', handleCurseSanEvent);
+    window.addEventListener('totalrpg:grant-temp-hp', handleTempHpEvent);
+    return () => {
+      window.removeEventListener('totalrpg:curse-san-loss', handleCurseSanEvent);
+      window.removeEventListener('totalrpg:grant-temp-hp', handleTempHpEvent);
+    };
+  }, []);
+
   if (isLoading) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-400">
@@ -501,7 +564,8 @@ export function SheetContainer({
     characterAbilities,
     character.inventory || [],
     activeConditions,
-    activeSceneEffects
+    activeSceneEffects,
+    character.system === 'ordem-paranormal' ? (rawSheet as Partial<OrdemSheetData>) : undefined
   );
 
   const hasAfortunado = characterAbilities.some(
@@ -540,7 +604,12 @@ export function SheetContainer({
     isInitiativeRoll?: boolean,
     fixedRolls?: number[],
     attackDamagePayload?: AttackDamageRollPayload,
-    forcaOpressoraPayload?: ForcaOpressoraRollPayload
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload,
+    extraRollOpts?: {
+      explodingDieSide?: number;
+      extraDice?: Array<{ count: number; sides: number; label: string }>;
+      cursePricePrompt?: CursePricePrompt;
+    }
   ) {
     if (!character) return;
     onRollDice(
@@ -556,8 +625,83 @@ export function SheetContainer({
       fixedRolls,
       hasAfortunado,
       attackDamagePayload,
-      forcaOpressoraPayload
+      forcaOpressoraPayload,
+      undefined,
+      extraRollOpts
     );
+  }
+
+  function handleLoseSanity(amount: number, reason: string) {
+    const base = latestCharacterRef.current;
+    if (!base || amount <= 0) return;
+    const nextVitals = base.vitals.map((v) =>
+      v.id === 'san' ? { ...v, current: Math.max(0, v.current - amount) } : v
+    );
+    const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
+    latestCharacterRef.current = nextChar;
+    setCharacter(nextChar);
+    if (!isEditMode) scheduleGameModeSave();
+    showHoverToast(`🧠 ${reason}: -${amount} SAN descontados.`);
+  }
+
+  function handleHealPv(amount: number, reason?: string) {
+    const base = latestCharacterRef.current;
+    if (!base || amount <= 0) return;
+    const nextVitals = base.vitals.map((v) => {
+      if (v.id !== 'pv') return v;
+      const effMax = v.max + (bonuses.vitalMax.pv || 0);
+      return { ...v, current: Math.min(effMax, v.current + amount) };
+    });
+    const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
+    latestCharacterRef.current = nextChar;
+    setCharacter(nextChar);
+    if (!isEditMode) scheduleGameModeSave();
+    if (reason) showHoverToast(`💚 ${reason}: +${amount} PV recuperados.`);
+  }
+
+  function handleTakePvDamage(amount: number, reason?: string) {
+    const base = latestCharacterRef.current;
+    if (!base || amount <= 0) return;
+    const nextVitals = base.vitals.map((v) =>
+      v.id === 'pv' ? { ...v, current: Math.max(0, v.current - amount) } : v
+    );
+    const nextChar: FullCharacterResponse = { ...base, vitals: nextVitals };
+    latestCharacterRef.current = nextChar;
+    setCharacter(nextChar);
+    if (!isEditMode) scheduleGameModeSave();
+    if (reason) showHoverToast(`🩸 ${reason}: -${amount} PV.`);
+  }
+
+  function handleGrantTempPe(amount: number, reason?: string) {
+    const base = latestCharacterRef.current;
+    if (!base || amount <= 0) return;
+    const prevRaw = (base.sheetData || {}) as Record<string, any>;
+    const nextTempPe = Number(prevRaw.tempPe || 0) + amount;
+    const nextChar: FullCharacterResponse = {
+      ...base,
+      sheetData: { ...prevRaw, tempPe: nextTempPe },
+    };
+    latestCharacterRef.current = nextChar;
+    setCharacter(nextChar);
+    if (!isEditMode) scheduleGameModeSave();
+    if (reason) showHoverToast(`⚡ ${reason}: +${amount} PE temporários!`);
+  }
+
+  function handleAddSceneEffect(effect: SceneEffect) {
+    const base = latestCharacterRef.current;
+    if (!base) return;
+    const prevRaw = (base.sheetData || {}) as Record<string, any>;
+    const prevEffects: SceneEffect[] = Array.isArray(prevRaw.sceneEffects)
+      ? prevRaw.sceneEffects
+      : [];
+    const filtered = prevEffects.filter((e) => e.id !== effect.id);
+    const nextChar: FullCharacterResponse = {
+      ...base,
+      sheetData: { ...prevRaw, sceneEffects: [...filtered, effect] },
+    };
+    latestCharacterRef.current = nextChar;
+    setCharacter(nextChar);
+    if (!isEditMode) scheduleGameModeSave();
   }
 
   async function handleSaveSheet(overrideChar?: FullCharacterResponse) {
@@ -1203,7 +1347,7 @@ export function SheetContainer({
       : 10 + Math.max(0, strengthVal * 2);
 
   const currentLoadSlots = (character.inventory || []).reduce(
-    (acc, item) => acc + item.slots * (item.quantity || 1),
+    (acc, item) => acc + getOrdemItemEffectiveSlots(item) * (item.quantity || 1),
     0
   );
   const isCharacterOverloaded =
@@ -3563,8 +3707,20 @@ export function SheetContainer({
               };
             })
           }
-          onRoll={(label, count, sides, mod) =>
-            triggerCharacterRoll(label, count, sides, mod)
+          onLoseSanity={handleLoseSanity}
+          onRoll={(label, count, sides, mod, cursePricePrompt) =>
+            triggerCharacterRoll(
+              label,
+              count,
+              sides,
+              mod,
+              false,
+              false,
+              undefined,
+              undefined,
+              undefined,
+              cursePricePrompt ? { cursePricePrompt } : undefined
+            )
           }
         />
       )}
@@ -3662,6 +3818,11 @@ export function SheetContainer({
         onInitiateTradeItem={handleOpenTradeModal}
         onCheckResource={handleCheckResource}
         onSpendResource={handleSpendResource}
+        onHealPv={handleHealPv}
+        onTakePvDamage={handleTakePvDamage}
+        onGrantTempPe={handleGrantTempPe}
+        onLoseSanity={handleLoseSanity}
+        onAddSceneEffect={handleAddSceneEffect}
         onCastOrdemRitual={handleCastOrdemRitual}
         onTriggerOriginSpecial={handleTriggerOriginSpecial}
         vislumbresSuccessPending={Boolean(
@@ -3677,7 +3838,8 @@ export function SheetContainer({
           mod,
           _isDamage,
           attackDamagePayload,
-          forcaOpressoraPayload
+          forcaOpressoraPayload,
+          extraRollOpts
         ) =>
           triggerCharacterRoll(
             label,
@@ -3688,7 +3850,8 @@ export function SheetContainer({
             false,
             undefined,
             attackDamagePayload,
-            forcaOpressoraPayload
+            forcaOpressoraPayload,
+            extraRollOpts
           )
         }
       />

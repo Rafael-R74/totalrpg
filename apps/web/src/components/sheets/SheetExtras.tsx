@@ -20,6 +20,7 @@ import {
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
   SegurarGatilhoPayload,
+  CursePricePrompt,
   parseCritRange,
   classifyOrdemWeapon,
 } from '@totalrpg/shared';
@@ -46,6 +47,11 @@ interface SheetExtrasProps {
   onInitiateTradeItem?: (item: RPGItem) => void;
   onCheckResource?: (amount: number, powerLabel?: string) => boolean;
   onSpendResource: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
+  onHealPv?: (amount: number, reason?: string) => void;
+  onTakePvDamage?: (amount: number, reason?: string) => void;
+  onGrantTempPe?: (amount: number, reason?: string) => void;
+  onLoseSanity?: (amount: number, reason: string) => void;
+  onAddSceneEffect?: (effect: SceneEffect) => void;
   onRoll: (
     label: string,
     count: number,
@@ -53,7 +59,12 @@ interface SheetExtrasProps {
     modifier: number,
     isDamage?: boolean,
     attackDamagePayload?: AttackDamageRollPayload,
-    forcaOpressoraPayload?: ForcaOpressoraRollPayload
+    forcaOpressoraPayload?: ForcaOpressoraRollPayload,
+    extraRollOpts?: {
+      explodingDieSide?: number;
+      extraDice?: Array<{ count: number; sides: number; label: string }>;
+      cursePricePrompt?: CursePricePrompt;
+    }
   ) => void;
   onCastOrdemRitual?: (ritual: CharacterAbility, form: OrdemRitualCastForm) => void;
   onTriggerOriginSpecial?: (originId: string) => void;
