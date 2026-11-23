@@ -5,7 +5,13 @@ import {
   ActiveCondition,
   SceneEffect,
   SystemId,
+  OrdemSheetData,
+  OrdemAttributes,
 } from './index';
+import {
+  computeOrdemInventoryDerivedEffects,
+  OrdemCursePriceByAttr,
+} from './ordemEquipmentData';
 
 export interface ComputedBonuses {
   attributes: Record<string, number>;
@@ -21,6 +27,15 @@ export interface ComputedBonuses {
   meleeDamageBonus: number;
   firearmDamageBonus: number;
   loadLimit: number;
+  damageResistances: Array<{ type: string; value: number; source: string }>;
+  displacementBonus: number;
+  ritualDtBonus: number;
+  ignoresLoadPenaltySkills: string[];
+  missingSkillKits: Array<{ skillId: string; skillName: string }>;
+  cursePriceByAttr: Record<keyof OrdemAttributes, OrdemCursePriceByAttr | null>;
+  totalCursesCarried: number;
+  vestimentaLimitExceeded: boolean;
+  hasFearCurse: boolean;
 }
 
 export function calculateActiveBonuses(
@@ -29,8 +44,14 @@ export function calculateActiveBonuses(
   abilities: CharacterAbility[],
   inventory: RPGItem[],
   conditions: ActiveCondition[],
-  sceneEffects: SceneEffect[] = []
+  sceneEffects: SceneEffect[] = [],
+  ordemSheetData?: Partial<OrdemSheetData>
 ): ComputedBonuses {
+  const derived =
+    system === 'ordem-paranormal'
+      ? computeOrdemInventoryDerivedEffects(inventory, abilities, ordemSheetData)
+      : null;
+
   const result: ComputedBonuses = {
     attributes: {},
     skillBonus: {},
@@ -45,9 +66,24 @@ export function calculateActiveBonuses(
     meleeDamageBonus: 0,
     firearmDamageBonus: 0,
     loadLimit: 0,
+    damageResistances: derived?.damageResistances || [],
+    displacementBonus: derived?.displacementBonus || 0,
+    ritualDtBonus: derived?.ritualDtBonus || 0,
+    ignoresLoadPenaltySkills: derived?.ignoresLoadPenaltySkills || [],
+    missingSkillKits: derived?.missingSkillKits || [],
+    cursePriceByAttr: derived?.cursePriceByAttr || {
+      agi: null,
+      for: null,
+      int: null,
+      pre: null,
+      vig: null,
+    },
+    totalCursesCarried: derived?.totalCursesCarried || 0,
+    vestimentaLimitExceeded: derived?.vestimentaLimitExceeded || false,
+    hasFearCurse: derived?.hasFearCurse || false,
   };
 
-  // 1. Coleta todos os modificadores ativos (Poderes ativos + Itens equipados + Condições)
+  // 1. Coleta todos os modificadores ativos (Poderes ativos + Itens equipados + Derivados de Modificações/Maldições + Condições)
   const activeModifiers: RuleModifier[] = [];
 
   for (const ab of abilities) {
@@ -58,8 +94,22 @@ export function calculateActiveBonuses(
 
   for (const item of inventory) {
     if (item.isEquipped && Array.isArray(item.modifiers)) {
-      activeModifiers.push(...item.modifiers);
+      for (const mod of item.modifiers) {
+        // Maldição Sombria: ignora penalidade de carga (ex.: -5 de Proteção Pesada em Furtividade)
+        if (
+          mod.targetType === 'skill_bonus' &&
+          mod.value < 0 &&
+          result.ignoresLoadPenaltySkills.includes(mod.targetKey.toLowerCase().trim())
+        ) {
+          continue;
+        }
+        activeModifiers.push(mod);
+      }
     }
+  }
+
+  if (derived && derived.dynamicModifiers.length > 0) {
+    activeModifiers.push(...derived.dynamicModifiers);
   }
 
   for (const cond of conditions) {

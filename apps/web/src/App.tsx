@@ -14,6 +14,7 @@ import {
   DiceRollResult,
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
+  CursePricePrompt,
   SheetPermissions,
   StickyPostIt,
   RPGItem,
@@ -83,10 +84,16 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || !activeRoomId) return;
 
-    socket.emit('session:join', {
-      campaignId: activeRoomId,
-      role: currentCampaignSession?.role || 'player',
-    });
+    function handleJoin() {
+      if (!activeRoomId) return;
+      socket.emit('session:join', {
+        campaignId: activeRoomId,
+        role: currentCampaignSession?.role || 'player',
+      });
+    }
+
+    handleJoin();
+    socket.on('connect', handleJoin);
 
     socket.on('dice:rolled', (newRoll) => {
       setRollHistory((prev) => [newRoll, ...prev]);
@@ -117,6 +124,14 @@ export default function App() {
         } else {
           setActiveBatchRolls([]);
           setActiveRollModal(newRoll);
+        }
+
+        if (newRoll.label.startsWith('🛡️ PV Temporários')) {
+          window.dispatchEvent(
+            new CustomEvent('totalrpg:grant-temp-hp', {
+              detail: { characterId: newRoll.characterId, amount: newRoll.total, label: newRoll.label },
+            })
+          );
         }
       }
     });
@@ -206,6 +221,7 @@ export default function App() {
     });
 
     return () => {
+      socket.off('connect', handleJoin);
       socket.off('dice:rolled');
       socket.off('campaign:permissionsUpdated');
       socket.off('character:updated');
@@ -246,6 +262,11 @@ export default function App() {
       batchRole: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
       batchShotNumber: number;
       batchIsCrit?: boolean;
+    },
+    extraRollOpts?: {
+      explodingDieSide?: number;
+      extraDice?: Array<{ count: number; sides: number; label: string }>;
+      cursePricePrompt?: CursePricePrompt;
     }
   ) {
     if (!activeRoomId || !currentUser) return;
@@ -271,9 +292,12 @@ export default function App() {
       system,
       isSecret,
       fixedRolls,
+      explodingDieSide: extraRollOpts?.explodingDieSide,
+      extraDice: extraRollOpts?.extraDice,
       hasAfortunado,
       attackDamagePayload,
       forcaOpressoraPayload,
+      cursePricePrompt: extraRollOpts?.cursePricePrompt,
       ...(effectiveBatchMeta || {}),
     });
   }
@@ -446,7 +470,40 @@ export default function App() {
             undefined,
             rollResult.hasAfortunado,
             undefined,
-            p.forcaOpressoraPayload
+            p.forcaOpressoraPayload,
+            undefined,
+            {
+              explodingDieSide: p.explodingDieSide,
+              extraDice: isCrit ? p.extraDiceCrit : p.extraDiceNormal,
+            }
+          );
+        }}
+        onApplyCurseSanLoss={(rollResult) => {
+          if (!rollResult.cursePricePrompt) return;
+          window.dispatchEvent(
+            new CustomEvent('totalrpg:curse-san-loss', {
+              detail: {
+                characterId: rollResult.characterId,
+                amount: rollResult.cursePricePrompt.sanLossOnFail,
+                element: rollResult.cursePricePrompt.element,
+                label: rollResult.label,
+              },
+            })
+          );
+        }}
+        onRollSanguinariaTempHp={(rollResult) => {
+          triggerRoll(
+            rollResult.characterName,
+            rollResult.system,
+            `🛡️ PV Temporários (Sanguinária • Crítico): ${rollResult.attackDamagePayload?.weaponName || 'Arma'}`,
+            2,
+            10,
+            0,
+            rollResult.isSecret,
+            false,
+            rollResult.characterId,
+            undefined,
+            rollResult.hasAfortunado
           );
         }}
         onRollForcaOpressora={(rollResult, maneuver) => {
