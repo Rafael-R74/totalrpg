@@ -7,6 +7,7 @@ interface DiceRollModalProps {
   onClose: () => void;
   onRerollOne?: (roll: DiceRollResult, dieIndex: number) => void;
   onRollDamage?: (roll: DiceRollResult, isCrit: boolean) => void;
+  onRollRitualEffect?: (roll: DiceRollResult) => void;
   onRollForcaOpressora?: (roll: DiceRollResult, maneuver: 'empurrar' | 'derrubar') => void;
   onApplyCurseSanLoss?: (roll: DiceRollResult) => void;
   onRollSanguinariaTempHp?: (roll: DiceRollResult) => void;
@@ -47,6 +48,7 @@ export function DiceRollModal({
   onClose,
   onRerollOne,
   onRollDamage,
+  onRollRitualEffect,
   onRollForcaOpressora,
   onApplyCurseSanLoss,
   onRollSanguinariaTempHp,
@@ -329,9 +331,11 @@ export function DiceRollModal({
 
                             <div className="flex flex-wrap gap-1.5 justify-center max-w-[140px]">
                               {atkRoll.rolls.map((val, dIdx) => {
+                                const atkSides = atkRoll.sides || 20;
                                 const canReroll =
                                   val === 1 &&
                                   Boolean(atkRoll.hasAfortunado) &&
+                                  (atkSides !== 20 || Boolean(atkRoll.hasAfortunadoAffinity)) &&
                                   !atkRoll.rerolledAfortunado &&
                                   Boolean(onRerollOne);
                                 const isKept =
@@ -625,9 +629,11 @@ export function DiceRollModal({
 
                           <div className="flex flex-wrap gap-1.5 justify-end">
                             {dmgRoll.rolls.map((val, dIdx) => {
+                              const dmgSides = dmgRoll.sides || 6;
                               const canReroll =
                                 val === 1 &&
                                 Boolean(dmgRoll.hasAfortunado) &&
+                                (dmgSides !== 20 || Boolean(dmgRoll.hasAfortunadoAffinity)) &&
                                 !dmgRoll.rerolledAfortunado &&
                                 Boolean(onRerollOne);
                               return (
@@ -763,13 +769,22 @@ export function DiceRollModal({
               <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-bold">
                 Dados Rolados ({roll.rolls.length})
               </span>
+              {(() => {
+                const formulaSidesMatch = roll.formula.match(/d(\d+)/i);
+                const rollSides =
+                  roll.sides || (formulaSidesMatch ? Number(formulaSidesMatch[1]) : 20);
+                const afortunadoAllowedForRoll =
+                  Boolean(roll.hasAfortunado) &&
+                  (rollSides !== 20 || Boolean(roll.hasAfortunadoAffinity));
+                return (
+                  <>
               <div className="flex flex-wrap justify-center gap-2">
                 {roll.rolls.map((val, idx) => {
                   const isKeptInOrdem =
                     roll.system === 'ordem-paranormal' && val === highestRoll && roll.rolls.length > 1;
                   const canRerollThisDie =
                     val === 1 &&
-                    Boolean(roll.hasAfortunado) &&
+                    afortunadoAllowedForRoll &&
                     !roll.rerolledAfortunado &&
                     !!onRerollOne;
                   return (
@@ -801,7 +816,7 @@ export function DiceRollModal({
                 })}
               </div>
 
-              {Boolean(roll.hasAfortunado) &&
+              {afortunadoAllowedForRoll &&
                 !roll.rerolledAfortunado &&
                 roll.rolls.includes(1) &&
                 onRerollOne && (
@@ -810,7 +825,9 @@ export function DiceRollModal({
                   onClick={() => onRerollOne(roll, roll.rolls.indexOf(1))}
                   className="mt-2 w-full py-2 px-3 bg-emerald-950/80 hover:bg-emerald-800 border border-emerald-500/60 text-emerald-200 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
                 >
-                  🍀 Rerrolar dado "1" (Poder Afortunado — 1x por rolagem)
+                  {roll.hasAfortunadoAffinity
+                    ? '🍀 Rerrolar dado "1" (Afortunado + Afinidade — 1x por rolagem)'
+                    : '🍀 Rerrolar dado "1" (Poder Afortunado — dados ≠ d20)'}
                 </button>
               )}
 
@@ -861,6 +878,9 @@ export function DiceRollModal({
                   ))}
                 </div>
               )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Alerta Interativo: O Preço da Maldição (Cap. 6, p. 145) */}
@@ -906,6 +926,71 @@ export function DiceRollModal({
                 🔮 <strong>Ritualística:</strong> se acertar, você pode descarregar <em>{dmgPayload.ritualisticaStoredName}</em> como ação livre no alvo!
               </div>
             )}
+
+            {/* Resultado do Custo do Paranormal e Efeito de Ritual Vinculado */}
+            {roll.ritualEffectPayload && (() => {
+              const rp = roll.ritualEffectPayload!;
+              const dt = rp.custoParanormalDt;
+              const passed = roll.total >= dt;
+              const failedBy5 = !passed && dt - roll.total >= 5;
+              return (
+                <div
+                  className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold space-y-1 text-left ${
+                    passed
+                      ? 'bg-emerald-950/80 border-emerald-500 text-emerald-200'
+                      : failedBy5
+                      ? 'bg-red-950/90 border-red-500 text-red-200'
+                      : 'bg-amber-950/80 border-amber-500 text-amber-200'
+                  }`}
+                >
+                  <div>
+                    {passed
+                      ? `✅ Sucesso no Custo do Paranormal (DT ${dt})! Sua mente resistiu (0 SAN perdida).`
+                      : failedBy5
+                      ? `💀 Falha por 5 ou mais (DT ${dt})! Perdeu ${rp.peSpent} SAN e -1 SAN Máxima Permanente!`
+                      : `⚠️ Falha no Custo do Paranormal (DT ${dt})! Perdeu ${rp.peSpent} de Sanidade.`}
+                  </div>
+                  {rp.appliedSceneSummary && (
+                    <div className="text-[11px] text-cyan-200 font-semibold">
+                      {rp.appliedSceneSummary}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Botão Direto de Rolagem de Efeito do Ritual após o Teste de Sanidade */}
+            {roll.ritualEffectPayload?.effectFormula && onRollRitualEffect && (() => {
+              const rp = roll.ritualEffectPayload!;
+              const et = rp.effectType || 'damage';
+              const btnStyle =
+                et === 'healing'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white shadow-emerald-900/40'
+                  : et === 'temp_hp'
+                  ? 'bg-cyan-600 hover:bg-cyan-500 border-cyan-400 text-white shadow-cyan-900/40'
+                  : et === 'utility'
+                  ? 'bg-purple-600 hover:bg-purple-500 border-purple-400 text-white shadow-purple-900/40'
+                  : 'bg-amber-600 hover:bg-amber-500 border-amber-400 text-white shadow-amber-900/40';
+              const btnText =
+                et === 'healing'
+                  ? `💚 Rolar Cura do Ritual (${rp.effectFormula})`
+                  : et === 'temp_hp'
+                  ? `🛡️ Rolar Vida Temporária (${rp.effectFormula})`
+                  : et === 'utility'
+                  ? `🎲 ${rp.effectLabel || 'Rolar Efeito do Ritual'} (${rp.effectFormula})`
+                  : `💥 ${rp.effectLabel || 'Rolar Dano do Ritual'} (${rp.effectFormula})${
+                      rp.maximizeEffect ? ' [Máx.]' : ''
+                    }`;
+              return (
+                <button
+                  type="button"
+                  onClick={() => onRollRitualEffect(roll)}
+                  className={`w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider border transition cursor-pointer shadow-lg flex items-center justify-center gap-2 ${btnStyle}`}
+                >
+                  {btnText}
+                </button>
+              );
+            })()}
 
             {/* Botão Direto de Rolagem de Dano / Dano Crítico após Rolagem de Acerto */}
             {dmgPayload && onRollDamage && (

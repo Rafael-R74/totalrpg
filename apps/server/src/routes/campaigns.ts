@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
+import { SceneEffect } from '@totalrpg/shared';
 
 export const campaignsRouter = Router();
 
@@ -640,6 +641,74 @@ campaignsRouter.post('/:campaignId/transfer-item', async (req: AuthenticatedRequ
   } catch (error) {
     console.error('Erro na transferência de item:', error);
     return res.status(500).json({ error: 'Erro interno ao transferir item.' });
+  }
+});
+
+// 3. Aplicar ou remover Efeito de Cena a personagens selecionados da campanha (ex.: Discurso Motivador)
+campaignsRouter.post('/:campaignId/apply-scene-effect', async (req: AuthenticatedRequest, res) => {
+  try {
+    const campaignId = req.params.campaignId;
+    const { targetCharacterIds, effect, removeEffectId } = req.body;
+
+    if (!campaignId || typeof campaignId !== 'string' || !Array.isArray(targetCharacterIds) || targetCharacterIds.length === 0) {
+      return res.status(400).json({ error: 'Parâmetros inválidos para aplicar efeito de cena.' });
+    }
+
+    const characters = await prisma.character.findMany({
+      where: {
+        id: { in: targetCharacterIds },
+        campaignId,
+      },
+      select: {
+        id: true,
+        sheetData: true,
+      },
+    });
+
+    if (characters.length === 0) {
+      return res.status(404).json({ error: 'Nenhum personagem válido encontrado na campanha.' });
+    }
+
+    const effectIdToTarget = removeEffectId || effect?.id;
+
+    const updates = characters.map(async (char) => {
+      const rawSheet = (char.sheetData || {}) as Record<string, any>;
+      const currentEffects: SceneEffect[] = Array.isArray(rawSheet.sceneEffects)
+        ? rawSheet.sceneEffects
+        : [];
+
+      let nextEffects = currentEffects.filter((e) => e.id !== effectIdToTarget);
+
+      if (effect && !removeEffectId) {
+        nextEffects.push(effect);
+      }
+
+      const nextSheetData = {
+        ...rawSheet,
+        sceneEffects: nextEffects,
+      };
+
+      await prisma.character.update({
+        where: { id: char.id },
+        data: { sheetData: nextSheetData as any },
+      });
+
+      return char.id;
+    });
+
+    const updatedIds = await Promise.all(updates);
+
+    const io = req.app.get('io');
+    if (io) {
+      for (const charId of updatedIds) {
+        io.to(campaignId).emit('character:updated', { characterId: charId });
+      }
+    }
+
+    return res.json({ success: true, updatedCount: updatedIds.length, updatedIds });
+  } catch (error) {
+    console.error('Erro ao aplicar efeito de cena na campanha:', error);
+    return res.status(500).json({ error: 'Erro interno ao sincronizar efeitos da cena.' });
   }
 });
 

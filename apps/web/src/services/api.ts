@@ -4,6 +4,7 @@ import {
   SheetPermissions,
   CompendiumEntryData,
   SystemSkillDefinition,
+  SceneEffect,
 } from '@totalrpg/shared';
 const API_URL = 'http://localhost:3333/api';
 
@@ -481,4 +482,24 @@ export async function deleteCampaign(campaignId: string): Promise<void> {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao excluir campanha.');
+}
+
+export async function applyCampaignSceneEffect(
+  campaignId: string,
+  targetCharacterIds: string[],
+  effect?: SceneEffect,
+  removeEffectId?: string
+): Promise<{ success: boolean; updatedCount: number; updatedIds: string[] }> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/apply-scene-effect`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      targetCharacterIds,
+      effect,
+      removeEffectId,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao sincronizar efeito de cena na campanha.');
+  return data;
 }

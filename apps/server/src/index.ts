@@ -41,6 +41,8 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   }
 });
 
+app.set('io', io);
+
 io.on('connection', (socket) => {
   console.log(`🔌 Cliente conectado: ${socket.id}`);
 
@@ -108,9 +110,11 @@ io.on('connection', (socket) => {
       explodingDieSide,
       extraDice,
       hasAfortunado,
+      hasAfortunadoAffinity,
       attackDamagePayload,
       forcaOpressoraPayload,
       cursePricePrompt,
+      ritualEffectPayload,
       batchId,
       batchRole,
       batchShotNumber,
@@ -217,9 +221,11 @@ io.on('connection', (socket) => {
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         isSecret: Boolean(isSecret),
         hasAfortunado: Boolean(hasAfortunado),
+        hasAfortunadoAffinity: Boolean(hasAfortunadoAffinity),
         attackDamagePayload,
         forcaOpressoraPayload,
         cursePricePrompt,
+        ritualEffectPayload,
         batchId,
         batchRole,
         batchShotNumber,

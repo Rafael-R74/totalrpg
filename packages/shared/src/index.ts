@@ -2,6 +2,7 @@ export * from './ruleEngine';
 export * from './defaults';
 export * from './wizardData';
 export * from './ordemEquipmentData';
+export * from './ordemRituals';
 export * from './ordemCompendiumData';
 export * from './characterBuilder';
 // Sistemas de RPG suportados
@@ -82,6 +83,8 @@ export interface RPGItem {
   description?: string;
   isEquipped?: boolean;
   isFavoriteTool?: boolean;        // Engenheiro — Ferramenta Favorita (-1 Categoria, exceto armas)
+  isUtilityBackpackItem?: boolean; // Especialista — Mochila de Utilidades (-I Categoria e -1 Espaço)
+  isParanormalTool?: boolean;      // Ocultista — Ferramentas Paranormais (-I Categoria em item paranormal)
   ignorePatentLimit?: boolean;     // Criminoso — O Crime Compensa (isento do limite de patente)
   isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita (-I / -II / -III Categoria)
   isParanormal?: boolean;          // Separa equipamentos paranormais/amaldiçoados dos normais
@@ -132,9 +135,25 @@ export interface SegurarGatilhoPayload {
   maxAeTotalBonus: number;
   aeMult: number;
   peTurnLimit: number;
+  maximizeCritDamage?: boolean;
   tecnicaSecretaCost?: number;
   tecnicaSecretaAttackSuffix?: string;
   tecnicaSecretaDamageSuffix?: string;
+}
+
+// Payload de efeito vinculado à rolagem de O Custo do Paranormal (Ocultismo) de um Ritual
+export interface RitualEffectRollPayload {
+  ritualId: string;
+  ritualName: string;
+  formLabel: string;
+  peSpent: number;
+  pvSpent?: number;
+  custoParanormalDt: number;
+  effectType?: 'damage' | 'healing' | 'temp_hp' | 'utility';
+  effectFormula?: string;
+  effectLabel?: string;
+  maximizeEffect?: boolean;
+  appliedSceneSummary?: string;
 }
 
 // Payload de dano vinculado a uma rolagem de acerto de arma (para botão direto de Dano / Dano Crítico no modal)
@@ -146,6 +165,7 @@ export interface AttackDamageRollPayload {
   critDiceCount: number;
   dieSides: number;
   damageModifier: number;
+  maximizeCritDamage?: boolean;
   damageLabelSuffix?: string;
   explodingDieSide?: number;           // Motosserra: sempre que cair 6 no d6, rola +1d6 extra
   extraDiceNormal?: { count: number; sides: number; label: string }[]; // Lancinante, Erosiva, Explosiva, Antielemento
@@ -182,10 +202,12 @@ export interface DiceRollResult {
   timestamp: string;
   isSecret?: boolean;
   hasAfortunado?: boolean;
+  hasAfortunadoAffinity?: boolean;
   rerolledAfortunado?: boolean;
   attackDamagePayload?: AttackDamageRollPayload;
   forcaOpressoraPayload?: ForcaOpressoraRollPayload;
   cursePricePrompt?: CursePricePrompt;
+  ritualEffectPayload?: RitualEffectRollPayload;
   batchId?: string;
   batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
   batchShotNumber?: number;
@@ -243,9 +265,11 @@ export interface ClientToServerEvents {
     explodingDieSide?: number;
     extraDice?: Array<{ count: number; sides: number; label: string }>;
     hasAfortunado?: boolean;
+    hasAfortunadoAffinity?: boolean;
     attackDamagePayload?: AttackDamageRollPayload;
     forcaOpressoraPayload?: ForcaOpressoraRollPayload;
     cursePricePrompt?: CursePricePrompt;
+    ritualEffectPayload?: RitualEffectRollPayload;
     batchId?: string;
     batchRole?: 'segurar_gatilho_attack' | 'segurar_gatilho_damage';
     batchShotNumber?: number;
@@ -325,6 +349,12 @@ export interface SceneEffect {
   tempHpGranted?: number;
   tempPeGranted?: number;
   modifiers?: RuleModifier[];
+  recurringFormula?: string;
+  recurringLabel?: string;
+  recurringAction?: string;
+  isSustainedRitual?: boolean;
+  ritualId?: string;
+  usesOcultismoManeuver?: boolean;
 }
 
 export interface CharacterPersonalProfile {
@@ -354,6 +384,7 @@ export interface OrdemSheetData {
   proficiencies?: string[];
   transcendedCount?: number;
   workToolWeaponName?: string;
+  sangueFerventeAttr?: 'for' | 'agi';
   tempHp?: number;
   tempPe?: number;
   sceneEffects?: SceneEffect[];
@@ -421,7 +452,11 @@ export interface CharacterAbility {
   description: string;
   damageFormula?: string;
   element?: string;
+  chosenElement?: string;
   hasAffinityUpgrade?: boolean;
+  isFavoriteRitual?: boolean; // Ocultista — Ritual Predileto (-1 PE)
+  isGrimoireRitual?: boolean; // Graduado — Grimório Ritualístico
+  isSustainedActive?: boolean; // Ritual sustentado ativo no turno
   isActive?: boolean;        // Se true, aplica os modificadores passivos/sustentados na ficha
   modifiers?: RuleModifier[]; // Modificadores herdados do Compêndio
 }
@@ -461,6 +496,9 @@ export interface CompendiumEntryData {
     execution?: string;     // Padrão, Movimento, Reação, Completa
     range?: string;         // Curto, Médio, Pessoal, Toque
     duration?: string;      // Cena, Instantânea, Sustentada
+    target?: string;        // Alvo ou Área do ritual
+    resistance?: string;    // Resistência (Vontade anula, Fortitude reduz à metade...)
+    requiresTrail?: string; // Para rituais de 4º círculo de Medo exclusivos de trilha
     damageFormula?: string; // Ex: "2d8+4" ou "6d6"
     critRange?: string;     // Ex: "19/x2"
     slots?: number;         // Espaços ocupados no inventário
