@@ -23,6 +23,12 @@ import {
   CursePricePrompt,
   parseCritRange,
   classifyOrdemWeapon,
+  isOrdemCompendiumItemParanormal,
+  isOrdemItemWeaponEntry,
+  inferOrdemItemKind,
+  getOrdemItemEffectiveSlots,
+  getOrdemItemEffectiveCategory,
+  OrdemElement,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 
@@ -392,6 +398,8 @@ export function SheetExtras({
   const [compendiumPowerTypeFilter, setCompendiumPowerTypeFilter] = useState<'ALL' | 'power' | 'paranormal_power'>('ALL');
   const [compendiumElementFilter, setCompendiumElementFilter] = useState<string>('ALL');
   const [compendiumCircleFilter, setCompendiumCircleFilter] = useState<number | 'ALL'>('ALL');
+  const [compendiumItemRealmTab, setCompendiumItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
+  const [compendiumNormalSubtypeFilter, setCompendiumNormalSubtypeFilter] = useState<string>('ALL');
   const [abilityUseFeedback, setAbilityUseFeedback] = useState<string>('');
 
   const [atkName, setAtkName] = useState('');
@@ -410,6 +418,7 @@ export function SheetExtras({
   const [itemQty, setItemQty] = useState(1);
   const [itemImageUrl, setItemImageUrl] = useState('');
   const [itemDesc, setItemDesc] = useState('');
+  const [itemIsParanormalCustom, setItemIsParanormalCustom] = useState(false);
   const [zoomedItemImage, setZoomedItemImage] = useState<{ name: string; url: string } | null>(null);
 
   const resourceLabel = system === 'ordem-paranormal' ? 'PE' : 'PM';
@@ -420,7 +429,10 @@ export function SheetExtras({
   const allowAb = isEditMode && canEditAbilities;
 
   const effectiveMaxSlots = maxLoadSlots + bonuses.loadLimit;
-  const currentLoad = inventory.reduce((acc, item) => acc + item.slots * (item.quantity || 1), 0);
+  const currentLoad = inventory.reduce(
+    (acc, item) => acc + getOrdemItemEffectiveSlots(item) * (item.quantity || 1),
+    0
+  );
   const isOverloaded = currentLoad > effectiveMaxSlots;
 
   const powerList = abilities.filter((ab) => ab.category !== 'ritual' && ab.category !== 'magia');
@@ -431,6 +443,9 @@ export function SheetExtras({
     setCompendiumPowerTypeFilter('ALL');
     setCompendiumElementFilter('ALL');
     setCompendiumCircleFilter('ALL');
+    setCompendiumItemRealmTab('normal');
+    setCompendiumNormalSubtypeFilter('ALL');
+    setItemIsParanormalCustom(false);
     setModalMode(activeSubTab === 'combat' ? 'custom' : 'compendium');
     setIsAddModalOpen(true);
   }
@@ -481,19 +496,43 @@ export function SheetExtras({
       setIsAddModalOpen(false);
     } else if (entry.category === 'item') {
       const catLevel = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
+      const baseSlots = entry.metadata?.slots ?? 1;
+      const isParaItem = isOrdemCompendiumItemParanormal(entry);
+      const isCursedSpec = Boolean(entry.metadata?.isCursedSpecial);
+      const itemKind =
+        entry.metadata?.itemSubtype ||
+        inferOrdemItemKind({
+          name: entry.name,
+          description: entry.description,
+          isParanormal: isParaItem,
+          isCursedSpecial: isCursedSpec,
+        });
+      const isUtensilio = entry.name.toLowerCase().includes('utensílio') || entry.name.toLowerCase().includes('utensilio');
+      const isVestimenta = entry.name.toLowerCase().includes('vestimenta');
       const newItem: RPGItem = {
         id: newId,
         name: entry.name,
-        slots: entry.metadata?.slots ?? 1,
+        slots: baseSlots,
+        baseSlots,
         quantity: 1,
         category: catLevel,
+        baseCategory: catLevel,
         isEquipped: true,
+        isParanormal: isParaItem,
+        isCursedSpecial: isCursedSpec,
+        itemKind,
+        element: entry.metadata?.element as OrdemElement | undefined,
+        remainingCharges: entry.metadata?.uses,
+        accessoryConfig:
+          isUtensilio || isVestimenta
+            ? { accessoryType: isVestimenta ? 'vestimenta' : 'utensilio' }
+            : undefined,
         description: entry.description,
         modifiers: entry.modifiers || [],
       };
 
       let newAtk: PreparedAttack | undefined = undefined;
-      if (entry.metadata?.damageFormula) {
+      if (isOrdemItemWeaponEntry(entry) && entry.metadata?.damageFormula) {
         const classif = classifyOrdemWeapon(
           entry.name,
           entry.description,
@@ -534,6 +573,7 @@ export function SheetExtras({
           isMelee: classif.isMelee,
           isFirearm: classif.isFirearm,
           isDisparo: classif.isDisparo,
+          linkedItemId: newId,
         };
       }
 
@@ -592,16 +632,21 @@ export function SheetExtras({
   function handleAddCustomItem(e: React.FormEvent) {
     e.preventDefault();
     if (!itemName.trim()) return;
+    const safeSlots = Math.max(0, itemSlots);
     onUpdateInventory([
       ...inventory,
       {
         id: Math.random().toString(36).substring(2, 9),
         name: itemName.trim(),
-        slots: Math.max(0, itemSlots),
+        slots: safeSlots,
+        baseSlots: safeSlots,
         quantity: Math.max(1, itemQty),
         imageUrl: itemImageUrl.trim() || undefined,
         description: itemDesc.trim() || undefined,
         isEquipped: true,
+        isParanormal: system === 'ordem-paranormal' ? itemIsParanormalCustom : undefined,
+        itemKind:
+          system === 'ordem-paranormal' && itemIsParanormalCustom ? 'paranormal' : undefined,
         modifiers: [],
       },
     ]);
@@ -610,6 +655,7 @@ export function SheetExtras({
     setItemQty(1);
     setItemImageUrl('');
     setItemDesc('');
+    setItemIsParanormalCustom(false);
     setIsAddModalOpen(false);
   }
 
@@ -696,7 +742,37 @@ export function SheetExtras({
         }
         return true;
       }
-      if (activeSubTab === 'inventory') return entry.category === 'item';
+      if (activeSubTab === 'inventory') {
+        if (entry.category !== 'item') return false;
+        if (system === 'ordem-paranormal') {
+          const isPara = isOrdemCompendiumItemParanormal(entry);
+          if (compendiumItemRealmTab === 'normal' && isPara) return false;
+          if (compendiumItemRealmTab === 'paranormal' && !isPara) return false;
+          if (compendiumItemRealmTab === 'normal' && compendiumNormalSubtypeFilter !== 'ALL') {
+            const kind =
+              entry.metadata?.itemSubtype ||
+              inferOrdemItemKind({ name: entry.name, description: entry.description });
+            if (compendiumNormalSubtypeFilter === 'weapons') {
+              if (!kind.startsWith('weapon_') && !isOrdemItemWeaponEntry(entry)) return false;
+            } else if (compendiumNormalSubtypeFilter === 'protections') {
+              if (kind !== 'protection_light' && kind !== 'protection_heavy' && kind !== 'shield') {
+                return false;
+              }
+            } else if (kind !== compendiumNormalSubtypeFilter) {
+              return false;
+            }
+          }
+          if (compendiumItemRealmTab === 'paranormal' && compendiumElementFilter !== 'ALL') {
+            const el = (entry.metadata?.element || '').toLowerCase();
+            if (compendiumElementFilter === 'geral') {
+              if (entry.metadata?.isCursedSpecial) return false;
+            } else if (el !== compendiumElementFilter.toLowerCase()) {
+              return false;
+            }
+          }
+        }
+        return true;
+      }
       return false;
     })
     .sort((a, b) => {
@@ -881,6 +957,93 @@ export function SheetExtras({
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {activeSubTab === 'inventory' && system === 'ordem-paranormal' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCompendiumItemRealmTab('normal');
+                          setCompendiumElementFilter('ALL');
+                        }}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                          compendiumItemRealmTab === 'normal'
+                            ? 'bg-amber-600 text-white shadow'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        🎒 Equipamentos Normais
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCompendiumItemRealmTab('paranormal');
+                          setCompendiumNormalSubtypeFilter('ALL');
+                        }}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                          compendiumItemRealmTab === 'paranormal'
+                            ? 'bg-purple-700 text-white shadow'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        👁️ Equipamentos Paranormais & Amaldiçoados
+                      </button>
+                    </div>
+
+                    {compendiumItemRealmTab === 'normal' ? (
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          { id: 'ALL', label: 'Todos' },
+                          { id: 'weapons', label: '⚔️ Armas' },
+                          { id: 'ammo', label: '🎯 Munições' },
+                          { id: 'protections', label: '🛡️ Proteções' },
+                          { id: 'accessory', label: '🧰 Acessórios' },
+                          { id: 'explosive', label: '💣 Explosivos' },
+                          { id: 'operational', label: '🔧 Operacionais' },
+                        ].map((sub) => (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            onClick={() => setCompendiumNormalSubtypeFilter(sub.id)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                              compendiumNormalSubtypeFilter === sub.id
+                                ? 'bg-amber-600 border-amber-500 text-white'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {sub.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          { id: 'ALL', label: 'Todos Paranormais' },
+                          { id: 'geral', label: '🔮 Itens Paranormais (Cap. 3)' },
+                          { id: 'Sangue', label: '🩸 Sangue' },
+                          { id: 'Morte', label: '💀 Morte' },
+                          { id: 'Conhecimento', label: '👁️ Conhecimento' },
+                          { id: 'Energia', label: '⚡ Energia' },
+                          { id: 'Medo', label: '🌫️ Medo' },
+                        ].map((el) => (
+                          <button
+                            key={el.id}
+                            type="button"
+                            onClick={() => setCompendiumElementFilter(el.id)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                              compendiumElementFilter === el.id
+                                ? 'bg-purple-700 border-purple-500 text-white'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {el.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1131,6 +1294,32 @@ export function SheetExtras({
 
                 {activeSubTab === 'inventory' && (
                   <form onSubmit={handleAddCustomItem} className="flex flex-col gap-3">
+                    {system === 'ordem-paranormal' && (
+                      <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setItemIsParanormalCustom(false)}
+                          className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                            !itemIsParanormalCustom
+                              ? 'bg-amber-600 text-white'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          🎒 Equipamento Normal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setItemIsParanormalCustom(true)}
+                          className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                            itemIsParanormalCustom
+                              ? 'bg-purple-700 text-white'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          👁️ Equipamento Paranormal
+                        </button>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                       <div className="sm:col-span-2">
                         <label className="block text-xs text-zinc-400 mb-1">Nome do Item</label>

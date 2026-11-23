@@ -15,6 +15,7 @@ import {
   buildT20Character,
   calculateOrdemBaseVitals,
   createDefaultT20Sheet,
+  isOrdemCompendiumItemParanormal,
 } from '@totalrpg/shared';
 import { CharacterData, createCharacter } from '../services/api';
 import { ImageUploadField } from './ImageUploadField';
@@ -76,6 +77,7 @@ export function CharacterWizardModal({
 
   const [itemSearch, setItemSearch] = useState<string>('');
   const [itemCategoryFilter, setItemCategoryFilter] = useState<'ALL' | 0 | 1>('ALL');
+  const [itemRealmTab, setItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
   const [chosenItemQuantities, setChosenItemQuantities] = useState<Record<string, number>>({});
 
   // --- Estados Tormenta 20 ---
@@ -233,6 +235,8 @@ export function CharacterWizardModal({
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter((e) => {
         if (e.category !== 'item') return false;
+        // Itens amaldiçoados especiais (Cap. 6, p. 144) só são liberados a partir de Agente Especial!
+        if (e.metadata?.isCursedSpecial) return false;
         const effCat = getEffectiveRecruitItemCat(e);
         return effCat <= 1;
       }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
@@ -264,6 +268,9 @@ export function CharacterWizardModal({
   const filteredRecruitItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase();
     return recruitItems.filter((item) => {
+      const isPara = isOrdemCompendiumItemParanormal(item);
+      if (itemRealmTab === 'normal' && isPara) return false;
+      if (itemRealmTab === 'paranormal' && !isPara) return false;
       const cat = getEffectiveRecruitItemCat(item);
       if (itemCategoryFilter !== 'ALL' && cat !== itemCategoryFilter) return false;
       if (!q) return true;
@@ -272,7 +279,7 @@ export function CharacterWizardModal({
         item.description.toLowerCase().includes(q)
       );
     });
-  }, [recruitItems, itemSearch, itemCategoryFilter, selectedOrdemOrigin.id, engenheiroFavItemId]);
+  }, [recruitItems, itemSearch, itemCategoryFilter, itemRealmTab, selectedOrdemOrigin.id, engenheiroFavItemId]);
 
   // --- Memos Tormenta 20 ---
   const selectedT20Race = useMemo(
@@ -1438,6 +1445,38 @@ export function CharacterWizardModal({
                     Categoria I usada: {selectedCat1Count} / 2
                   </span>
                 </div>
+
+                {/* Separação em 2 Abas: Equipamentos Normais vs Paranormais */}
+                <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setItemRealmTab('normal')}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      itemRealmTab === 'normal'
+                        ? 'bg-amber-600 text-white shadow'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    🎒 Equipamentos Normais
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setItemRealmTab('paranormal')}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      itemRealmTab === 'paranormal'
+                        ? 'bg-purple-700 text-white shadow'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    👁️ Equipamentos Paranormais
+                  </button>
+                </div>
+
+                {itemRealmTab === 'paranormal' && (
+                  <p className="text-[11px] text-purple-300/90 bg-purple-950/30 border border-purple-800/50 rounded-lg px-3 py-1.5">
+                    👁️ Na patente <strong>Recruta</strong>, apenas itens paranormais de Cat. 0 e I (como Componentes Ritualísticos e Selo 1º Círculo) estão disponíveis. Itens amaldiçoados especiais (Cat. II+) são liberados a partir de <strong>Agente Especial</strong> (p. 144).
+                  </p>
+                )}
 
                 {/* Barra de Pesquisa e Filtro de Categoria */}
                 <div className="flex flex-wrap items-center gap-2">
