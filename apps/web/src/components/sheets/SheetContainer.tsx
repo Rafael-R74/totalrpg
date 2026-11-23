@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   OrdemSheetData,
+  OrdemSkill,
+  OrdemElement,
   T20SheetData,
   SystemId,
   CharacterAbility,
@@ -22,6 +24,7 @@ import {
   calculateOrdemBaseVitals,
   getOrdemPeLimit,
   getOrdemRitualPeLimit,
+  getOrdemCircleBaseCost,
   findOrdemRitualDef,
   getOrdemMaxLoad,
   checkOrdemPowerRequirements,
@@ -129,6 +132,7 @@ export function SheetContainer({
   const [peSpentThisTurn, setPeSpentThisTurn] = useState<number>(0);
   const [turnResetSignal, setTurnResetSignal] = useState<number>(0);
   const lastTurnKeyRef = useRef<string>('');
+  const lastAutoOpenedInterludeIdRef = useRef<string | null>(null);
   const latestCharacterRef = useRef<FullCharacterResponse | null>(null);
   latestCharacterRef.current = character;
   const localMutationVersionRef = useRef<number>(0);
@@ -208,6 +212,15 @@ export function SheetContainer({
   const [interludeRelax, setInterludeRelax] = useState(true);
   const [interludeDish, setInterludeDish] = useState<string>('');
   const [interludeSecondDish, setInterludeSecondDish] = useState<string>('');
+  const [interludeExerciseCount, setInterludeExerciseCount] = useState<0 | 1 | 2>(0);
+  const [interludeReadCount, setInterludeReadCount] = useState<0 | 1 | 2>(0);
+  const [interludeMaintenance, setInterludeMaintenance] = useState(false);
+  const [interludeMaintenanceMode, setInterludeMaintenanceMode] = useState<'repair' | 'ammo' | 'seal'>('repair');
+  const [interludeMaintenanceItemId, setInterludeMaintenanceItemId] = useState<string>('');
+  const [interludeMaintenanceAmmoKey, setInterludeMaintenanceAmmoKey] = useState<string>('balas_curtas');
+  const [interludeMaintenanceSealRitualId, setInterludeMaintenanceSealRitualId] = useState<string>('');
+  const [interludeReviewCase, setInterludeReviewCase] = useState(false);
+  const [interludeReviewSkillId, setInterludeReviewSkillId] = useState<string>('investigacao');
 
   const [isNexEvolutionOpen, setIsNexEvolutionOpen] = useState(false);
   const [evoTrailId, setEvoTrailId] = useState<string>('');
@@ -516,6 +529,21 @@ export function SheetContainer({
         .catch((err) => console.error(err));
     }
   }, [externalReloadSignal, characterId]);
+
+  useEffect(() => {
+    if (!character || character.system !== 'ordem-paranormal') return;
+    const pending = (character.sheetData as OrdemSheetData | undefined)?.pendingInterlude;
+    if (pending && pending.id) {
+      setInterludeComfort(pending.comfort);
+      if (lastAutoOpenedInterludeIdRef.current !== pending.id) {
+        lastAutoOpenedInterludeIdRef.current = pending.id;
+        handleOpenInterludeModal(pending.comfort);
+      }
+    } else {
+      lastAutoOpenedInterludeIdRef.current = null;
+      setIsInterludeModalOpen(false);
+    }
+  }, [(character?.sheetData as OrdemSheetData | undefined)?.pendingInterlude?.id]);
 
   // Regra Geral de Turno na Iniciativa: Quando chega o turno deste personagem novamente na ordem de iniciativa,
   // reseta automaticamente os PE gastos no turno, o Segurar o Gatilho e desativa o Combate Defensivo ("até o seu próximo turno").
@@ -2022,6 +2050,91 @@ export function SheetContainer({
     });
   }
 
+  const INTERLUDE_AMMO_PRESETS: Record<
+    string,
+    { name: string; category: number; slots: number; description: string }
+  > = {
+    balas_curtas: {
+      name: 'Pacote de Balas Curtas',
+      category: 0,
+      slots: 1,
+      description: 'Munição para pistolas, revólveres e submetralhadoras (dura 2 cenas). Categoria 0.',
+    },
+    balas_longas: {
+      name: 'Pacote de Balas Longas',
+      category: 1,
+      slots: 1,
+      description: 'Munição para fuzis e metralhadoras (dura 1 cena). Categoria I.',
+    },
+    cartuchos: {
+      name: 'Pacote de Cartuchos',
+      category: 1,
+      slots: 1,
+      description: 'Munição para espingardas (dura 1 cena). Categoria I.',
+    },
+    flechas: {
+      name: 'Pacote de Flechas (Aljava)',
+      category: 0,
+      slots: 1,
+      description: 'Munição para arcos e bestas (recuperável após a cena). Categoria 0.',
+    },
+    combustivel: {
+      name: 'Combustível de Lança-Chamas',
+      category: 1,
+      slots: 1,
+      description: 'Recarga de combustível para lança-chamas (dura 1 cena). Categoria I.',
+    },
+  };
+
+  function getItemDefaultMaxCharges(item: RPGItem): number | undefined {
+    const match =
+      compendiumEntries.find(
+        (e) => e.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+      ) ||
+      ORDEM_COMPENDIUM_ENTRIES.find(
+        (e) => e.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+      );
+    if (typeof match?.metadata?.uses === 'number' && match.metadata.uses > 0) {
+      return match.metadata.uses;
+    }
+    const ln = item.name.toLowerCase();
+    if (
+      ln.includes('spray de pimenta') ||
+      ln.includes('taser') ||
+      ln.includes('pistola de dardos') ||
+      ln.includes('pistola sinalizadora')
+    ) {
+      return 2;
+    }
+    return undefined;
+  }
+
+  function handleOpenInterludeModal(forcedComfort?: 0.5 | 1 | 2 | 3) {
+    if (!character || character.system !== 'ordem-paranormal') return;
+    const inv = character.inventory || [];
+    const rituals = characterAbilities.filter((a) => a.category === 'ritual');
+    const skillsList: OrdemSkill[] = Array.isArray(rawSheet.skills) ? rawSheet.skills : [];
+    const defaultSkill =
+      skillsList.find((s) => s.id === 'investigacao') || skillsList[0];
+
+    const targetComfort =
+      forcedComfort ??
+      (rawSheet.pendingInterlude?.comfort as 0.5 | 1 | 2 | 3 | undefined);
+    if (targetComfort) {
+      setInterludeComfort(targetComfort);
+    }
+    setInterludeExerciseCount(0);
+    setInterludeReadCount(0);
+    setInterludeMaintenance(false);
+    setInterludeMaintenanceMode('repair');
+    setInterludeMaintenanceItemId(inv[0]?.id || '');
+    setInterludeMaintenanceAmmoKey('balas_curtas');
+    setInterludeMaintenanceSealRitualId(rituals[0]?.id || '');
+    setInterludeReviewCase(false);
+    setInterludeReviewSkillId(defaultSkill?.id || 'investigacao');
+    setIsInterludeModalOpen(true);
+  }
+
   function handleApplyInterludeRecovery() {
     if (!character) return;
     const peLimit = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
@@ -2038,28 +2151,179 @@ export function SheetContainer({
     const peGain = (interludeSleep ? baseRecovery : 0) + extraPe;
     const sanGain = (interludeRelax ? baseRecovery : 0) + extraSan;
 
-    const nextChar = applyLocalCharacterUpdate(
-      (base) => ({
+    const summaryParts: string[] = [];
+    if (pvGain > 0 || peGain > 0 || sanGain > 0) {
+      summaryParts.push(`+${pvGain} PV / +${peGain} PE / +${sanGain} SAN`);
+    }
+    if (interludeExerciseCount > 0) {
+      summaryParts.push(`🏋️ Exercitar-se +${interludeExerciseCount}d20 físico em estoque`);
+    }
+    if (interludeReadCount > 0) {
+      summaryParts.push(`📚 Ler +${interludeReadCount}d20 mental em estoque`);
+    }
+
+    let sealPeCost = 0;
+    let sealRitual: CharacterAbility | undefined;
+    let sealCircle = 1;
+
+    if (interludeMaintenance && interludeMaintenanceMode === 'seal') {
+      sealRitual = characterAbilities.find(
+        (a) => a.category === 'ritual' && a.id === interludeMaintenanceSealRitualId
+      );
+      if (!sealRitual) {
+        showHoverToast('⚠️ Selecione um ritual conhecido para fabricar o Selo Paranormal.');
+        return;
+      }
+      const rDef = findOrdemRitualDef(sealRitual.id) || findOrdemRitualDef(sealRitual.name);
+      sealCircle =
+        rDef?.circle ||
+        (sealRitual.cost >= 10 ? 4 : sealRitual.cost >= 6 ? 3 : sealRitual.cost >= 3 ? 2 : 1);
+      sealPeCost = getOrdemCircleBaseCost(sealCircle);
+
+      const peBar = character.vitals.find((b) => b.id === 'pe');
+      const peBonusMax = bonuses.vitalMax['pe'] || 0;
+      const effPeMax = Math.max(1, (peBar?.max || 1) + peBonusMax);
+      const peAfterSleep = Math.min(effPeMax, (peBar?.current || 0) + peGain);
+      if (peAfterSleep < sealPeCost) {
+        showHoverToast(
+          `⚠️ PE insuficiente para fabricar Selo de ${sealRitual.name} (custa ${sealPeCost} PE).`
+        );
+        return;
+      }
+    }
+
+    const nextChar = applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      const prevBonusDice = baseRaw.interludeBonusDice || { physical: 0, mental: 0 };
+      const nextBonusDice = {
+        physical: Math.max(0, Number(prevBonusDice.physical || 0) + interludeExerciseCount),
+        mental: Math.max(0, Number(prevBonusDice.mental || 0) + interludeReadCount),
+      };
+
+      let nextInventory: RPGItem[] = [...(base.inventory || [])];
+      if (interludeMaintenance) {
+        if (interludeMaintenanceMode === 'repair') {
+          const targetItem = nextInventory.find((it) => it.id === interludeMaintenanceItemId);
+          if (targetItem) {
+            const maxC = getItemDefaultMaxCharges(targetItem);
+            if (maxC || typeof targetItem.remainingCharges === 'number') {
+              const restored = maxC ?? Math.max(2, targetItem.remainingCharges || 0);
+              nextInventory = nextInventory.map((it) =>
+                it.id === targetItem.id ? { ...it, remainingCharges: restored } : it
+              );
+              summaryParts.push(`🔧 ${targetItem.name} recarregado/consertado (${restored} cargas)`);
+            } else {
+              summaryParts.push(`🔧 Manutenção realizada em ${targetItem.name}`);
+            }
+          }
+        } else if (interludeMaintenanceMode === 'ammo') {
+          const preset =
+            INTERLUDE_AMMO_PRESETS[interludeMaintenanceAmmoKey] ||
+            INTERLUDE_AMMO_PRESETS.balas_curtas;
+          const existingIdx = nextInventory.findIndex(
+            (it) => it.name.trim().toLowerCase() === preset.name.toLowerCase()
+          );
+          if (existingIdx >= 0) {
+            nextInventory = nextInventory.map((it, idx) =>
+              idx === existingIdx ? { ...it, quantity: (it.quantity || 1) + 1 } : it
+            );
+          } else {
+            nextInventory.push({
+              id: `item-ammo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              name: preset.name,
+              slots: preset.slots,
+              quantity: 1,
+              category: preset.category,
+              baseCategory: preset.category,
+              itemKind: 'ammo',
+              description: preset.description,
+            });
+          }
+          summaryParts.push(`🔫 +1 ${preset.name}`);
+        } else if (interludeMaintenanceMode === 'seal' && sealRitual) {
+          nextInventory.push({
+            id: `item-selo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: `Selo Paranormal (${sealRitual.name})`,
+            slots: 1,
+            quantity: 1,
+            category: sealCircle,
+            baseCategory: sealCircle,
+            isParanormal: true,
+            isCursedSpecial: false,
+            itemKind: 'paranormal',
+            element: (sealRitual.element as OrdemElement) || undefined,
+            storedRitualName: sealRitual.name,
+            storedRitualCircle: sealCircle,
+            storedRitualCost: sealPeCost,
+            storedRitualElement: sealRitual.element,
+            description: `Selo Paranormal fabricado em Interlúdio contendo ${sealRitual.name} (${sealCircle}º Círculo, ${sealPeCost} PE). Ativar consome 1 unidade.`,
+          });
+          summaryParts.push(`🔮 Selo (${sealRitual.name}) fabricado (-${sealPeCost} PE)`);
+        }
+      }
+
+      const nextVitals = base.vitals.map((bar) => {
+        const bonusMax = bonuses.vitalMax[bar.id] || 0;
+        const effectiveMax = Math.max(1, bar.max + bonusMax);
+        if (bar.id === 'pv') {
+          return { ...bar, current: Math.min(effectiveMax, bar.current + pvGain) };
+        }
+        if (bar.id === 'pe') {
+          const afterGain = Math.min(effectiveMax, bar.current + peGain);
+          return { ...bar, current: Math.max(0, afterGain - sealPeCost) };
+        }
+        if (bar.id === 'san') {
+          return { ...bar, current: Math.min(effectiveMax, bar.current + sanGain) };
+        }
+        return bar;
+      });
+
+      return {
         ...base,
-        vitals: base.vitals.map((bar) => {
-          const bonusMax = bonuses.vitalMax[bar.id] || 0;
-          const effectiveMax = Math.max(1, bar.max + bonusMax);
-          if (bar.id === 'pv') {
-            return { ...bar, current: Math.min(effectiveMax, bar.current + pvGain) };
-          }
-          if (bar.id === 'pe') {
-            return { ...bar, current: Math.min(effectiveMax, bar.current + peGain) };
-          }
-          if (bar.id === 'san') {
-            return { ...bar, current: Math.min(effectiveMax, bar.current + sanGain) };
-          }
-          return bar;
-        }),
-      }),
-      false
-    );
+        vitals: nextVitals,
+        inventory: nextInventory,
+        sheetData: {
+          ...baseRaw,
+          interludeBonusDice: nextBonusDice,
+          pendingInterlude: null,
+        },
+      };
+    }, false);
+
+    if (interludeReviewCase) {
+      const skillsList: OrdemSkill[] = Array.isArray(rawSheet.skills) ? rawSheet.skills : [];
+      const sk =
+        skillsList.find((s) => s.id === interludeReviewSkillId) || skillsList[0];
+      if (sk) {
+        const attrKey = sk.attribute;
+        const attrVal =
+          Number(rawSheet.attributes?.[attrKey] || 0) + (bonuses.attributes[attrKey] || 0);
+        const diceCount =
+          attrVal + bonuses.skillDiceAll + (bonuses.skillDice[sk.id] || 0);
+        const rapidoBonus = dishes.filter((d) => d === 'rapido').length * 5;
+        const modTotal =
+          (sk.trainingDegree || 0) +
+          (sk.otherModifier || 0) +
+          bonuses.skillBonusAll +
+          (bonuses.skillBonus[sk.id] || 0) +
+          rapidoBonus;
+        triggerCharacterRoll(
+          `🔍 Interlúdio — Revisar Caso (${sk.name})${
+            rapidoBonus > 0 ? ` [🥪 Prato Rápido +${rapidoBonus}]` : ''
+          }`,
+          diceCount,
+          20,
+          modTotal
+        );
+        summaryParts.push(`🔍 Revisar Caso (${sk.name})`);
+      }
+    }
+
     setIsInterludeModalOpen(false);
     if (nextChar) handleSaveSheet(nextChar);
+    if (summaryParts.length > 0) {
+      showHoverToast(`🌙 Interlúdio aplicado: ${summaryParts.join(' • ')}`);
+    }
   }
 
   function handleOpenNexEvolutionModal() {
@@ -3557,53 +3821,140 @@ export function SheetContainer({
       )}
 
       {/* MODAL DE CENA DE INTERLÚDIO (ORDEM PARANORMAL v1.3, p. 92-93) */}
-      {isInterludeModalOpen && character.system === 'ordem-paranormal' && (
+      {isInterludeModalOpen && character.system === 'ordem-paranormal' && (() => {
+        const peLimitInterlude = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
+        const baseRec = Math.max(1, Math.floor(peLimitInterlude * interludeComfort));
+        const selectedDishes = [interludeDish, interludeSecondDish].filter(Boolean);
+        const previewPv =
+          (interludeSleep ? baseRec : 0) +
+          selectedDishes.filter((d) => d === 'nutritivo').length * (interludeSleep ? peLimitInterlude : 0);
+        const previewPe =
+          (interludeSleep ? baseRec : 0) +
+          selectedDishes.filter((d) => d === 'energetico').length * (interludeSleep ? peLimitInterlude : 0);
+        const previewSan =
+          (interludeRelax ? baseRec : 0) +
+          selectedDishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0);
+        const previewRapido = selectedDishes.filter((d) => d === 'rapido').length * 5;
+
+        const hasChefOrigin = (rawSheet.origin || '').toLowerCase().includes('chef');
+        const hasCriarSeloPower = characterAbilities.some(
+          (a) => a.id.includes('criar-selo') || a.name.toLowerCase().includes('criar selo')
+        );
+        const knownRituals = characterAbilities.filter((a) => a.category === 'ritual');
+        const activeSealsCount = (character.inventory || []).filter(
+          (it) => it.storedRitualName || it.name.toLowerCase().includes('selo paranormal')
+        ).reduce((acc, it) => acc + (it.quantity || 1), 0);
+        const presenceCap = Math.max(
+          1,
+          Number(rawSheet.attributes?.pre || 0) + (bonuses.attributes['pre'] || 0)
+        );
+        const skillsList: OrdemSkill[] = Array.isArray(rawSheet.skills) ? rawSheet.skills : [];
+        const selectedReviewSkill =
+          skillsList.find((s) => s.id === interludeReviewSkillId) || skillsList[0];
+        const reviewSkillDice = selectedReviewSkill
+          ? Number(rawSheet.attributes?.[selectedReviewSkill.attribute] || 0) +
+            (bonuses.attributes[selectedReviewSkill.attribute] || 0) +
+            bonuses.skillDiceAll +
+            (bonuses.skillDice[selectedReviewSkill.id] || 0)
+          : 1;
+        const reviewSkillMod = selectedReviewSkill
+          ? (selectedReviewSkill.trainingDegree || 0) +
+            (selectedReviewSkill.otherModifier || 0) +
+            bonuses.skillBonusAll +
+            (bonuses.skillBonus[selectedReviewSkill.id] || 0) +
+            previewRapido
+          : previewRapido;
+
+        const totalActionsCount =
+          (interludeSleep ? 1 : 0) +
+          (interludeRelax ? 1 : 0) +
+          (interludeDish ? 1 : 0) +
+          interludeExerciseCount +
+          interludeReadCount +
+          (interludeMaintenance ? 1 : 0) +
+          (interludeReviewCase ? 1 : 0);
+
+        const currentBonusDice = rawSheet.interludeBonusDice || { physical: 0, mental: 0 };
+
+        return (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-indigo-500/60 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-start">
+          <div className="bg-zinc-900 border border-indigo-500/60 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-start gap-3">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
                   🌙 Regras Oficiais de Investigação (p. 92–93)
                 </span>
-                <h3 className="text-lg font-black text-white">Cena de Interlúdio & Descanso</h3>
+                <h3 className="text-lg font-black text-white">Cena de Interlúdio Completa</h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsInterludeModalOpen(false)}
-                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-full border ${
+                    totalActionsCount <= 2
+                      ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700'
+                      : 'bg-amber-950/70 text-amber-300 border-amber-700'
+                  }`}
+                  title="Cada agente normalmente escolhe até 2 ações por cena de Interlúdio (p. 92)."
+                >
+                  {totalActionsCount} / 2 ações padrão
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsInterludeModalOpen(false)}
+                  className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3.5">
+              {/* 1. Condição de Conforto */}
               <div>
                 <label className="block text-xs font-bold uppercase text-zinc-400 mb-1.5">
-                  1. Condição de Conforto do Abrigo
+                  1. Condição de Conforto do Abrigo (para Dormir / Relaxar)
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { mult: 0.5, label: 'Precário (0,5x)' },
-                    { mult: 1, label: 'Normal (1x)' },
-                    { mult: 2, label: 'Confortável (2x)' },
-                    { mult: 3, label: 'Luxuoso (3x)' },
-                  ].map((c) => (
-                    <button
-                      key={c.mult}
-                      type="button"
-                      onClick={() => setInterludeComfort(c.mult as 0.5 | 1 | 2 | 3)}
-                      className={`py-2 px-2 rounded-lg text-xs font-bold border ${
-                        interludeComfort === c.mult
-                          ? 'bg-indigo-600 text-white border-indigo-400'
-                          : 'bg-zinc-950 text-zinc-400 border-zinc-800'
-                      }`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
+                {rawSheet.pendingInterlude ? (
+                  <div className="p-2.5 rounded-xl bg-indigo-950/50 border border-indigo-500/60 flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-indigo-200">
+                      🛏️ Definido pelo Mestre:{' '}
+                      {interludeComfort === 0.5
+                        ? 'Precário (0,5x)'
+                        : interludeComfort === 2
+                        ? 'Confortável (2x)'
+                        : interludeComfort === 3
+                        ? 'Luxuoso (3x)'
+                        : 'Normal (1x)'}
+                    </span>
+                    <span className="text-[10px] font-mono text-indigo-300 uppercase">
+                      Travado pelo Mestre
+                    </span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { mult: 0.5, label: 'Precário (0,5x)' },
+                      { mult: 1, label: 'Normal (1x)' },
+                      { mult: 2, label: 'Confortável (2x)' },
+                      { mult: 3, label: 'Luxuoso (3x)' },
+                    ].map((c) => (
+                      <button
+                        key={c.mult}
+                        type="button"
+                        onClick={() => setInterludeComfort(c.mult as 0.5 | 1 | 2 | 3)}
+                        className={`py-2 px-2 rounded-lg text-xs font-bold border cursor-pointer ${
+                          interludeComfort === c.mult
+                            ? 'bg-indigo-600 text-white border-indigo-400'
+                            : 'bg-zinc-950 text-zinc-400 border-zinc-800'
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
+              {/* 2. Dormir & Relaxar */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="flex items-center gap-2.5 p-3 rounded-xl bg-zinc-950 border border-zinc-800 cursor-pointer">
                   <input
@@ -3614,7 +3965,8 @@ export function SheetContainer({
                   <div>
                     <span className="block text-xs font-bold text-white">💤 Ação: Dormir</span>
                     <span className="text-[11px] text-zinc-400">
-                      Recupera PV e PE baseados no Limite de PE ({getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities)} PE).
+                      Recupera <strong className="text-emerald-300">+{previewPv} PV</strong> e{' '}
+                      <strong className="text-amber-300">+{previewPe} PE</strong> (Limite {peLimitInterlude} PE).
                     </span>
                   </div>
                 </label>
@@ -3628,68 +3980,297 @@ export function SheetContainer({
                   <div>
                     <span className="block text-xs font-bold text-white">🧘 Ação: Relaxar</span>
                     <span className="text-[11px] text-zinc-400">
-                      Recupera Sanidade baseada no Limite de PE.
+                      Recupera <strong className="text-cyan-300">+{previewSan} SAN</strong>.
                     </span>
                   </div>
                 </label>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-zinc-400 mb-1.5">
-                  🍲 Ação Opcional: Alimentar-se (Escolha um Prato)
-                </label>
-                <select
-                  value={interludeDish}
-                  onChange={(e) => setInterludeDish(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white"
-                >
-                  <option value="">-- Não se alimentou neste interlúdio --</option>
-                  {ORDEM_INTERLUDE_DISHES.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} — {d.description}
-                    </option>
-                  ))}
-                </select>
+              {/* 3. Alimentar-se */}
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-300 mb-1.5">
+                    🍲 Ação: Alimentar-se (1º Prato)
+                  </label>
+                  <select
+                    value={interludeDish}
+                    onChange={(e) => setInterludeDish(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
+                  >
+                    <option value="">-- Não realizou Alimentar-se --</option>
+                    {ORDEM_INTERLUDE_DISHES.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} — {d.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-amber-400 mb-1">
+                    👨‍🍳 2º Prato Especial {hasChefOrigin ? '(Origem Chef ativa!)' : '(Caso haja um Chef no grupo)'}
+                  </label>
+                  <select
+                    value={interludeSecondDish}
+                    onChange={(e) => setInterludeSecondDish(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-amber-800/60 text-xs text-white"
+                  >
+                    <option value="">-- Sem 2º prato (padrão) --</option>
+                    {ORDEM_INTERLUDE_DISHES.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        2º Prato: {d.name} — {d.description} (Acumula se igual!)
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-amber-400 mb-1.5">
-                  👨‍🍳 2º Prato Especial (Origem Chef — Ingrediente Secreto, p. 17)
+              {/* 4. Exercitar-se & Ler */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white">🏋️ Ação: Exercitar-se</span>
+                    <span className="text-[10px] font-mono text-emerald-300">
+                      Estoque: {Number(currentBonusDice.physical || 0)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    Concede +1d20 em testes físicos (FOR/AGI/VIG) para uso futuro.
+                  </p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([0, 1, 2] as const).map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setInterludeExerciseCount(cnt)}
+                        className={`py-1.5 rounded text-xs font-bold border cursor-pointer ${
+                          interludeExerciseCount === cnt
+                            ? 'bg-emerald-700 text-white border-emerald-400'
+                            : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                        }`}
+                      >
+                        {cnt === 0 ? 'Não' : `+${cnt}d20`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white">📚 Ação: Ler</span>
+                    <span className="text-[10px] font-mono text-purple-300">
+                      Estoque: {Number(currentBonusDice.mental || 0)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    Concede +1d20 em testes mentais (INT/PRE) para uso futuro.
+                  </p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([0, 1, 2] as const).map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setInterludeReadCount(cnt)}
+                        className={`py-1.5 rounded text-xs font-bold border cursor-pointer ${
+                          interludeReadCount === cnt
+                            ? 'bg-purple-700 text-white border-purple-400'
+                            : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                        }`}
+                      >
+                        {cnt === 0 ? 'Não' : `+${cnt}d20`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Manutenção */}
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={interludeMaintenance}
+                    onChange={(e) => setInterludeMaintenance(e.target.checked)}
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-white">
+                      🔧 Ação: Manutenção
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      Conserta/recarrega item, fabrica pacote de munição ou cria Selo Paranormal.
+                    </span>
+                  </div>
                 </label>
-                <select
-                  value={interludeSecondDish}
-                  onChange={(e) => setInterludeSecondDish(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-amber-800/60 text-xs text-white"
-                >
-                  <option value="">-- Sem 2º prato (padrão) --</option>
-                  {ORDEM_INTERLUDE_DISHES.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      2º Prato: {d.name} — {d.description} (Acumula se igual ao 1º!)
-                    </option>
-                  ))}
-                </select>
+
+                {interludeMaintenance && (
+                  <div className="space-y-2.5 pt-2 border-t border-zinc-800/80">
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'repair', label: '🔧 Consertar / Cargas' },
+                        { id: 'ammo', label: '🔫 Fabricar Munição' },
+                        { id: 'seal', label: '🔮 Criar Selo' },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() =>
+                            setInterludeMaintenanceMode(m.id as 'repair' | 'ammo' | 'seal')
+                          }
+                          className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                            interludeMaintenanceMode === m.id
+                              ? 'bg-amber-600 text-white border-amber-400'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {interludeMaintenanceMode === 'repair' && (
+                      <select
+                        value={interludeMaintenanceItemId}
+                        onChange={(e) => setInterludeMaintenanceItemId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
+                      >
+                        {(character.inventory || []).length === 0 ? (
+                          <option value="">-- Mochila vazia --</option>
+                        ) : (
+                          (character.inventory || []).map((it) => {
+                            const maxC = getItemDefaultMaxCharges(it);
+                            return (
+                              <option key={it.id} value={it.id}>
+                                {it.name}
+                                {maxC || typeof it.remainingCharges === 'number'
+                                  ? ` (${it.remainingCharges ?? maxC ?? 2}/${maxC ?? Math.max(2, it.remainingCharges || 0)} cargas)`
+                                  : ''}
+                              </option>
+                            );
+                          })
+                        )}
+                      </select>
+                    )}
+
+                    {interludeMaintenanceMode === 'ammo' && (
+                      <select
+                        value={interludeMaintenanceAmmoKey}
+                        onChange={(e) => setInterludeMaintenanceAmmoKey(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
+                      >
+                        {Object.entries(INTERLUDE_AMMO_PRESETS).map(([key, p]) => (
+                          <option key={key} value={key}>
+                            {p.name} (Cat. {p.category === 0 ? '0' : 'I'})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {interludeMaintenanceMode === 'seal' && (
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          <span
+                            className={
+                              hasCriarSeloPower ? 'text-emerald-300 font-semibold' : 'text-amber-300 font-semibold'
+                            }
+                          >
+                            {hasCriarSeloPower
+                              ? '✓ Poder Criar Selo ativo'
+                              : '⚠️ Requer poder Criar Selo (ou autorização do Mestre)'}
+                          </span>
+                          <span className="font-mono text-zinc-400">
+                            Selos ativos: {activeSealsCount} / {presenceCap} (PRE)
+                          </span>
+                        </div>
+                        <select
+                          value={interludeMaintenanceSealRitualId}
+                          onChange={(e) => setInterludeMaintenanceSealRitualId(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-700/70 text-xs text-white"
+                        >
+                          {knownRituals.length === 0 ? (
+                            <option value="">-- Nenhum ritual conhecido na ficha --</option>
+                          ) : (
+                            knownRituals.map((rit) => {
+                              const def =
+                                findOrdemRitualDef(rit.id) || findOrdemRitualDef(rit.name);
+                              const circ =
+                                def?.circle ||
+                                (rit.cost >= 10 ? 4 : rit.cost >= 6 ? 3 : rit.cost >= 3 ? 2 : 1);
+                              const peCost = getOrdemCircleBaseCost(circ);
+                              return (
+                                <option key={rit.id} value={rit.id}>
+                                  {rit.name} ({circ}º Círculo • Custo {peCost} PE)
+                                </option>
+                              );
+                            })
+                          )}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 6. Revisar Caso */}
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={interludeReviewCase}
+                    onChange={(e) => setInterludeReviewCase(e.target.checked)}
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-white">
+                      🔍 Ação: Revisar Caso
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      Rola teste de perícia para obter pistas ou bônus na investigação
+                      {previewRapido > 0 ? ` (+${previewRapido} do Prato Rápido aplicado!)` : ''}.
+                    </span>
+                  </div>
+                </label>
+
+                {interludeReviewCase && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800/80">
+                    <select
+                      value={interludeReviewSkillId}
+                      onChange={(e) => setInterludeReviewSkillId(e.target.value)}
+                      className="flex-1 min-w-[200px] px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
+                    >
+                      {skillsList.map((sk) => (
+                        <option key={sk.id} value={sk.id}>
+                          {sk.name} ({sk.attribute.toUpperCase()})
+                        </option>
+                      ))}
+                    </select>
+                    <span className="px-2.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono font-bold text-amber-300">
+                      🎲 {reviewSkillDice <= 0 ? '2d20(menor)' : `${reviewSkillDice}d20`}
+                      {reviewSkillMod >= 0 ? `+${reviewSkillMod}` : reviewSkillMod}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
               <button
                 type="button"
                 onClick={() => setIsInterludeModalOpen(false)}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-bold"
+                className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-bold cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleApplyInterludeRecovery}
-                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black"
+                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black cursor-pointer"
               >
-                ✨ Aplicar Recuperação de Interlúdio
+                ✨ Aplicar Ações de Interlúdio
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* MODAL DE EVOLUÇÃO GUIADA DE NEX (LEVEL-UP DE ORDEM PARANORMAL v1.3) */}
       {isNexEvolutionOpen && character.system === 'ordem-paranormal' && (() => {
@@ -4686,6 +5267,37 @@ export function SheetContainer({
         );
       })()}
 
+      {/* Banner de Cena de Interlúdio Liberada pelo Mestre */}
+      {character.system === 'ordem-paranormal' && rawSheet.pendingInterlude && (
+        <div className="bg-indigo-950/60 border border-indigo-500/70 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-indigo-950/40">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300 block">
+              🌙 Cena de Interlúdio Liberada
+            </span>
+            <p className="text-sm font-bold text-white">
+              O Mestre iniciou um Interlúdio para você! (Descanso:{' '}
+              <span className="text-indigo-200">
+                {rawSheet.pendingInterlude.comfort === 0.5
+                  ? 'Precário (0,5x)'
+                  : rawSheet.pendingInterlude.comfort === 2
+                  ? 'Confortável (2x)'
+                  : rawSheet.pendingInterlude.comfort === 3
+                  ? 'Luxuoso (3x)'
+                  : 'Normal (1x)'}
+              </span>
+              )
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenInterludeModal(rawSheet.pendingInterlude.comfort)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition cursor-pointer shadow"
+          >
+            🌙 Escolher Ações de Interlúdio
+          </button>
+        </div>
+      )}
+
       {/* Módulos dos Sistemas */}
       {character.system === 'ordem-paranormal' && (
         <OrdemSheet
@@ -4701,7 +5313,6 @@ export function SheetContainer({
           canEditAbilities={canEditAbilities}
           onSyncTrailAbilities={handleSyncOrdemTrailAbilities}
           onOpenNexEvolution={handleOpenNexEvolutionModal}
-          onOpenInterlude={canMasterControl ? () => setIsInterludeModalOpen(true) : undefined}
           onCheckResource={handleCheckResource}
           onSpendResource={handleSpendResource}
           onHealPv={handleHealPv}
@@ -4805,6 +5416,11 @@ export function SheetContainer({
                   sceneEffects: updatedData.sceneEffects ?? prevRaw.sceneEffects ?? [],
                   proficiencies: updatedData.proficiencies ?? prevRaw.proficiencies,
                   personalProfile: updatedData.personalProfile ?? prevRaw.personalProfile,
+                  interludeBonusDice: updatedData.interludeBonusDice ?? prevRaw.interludeBonusDice,
+                  pendingInterlude:
+                    updatedData.pendingInterlude !== undefined
+                      ? updatedData.pendingInterlude
+                      : prevRaw.pendingInterlude,
                 } as any,
               };
             })
@@ -4849,6 +5465,11 @@ export function SheetContainer({
                   sceneEffects: prevRaw.sceneEffects || [],
                   proficiencies: updatedData.proficiencies ?? prevRaw.proficiencies,
                   personalProfile: updatedData.personalProfile ?? prevRaw.personalProfile,
+                  interludeBonusDice: updatedData.interludeBonusDice ?? prevRaw.interludeBonusDice,
+                  pendingInterlude:
+                    updatedData.pendingInterlude !== undefined
+                      ? updatedData.pendingInterlude
+                      : prevRaw.pendingInterlude,
                 } as any,
               };
             })

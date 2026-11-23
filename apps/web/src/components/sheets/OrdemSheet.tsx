@@ -38,7 +38,6 @@ interface OrdemSheetProps {
   onChange: (updated: OrdemSheetData) => void;
   onSyncTrailAbilities?: (trailId: string, nex: number) => void;
   onOpenNexEvolution?: () => void;
-  onOpenInterlude?: () => void;
   onCheckResource?: (amount: number, powerLabel?: string) => boolean;
   onSpendResource?: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
   onLoseSanity?: (amount: number, reason: string) => void;
@@ -78,7 +77,6 @@ export function OrdemSheet({
   onChange,
   onSyncTrailAbilities,
   onOpenNexEvolution,
-  onOpenInterlude,
   onCheckResource,
   onSpendResource,
   onLoseSanity,
@@ -237,6 +235,34 @@ export function OrdemSheet({
       (a.id.includes('sangue-vivo') ||
         a.name.toLowerCase().includes('sangue vivo'))
   );
+  const campoProtetorAb = abilities.find(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.includes('campo-protetor') ||
+        a.name.toLowerCase().includes('campo protetor'))
+  );
+  const hasCampoProtetor = Boolean(campoProtetorAb);
+  const hasCampoProtetorAffinity = Boolean(
+    campoProtetorAb &&
+      (campoProtetorAb.hasAffinityUpgrade ||
+        campoProtetorAb.name.toLowerCase().includes('afinidade'))
+  );
+
+  const interludePhysical = Math.max(0, Number(safeData.interludeBonusDice?.physical || 0));
+  const interludeMental = Math.max(0, Number(safeData.interludeBonusDice?.mental || 0));
+  const [armInterludePhysical, setArmInterludePhysical] = useState(false);
+  const [armInterludeMental, setArmInterludeMental] = useState(false);
+
+  function adjustInterludeDice(kind: 'physical' | 'mental', delta: number) {
+    const nextPhys =
+      kind === 'physical' ? Math.max(0, interludePhysical + delta) : interludePhysical;
+    const nextMent =
+      kind === 'mental' ? Math.max(0, interludeMental + delta) : interludeMental;
+    onChange({
+      ...safeData,
+      interludeBonusDice: { physical: nextPhys, mental: nextMent },
+    });
+  }
   const [armIntuicaoParanormal, setArmIntuicaoParanormal] = useState(false);
 
   const [armedEcleticoDegree, setArmedEcleticoDegree] = useState<0 | 5 | 10 | 15>(0);
@@ -271,6 +297,57 @@ export function OrdemSheet({
   const overloadPenalty = isOverloaded ? -5 : 0;
   const inquebravelDefenseBonus = hasInquebravel && isMachucado ? 5 : 0;
   const totalDefense = 10 + effectiveAgi + bonuses.defense + inquebravelDefenseBonus + overloadPenalty;
+
+  // Cálculos de Ações Especiais de Defesa (Reação • 1x/Rodada, Cap. 4 p. 88)
+  function getDefenseSkillInfo(skillId: string): { trained: boolean; total: number } {
+    const sk = mergedSkills.find((s) => s.id === skillId);
+    const meta = ORDEM_SKILLS_METADATA.find((m) => m.id === skillId);
+    const ignoresLoad = bonuses.ignoresLoadPenaltySkills.includes(skillId);
+    const loadPen = meta?.armorPenalty && isOverloaded && !ignoresLoad ? -5 : 0;
+    const affinityExtra = skillId === 'reflexos' && hasCampoProtetorAffinity ? 5 : 0;
+    const total =
+      (sk?.trainingDegree || 0) +
+      (sk?.otherModifier || 0) +
+      bonuses.skillBonusAll +
+      (bonuses.skillBonus[skillId] || 0) +
+      loadPen +
+      affinityExtra;
+    return {
+      trained: (sk?.trainingDegree || 0) >= 5,
+      total,
+    };
+  }
+  const reflexosInfo = getDefenseSkillInfo('reflexos');
+  const fortitudeInfo = getDefenseSkillInfo('fortitude');
+  const esquivaTotal = totalDefense + reflexosInfo.total;
+  const esquivaCampoProtetor = esquivaTotal + 5;
+  const cascaGrossaRd = hasCascaGrossa ? Math.max(0, effectiveVig) : 0;
+  const blockBaseRd = fortitudeInfo.total + cascaGrossaRd;
+  const passivePhysicalRd =
+    bonuses.damageResistances
+      .filter((rd) => {
+        const t = rd.type.toLowerCase();
+        return (
+          t.includes('físic') ||
+          t.includes('fisic') ||
+          t.includes('geral') ||
+          t.includes('todo') ||
+          t.includes('dano')
+        );
+      })
+      .reduce((acc, rd) => acc + rd.value, 0) +
+    (hasInquebravel && isMachucado ? 5 : 0);
+  const blockTotalRd = blockBaseRd + passivePhysicalRd;
+  const otherSpecificRds = bonuses.damageResistances.filter((rd) => {
+    const t = rd.type.toLowerCase();
+    return !(
+      t.includes('físic') ||
+      t.includes('fisic') ||
+      t.includes('geral') ||
+      t.includes('todo') ||
+      t.includes('dano')
+    );
+  });
 
   // Limite de PE/turno e DT de Rituais automáticos (v1.3)
   const peLimitPerTurn = getOrdemPeLimit(safeData.nex, safeData.origin, abilities);
@@ -455,10 +532,10 @@ export function OrdemSheet({
             )}
           </div>
 
-          {/* Afinidade Elemental (50%+) e Cena de Interlúdio (Exclusivo do Mestre) */}
+          {/* Afinidade Elemental (50%+) */}
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
-              {onOpenInterlude ? 'Afinidade / Interlúdio' : 'Afinidade (50%+)'}
+              Afinidade (50%+)
             </label>
             <div className="flex flex-wrap items-center gap-2">
               {safeData.affinity ? (
@@ -469,16 +546,6 @@ export function OrdemSheet({
                 <span className="text-xs text-zinc-500 font-semibold">
                   {safeData.nex >= 50 ? 'Não escolhida' : 'Bloqueada (<50%)'}
                 </span>
-              )}
-              {onOpenInterlude && (
-                <button
-                  type="button"
-                  onClick={onOpenInterlude}
-                  className="px-2.5 py-1 bg-indigo-950/80 hover:bg-indigo-800 text-indigo-200 border border-indigo-700 rounded-lg text-xs font-bold transition cursor-pointer"
-                  title="Exclusivo do Mestre: Aplicar recuperação de Cena de Interlúdio"
-                >
-                  🌙 Cena de Interlúdio
-                </button>
               )}
             </div>
           </div>
@@ -568,6 +635,83 @@ export function OrdemSheet({
             >
               {effectiveDisplacement}m
             </span>
+          </div>
+        </div>
+
+        {/* Painel Visual de Ações Especiais de Defesa (Reação • 1x/Rodada, Cap. 4 p. 88) */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] uppercase font-black tracking-wider text-sky-400">
+              🛡️ Ações Especiais de Defesa (Reação • 1x/Rodada)
+            </span>
+            <span className="text-[10px] text-zinc-500">
+              Valores calculados automaticamente
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* Esquivar */}
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 flex flex-col gap-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="text-xs font-extrabold text-white block">🏃 Se Esquivar</span>
+                  <span className="text-[10px] text-zinc-400">
+                    Defesa ({totalDefense}) + Reflexos ({reflexosInfo.total >= 0 ? `+${reflexosInfo.total}` : reflexosInfo.total})
+                  </span>
+                </div>
+                <span className="text-lg font-black font-mono text-sky-300">
+                  Def {esquivaTotal}
+                </span>
+              </div>
+
+              {hasCampoProtetor && (
+                <span className="text-[11px] font-bold text-cyan-200 bg-cyan-950/50 border border-cyan-800/60 rounded px-2 py-0.5">
+                  ⚡ Com Campo Protetor (-1 PE): Def {esquivaCampoProtetor}
+                </span>
+              )}
+
+              {hasCampoProtetorAffinity && (
+                <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/50 border border-cyan-800/60 rounded px-2 py-0.5">
+                  ⚡ Afinidade: +5 Reflexos & Evasão
+                </span>
+              )}
+
+              {!reflexosInfo.trained && (
+                <span className="text-[10px] text-amber-300/90 font-semibold">
+                  ⚠️ Requer treinamento em Reflexos (p. 88)
+                </span>
+              )}
+            </div>
+
+            {/* Bloquear */}
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 flex flex-col gap-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="text-xs font-extrabold text-white block">🛡️ Se Bloquear</span>
+                  <span className="text-[10px] text-zinc-400">
+                    Fortitude ({fortitudeInfo.total})
+                    {cascaGrossaRd > 0 ? ` + ${cascaGrossaRd} VIG (Casca Grossa)` : ''}
+                    {passivePhysicalRd > 0 ? ` + ${passivePhysicalRd} RD passiva` : ''}
+                  </span>
+                </div>
+                <span className="text-lg font-black font-mono text-amber-300">
+                  RD {passivePhysicalRd > 0 ? blockTotalRd : blockBaseRd}
+                </span>
+              </div>
+
+              {otherSpecificRds.length > 0 && (
+                <span className="text-[10px] text-cyan-300">
+                  + Outras RDs:{' '}
+                  {otherSpecificRds.map((rd) => `${rd.type} ${rd.value}`).join(', ')}
+                </span>
+              )}
+
+              {!fortitudeInfo.trained && (
+                <span className="text-[10px] text-amber-300/90 font-semibold">
+                  ⚠️ Requer treinamento em Fortitude (p. 88)
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -924,13 +1068,103 @@ export function OrdemSheet({
           </span>
         </div>
 
+        {(interludePhysical > 0 || interludeMental > 0 || allowAttrEdit) && (
+          <div className="mb-4 p-3 rounded-xl bg-indigo-950/30 border border-indigo-700/50 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-300">
+              🌙 Dados Bônus de Interlúdio (Em Estoque)
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={interludePhysical <= 0}
+                  onClick={() => setArmInterludePhysical((v) => !v)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                    interludePhysical <= 0
+                      ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed'
+                      : armInterludePhysical
+                      ? 'bg-emerald-600 text-white border-emerald-400 cursor-pointer shadow'
+                      : 'bg-zinc-950 hover:bg-zinc-800 text-emerald-300 border-emerald-700/70 cursor-pointer'
+                  }`}
+                >
+                  🏋️ Exercitar-se ({interludePhysical}): +1d20 FOR/AGI/VIG
+                  {armInterludePhysical ? ' ✓ ARMADO' : ''}
+                </button>
+                {allowAttrEdit && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => adjustInterludeDice('physical', -1)}
+                      className="px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustInterludeDice('physical', 1)}
+                      className="px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={interludeMental <= 0}
+                  onClick={() => setArmInterludeMental((v) => !v)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                    interludeMental <= 0
+                      ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed'
+                      : armInterludeMental
+                      ? 'bg-purple-600 text-white border-purple-400 cursor-pointer shadow'
+                      : 'bg-zinc-950 hover:bg-zinc-800 text-purple-300 border-purple-700/70 cursor-pointer'
+                  }`}
+                >
+                  📚 Ler ({interludeMental}): +1d20 INT/PRE
+                  {armInterludeMental ? ' ✓ ARMADO' : ''}
+                </button>
+                {allowAttrEdit && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => adjustInterludeDice('mental', -1)}
+                      className="px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustInterludeDice('mental', 1)}
+                      className="px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {(Object.keys(ATTRIBUTE_LABELS) as Array<keyof OrdemAttributes>).map((attrKey) => {
             const baseVal = safeData.attributes[attrKey];
             const modVal = bonuses.attributes[attrKey] || 0;
             const effectiveVal = baseVal + modVal;
             const extraDice = bonuses.skillDiceAll + (bonuses.skillDice[attrKey] || 0);
-            const rawTotalDice = effectiveVal + extraDice;
+            const isInterludePhysAttr =
+              armInterludePhysical &&
+              interludePhysical > 0 &&
+              ['for', 'agi', 'vig'].includes(attrKey);
+            const isInterludeMentAttr =
+              armInterludeMental &&
+              interludeMental > 0 &&
+              ['int', 'pre'].includes(attrKey);
+            const rawTotalDice =
+              effectiveVal + extraDice + (isInterludePhysAttr || isInterludeMentAttr ? 1 : 0);
 
             return (
               <div
@@ -943,8 +1177,17 @@ export function OrdemSheet({
                     if (armOriginBoost && originId === 'academico' && attrKey === 'int') {
                       if (onSpendResource && !onSpendResource(2)) return;
                       attrMod += 5;
-                      labelSuffix = ' [Saber é Poder +5]';
+                      labelSuffix += ' [Saber é Poder +5]';
                       setArmOriginBoost(false);
+                    }
+                    if (isInterludePhysAttr) {
+                      labelSuffix += ' [🏋️ Exercitar-se +1d20]';
+                      adjustInterludeDice('physical', -1);
+                      setArmInterludePhysical(false);
+                    } else if (isInterludeMentAttr) {
+                      labelSuffix += ' [📚 Ler +1d20]';
+                      adjustInterludeDice('mental', -1);
+                      setArmInterludeMental(false);
                     }
                     onRoll(
                       `Teste de ${ATTRIBUTE_LABELS[attrKey]}${labelSuffix}`,
@@ -1343,10 +1586,26 @@ export function OrdemSheet({
               hasPrimeiraImpressao &&
               !primeiraImpressaoUsedInScene &&
               ['diplomacia', 'enganacao', 'intimidacao', 'intuicao'].includes(skill.id);
+            const isInterludePhysSkill =
+              armInterludePhysical &&
+              interludePhysical > 0 &&
+              ['for', 'agi', 'vig'].includes(attrForSkill);
+            const isInterludeMentSkill =
+              armInterludeMental &&
+              interludeMental > 0 &&
+              ['int', 'pre'].includes(attrForSkill);
             const rawDiceCount =
-              baseAttr + extraDice + (isPrimeiraImpressaoEligible ? 2 : 0);
+              baseAttr +
+              extraDice +
+              (isPrimeiraImpressaoEligible ? 2 : 0) +
+              (isInterludePhysSkill || isInterludeMentSkill ? 1 : 0);
 
-            const autoBonus = bonuses.skillBonusAll + (bonuses.skillBonus[skill.id] || 0);
+            const campoProtetorSkillBonus =
+              hasCampoProtetorAffinity && skill.id === 'reflexos' ? 5 : 0;
+            const autoBonus =
+              bonuses.skillBonusAll +
+              (bonuses.skillBonus[skill.id] || 0) +
+              campoProtetorSkillBonus;
             const ignoresLoadPenalty = bonuses.ignoresLoadPenaltySkills.includes(skill.id);
             const loadSkillPenalty =
               meta?.armorPenalty && isOverloaded && !ignoresLoadPenalty ? -5 : 0;
@@ -1485,6 +1744,15 @@ export function OrdemSheet({
 
               if (applyMissingKitPenalty) {
                 suffixParts.push('Sem Kit -5');
+              }
+              if (isInterludePhysSkill) {
+                suffixParts.push('🏋️ Exercitar-se +1d20');
+                adjustInterludeDice('physical', -1);
+                setArmInterludePhysical(false);
+              } else if (isInterludeMentSkill) {
+                suffixParts.push('📚 Ler +1d20');
+                adjustInterludeDice('mental', -1);
+                setArmInterludeMental(false);
               }
 
               const rollSuffix =

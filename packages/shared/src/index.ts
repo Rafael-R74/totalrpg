@@ -394,6 +394,15 @@ export interface OrdemSheetData {
   abilities?: CharacterAbility[];
   activeConditions?: ActiveCondition[];
   personalProfile?: CharacterPersonalProfile;
+  interludeBonusDice?: {
+    physical: number; // Exercitar-se (+1d20 em testes de FOR, AGI ou VIG)
+    mental: number;   // Ler (+1d20 em testes de INT ou PRE)
+  };
+  pendingInterlude?: {
+    id: string;
+    comfort: 0.5 | 1 | 2 | 3;
+    grantedAt: number;
+  } | null;
 }
 
 // Estrutura Específica de Ficha: Tormenta 20
@@ -428,6 +437,15 @@ export interface T20SheetData {
   abilities?: CharacterAbility[];
   activeConditions?: ActiveCondition[];
   personalProfile?: CharacterPersonalProfile;
+  interludeBonusDice?: {
+    physical: number; // Exercitar-se (+1d20 em testes de FOR, AGI ou VIG)
+    mental: number;   // Ler (+1d20 em testes de INT ou PRE)
+  };
+  pendingInterlude?: {
+    id: string;
+    comfort: 0.5 | 1 | 2 | 3;
+    grantedAt: number;
+  } | null;
 }
 
 // Modelo unificado de personagem com dados completos

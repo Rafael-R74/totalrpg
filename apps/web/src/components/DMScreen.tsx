@@ -126,6 +126,12 @@ export function DMScreen({
   const [conditionPickerCharId, setConditionPickerCharId] = useState<string | null>(null);
   const [initFeedback, setInitFeedback] = useState('');
   const [sceneEndToast, setSceneEndToast] = useState('');
+  const [isDMInterludeModalOpen, setIsDMInterludeModalOpen] = useState(false);
+  const [dmInterludeMode, setDmInterludeMode] = useState<'all' | 'individual'>('all');
+  const [dmInterludeGlobalComfort, setDmInterludeGlobalComfort] = useState<0.5 | 1 | 2 | 3>(1);
+  const [dmInterludePerCharComfort, setDmInterludePerCharComfort] = useState<
+    Record<string, 0 | 0.5 | 1 | 2 | 3>
+  >({});
 
   // Estados sincronizados com o Banco de Dados SQLite (Etapa 4D)
   const [combatants, setCombatants] = useState<CombatantEntry[]>([]);
@@ -648,6 +654,94 @@ async function handleDeliverItemToCharacter(
     }
   }
 
+  function handleOpenDMInterludeModal() {
+    if (!campaign) return;
+    const perCharMap: Record<string, 0 | 0.5 | 1 | 2 | 3> = {};
+    for (const c of campaign.characters) {
+      const existingComfort = (c.sheetData as any)?.pendingInterlude?.comfort;
+      perCharMap[c.id] =
+        existingComfort === 0.5 ||
+        existingComfort === 1 ||
+        existingComfort === 2 ||
+        existingComfort === 3
+          ? existingComfort
+          : 1;
+    }
+    setDmInterludePerCharComfort(perCharMap);
+    setIsDMInterludeModalOpen(true);
+  }
+
+  async function handleReleaseInterludeForPlayers() {
+    if (!campaign) return;
+    const interludeId = `interlude-${Date.now()}`;
+    const grantedAt = Date.now();
+    const updatedChars = campaign.characters.map((char) => {
+      const rawSheet = (char.sheetData || {}) as Record<string, any>;
+      const targetComfort =
+        dmInterludeMode === 'all'
+          ? dmInterludeGlobalComfort
+          : (dmInterludePerCharComfort[char.id] ?? 1);
+      return {
+        ...char,
+        sheetData: {
+          ...rawSheet,
+          pendingInterlude:
+            targetComfort === 0
+              ? null
+              : { id: interludeId, comfort: targetComfort, grantedAt },
+        },
+      };
+    });
+
+    setCampaign({ ...campaign, characters: updatedChars });
+    setIsDMInterludeModalOpen(false);
+    setSceneEndToast('🌙 Cena de Interlúdio liberada para os jogadores!');
+    setTimeout(() => setSceneEndToast(''), 3500);
+
+    try {
+      await Promise.all(
+        updatedChars.map((c) =>
+          updateCharacter(c.id, { sheetData: c.sheetData }).then(() =>
+            onBroadcastCharacterSync(c.id)
+          )
+        )
+      );
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  async function handleCancelAllPendingInterludes() {
+    if (!campaign) return;
+    const updatedChars = campaign.characters.map((char) => {
+      const rawSheet = (char.sheetData || {}) as Record<string, any>;
+      return {
+        ...char,
+        sheetData: {
+          ...rawSheet,
+          pendingInterlude: null,
+        },
+      };
+    });
+
+    setCampaign({ ...campaign, characters: updatedChars });
+    setIsDMInterludeModalOpen(false);
+    setSceneEndToast('🌙 Interlúdios pendentes recolhidos para todos os personagens.');
+    setTimeout(() => setSceneEndToast(''), 3500);
+
+    try {
+      await Promise.all(
+        updatedChars.map((c) =>
+          updateCharacter(c.id, { sheetData: c.sheetData }).then(() =>
+            onBroadcastCharacterSync(c.id)
+          )
+        )
+      );
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
   async function handleApplyConditionToChar(char: DMScreenCharacter, condEntry: CompendiumEntryData) {
     const rawSheet = (char.sheetData || {}) as Record<string, any>;
     const currentConditions: ActiveCondition[] = Array.isArray(rawSheet.conditions)
@@ -784,6 +878,17 @@ async function handleDeliverItemToCharacter(
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {campaign.system === 'ordem-paranormal' && (
+              <button
+                type="button"
+                onClick={handleOpenDMInterludeModal}
+                title="Libera a Cena de Interlúdio para os jogadores, definindo o tipo de descanso para todos ou individualmente"
+                className="px-4 py-2.5 bg-indigo-950/80 hover:bg-indigo-800 border border-indigo-500/60 text-indigo-200 rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-indigo-950/40 flex items-center gap-2"
+              >
+                🌙 Iniciar Interlúdio
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleEndSceneForAll}
@@ -1694,6 +1799,159 @@ async function handleDeliverItemToCharacter(
           </div>
         </div>
       </div>
+
+      {/* MODAL DO MESTRE: LIBERAR CENA DE INTERLÚDIO */}
+      {isDMInterludeModalOpen && campaign.system === 'ordem-paranormal' && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-indigo-500/60 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-start gap-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
+                  👑 Controle do Mestre • Ordem Paranormal
+                </span>
+                <h3 className="text-lg font-black text-white">Liberar Cena de Interlúdio</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Defina o tipo de descanso do abrigo para todos ou individualmente. A ficha de cada jogador liberará as escolhas automaticamente.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDMInterludeModalOpen(false)}
+                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modo: Todos vs Individual */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDmInterludeMode('all')}
+                className={`py-2 px-3 rounded-xl text-xs font-extrabold border cursor-pointer transition ${
+                  dmInterludeMode === 'all'
+                    ? 'bg-indigo-600 text-white border-indigo-400'
+                    : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                }`}
+              >
+                👥 Mesmo Descanso para Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setDmInterludeMode('individual')}
+                className={`py-2 px-3 rounded-xl text-xs font-extrabold border cursor-pointer transition ${
+                  dmInterludeMode === 'individual'
+                    ? 'bg-indigo-600 text-white border-indigo-400'
+                    : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                }`}
+              >
+                👤 Individual por Personagem
+              </button>
+            </div>
+
+            {dmInterludeMode === 'all' ? (
+              <div className="space-y-2 p-3 rounded-xl bg-zinc-950 border border-zinc-800">
+                <label className="block text-xs font-bold uppercase text-zinc-400">
+                  Condição de Conforto do Abrigo
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { mult: 0.5 as const, label: 'Precário (0,5x)' },
+                    { mult: 1 as const, label: 'Normal (1x)' },
+                    { mult: 2 as const, label: 'Confortável (2x)' },
+                    { mult: 3 as const, label: 'Luxuoso (3x)' },
+                  ].map((c) => (
+                    <button
+                      key={c.mult}
+                      type="button"
+                      onClick={() => setDmInterludeGlobalComfort(c.mult)}
+                      className={`py-2 px-2 rounded-lg text-xs font-bold border cursor-pointer ${
+                        dmInterludeGlobalComfort === c.mult
+                          ? 'bg-indigo-600 text-white border-indigo-400'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 p-3 rounded-xl bg-zinc-950 border border-zinc-800 max-h-72 overflow-y-auto">
+                {campaign.characters.length === 0 ? (
+                  <p className="text-xs text-zinc-500 text-center py-4">
+                    Nenhum personagem vinculado a esta campanha.
+                  </p>
+                ) : (
+                  campaign.characters.map((ch) => {
+                    const hasPending = Boolean((ch.sheetData as any)?.pendingInterlude);
+                    const val = dmInterludePerCharComfort[ch.id] ?? 1;
+                    return (
+                      <div
+                        key={ch.id}
+                        className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold text-white truncate">
+                            {ch.name}
+                          </span>
+                          {hasPending && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700">
+                              🌙 Pendente
+                            </span>
+                          )}
+                        </div>
+                        <select
+                          value={val}
+                          onChange={(e) =>
+                            setDmInterludePerCharComfort((prev) => ({
+                              ...prev,
+                              [ch.id]: Number(e.target.value) as 0 | 0.5 | 1 | 2 | 3,
+                            }))
+                          }
+                          className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white"
+                        >
+                          <option value={0}>Não liberar</option>
+                          <option value={0.5}>Precário (0,5x)</option>
+                          <option value={1}>Normal (1x)</option>
+                          <option value={2}>Confortável (2x)</option>
+                          <option value={3}>Luxuoso (3x)</option>
+                        </select>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={handleCancelAllPendingInterludes}
+                className="px-3 py-2 rounded-lg bg-red-950/70 hover:bg-red-800 text-red-200 border border-red-700/70 text-xs font-bold cursor-pointer"
+              >
+                🚫 Recolher Interlúdios Pendentes
+              </button>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsDMInterludeModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-bold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReleaseInterludeForPlayers}
+                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black cursor-pointer"
+                >
+                  🌙 Liberar Interlúdio
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
