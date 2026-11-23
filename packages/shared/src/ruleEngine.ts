@@ -36,6 +36,9 @@ export interface ComputedBonuses {
   totalCursesCarried: number;
   vestimentaLimitExceeded: boolean;
   hasFearCurse: boolean;
+  effectiveProficiencies: string[];
+  nonProficientProtections: Array<{ itemId: string; itemName: string; requiredLabel: string }>;
+  hasProtectionProficiencyPenalty: boolean;
 }
 
 export function calculateActiveBonuses(
@@ -81,6 +84,9 @@ export function calculateActiveBonuses(
     totalCursesCarried: derived?.totalCursesCarried || 0,
     vestimentaLimitExceeded: derived?.vestimentaLimitExceeded || false,
     hasFearCurse: derived?.hasFearCurse || false,
+    effectiveProficiencies: derived?.effectiveProficiencies || [],
+    nonProficientProtections: derived?.nonProficientProtections || [],
+    hasProtectionProficiencyPenalty: derived?.hasProtectionProficiencyPenalty || false,
   };
 
   // 1. Coleta todos os modificadores ativos (Poderes ativos + Itens equipados + Derivados de Modificações/Maldições + Condições)

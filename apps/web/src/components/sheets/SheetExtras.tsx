@@ -35,10 +35,14 @@ import {
   findOrdemCurseDef,
   ORDEM_ACCESSORY_ELIGIBLE_SKILLS,
   OrdemElement,
+  CharacterPersonalProfile,
+  checkOrdemWeaponProficiency,
+  checkOrdemProtectionProficiency,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 import { ItemCustomizationModal } from './ItemCustomizationModal';
 import { InventoryItemActionBar } from './InventoryItemActionBar';
+import { CharacterPersonalTab } from './CharacterPersonalTab';
 
 interface SheetExtrasProps {
   system: SystemId;
@@ -54,6 +58,9 @@ interface SheetExtrasProps {
   abilities: CharacterAbility[];
   inventory: RPGItem[];
   maxLoadSlots: number;
+  personalProfile?: CharacterPersonalProfile;
+  canEditPersonal?: boolean;
+  onUpdatePersonalProfile?: (next: CharacterPersonalProfile) => void;
   onUpdateAttacks: (attacks: PreparedAttack[]) => void;
   onUpdateAbilities: (abilities: CharacterAbility[]) => void;
   onUpdateInventory: (inventory: RPGItem[]) => void;
@@ -115,6 +122,9 @@ export function SheetExtras({
   abilities,
   inventory,
   maxLoadSlots,
+  personalProfile,
+  canEditPersonal,
+  onUpdatePersonalProfile,
   onUpdateAttacks,
   onUpdateAbilities,
   onUpdateInventory,
@@ -135,7 +145,9 @@ export function SheetExtras({
   hasActiveInitiativeOrder,
   turnResetSignal,
 }: SheetExtrasProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'combat' | 'powers' | 'spells' | 'inventory'>('combat');
+  const [activeSubTab, setActiveSubTab] = useState<
+    'combat' | 'powers' | 'spells' | 'inventory' | 'personal'
+  >('combat');
 
   const normOrigin = (ordemSheetData?.origin || '').trim().toLowerCase();
   const originObj = ORDEM_ORIGINS.find(
@@ -1460,6 +1472,18 @@ export function SheetExtras({
           >
             🎒 Inventário ({currentLoad}/{effectiveMaxSlots})
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('personal')}
+            className={`pb-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer border-b-2 ${
+              activeSubTab === 'personal'
+                ? 'border-amber-500 text-amber-500'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            👤 Pessoal & História
+          </button>
         </div>
 
         {canShowAddButton && (
@@ -1751,7 +1775,15 @@ export function SheetExtras({
                     : undefined;
 
                 // Dados de Ataque (d20):
-                // Motosserra impõe -1d20; Rajada sem Compensador impõe -1d20
+                // Motosserra impõe -1d20; Rajada sem Compensador impõe -1d20; Sem Proficiência impõe -2d20 (p. 54)
+                const weaponProfCheck = isOrdemSystem
+                  ? checkOrdemWeaponProficiency(
+                      atk.name,
+                      bonuses.effectiveProficiencies,
+                      descLower,
+                      isUnarmed
+                    )
+                  : { proficient: true, requiredLabel: '', penaltyDice: 0 };
                 const motosserraDicePenalty = isOrdemSystem && isMotosserra ? -1 : 0;
                 const rajadaDicePenalty =
                   isRajadaActive && !weaponMods.hasCompensador ? -1 : 0;
@@ -1764,7 +1796,8 @@ export function SheetExtras({
                   rawAttackDice +
                   bonuses.attackDiceBonus +
                   motosserraDicePenalty +
-                  rajadaDicePenalty;
+                  rajadaDicePenalty +
+                  weaponProfCheck.penaltyDice;
 
                 // Bônus de Ataque (+X):
                 const workToolAtkBonus = atk.isWorkTool || invMatch?.isFavoriteTool ? 1 : 0;
@@ -2086,6 +2119,14 @@ export function SheetExtras({
                               🎯 Mirando (+5 Crít)
                             </span>
                           )}
+                          {!weaponProfCheck.proficient && (
+                            <span
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-200 border border-red-700"
+                              title={`Exige proficiência: ${weaponProfCheck.requiredLabel} (p. 54: -2d20 nos testes de ataque)`}
+                            >
+                              ⚠️ Sem Proficiência (-2d20 Atq • {weaponProfCheck.requiredLabel})
+                            </span>
+                          )}
                           {weaponMods.badges.map((b, bIdx) => (
                             <span
                               key={bIdx}
@@ -2169,6 +2210,9 @@ export function SheetExtras({
 
                             if (isAimingFuzil) {
                               suffixParts.push('🎯 Mirando (+5 Crít)');
+                            }
+                            if (!weaponProfCheck.proficient) {
+                              suffixParts.push('⚠️ Sem Proficiência -2d20');
                             }
                             if (isRajadaActive) {
                               suffixParts.push('🔫 Rajada (+1 dado)');
@@ -2675,6 +2719,9 @@ export function SheetExtras({
                                 ];
                                 if (isAimingFuzil) {
                                   suffixParts.push('🎯 Mirando (+5 Crít)');
+                                }
+                                if (!weaponProfCheck.proficient) {
+                                  suffixParts.push('⚠️ Sem Proficiência -2d20');
                                 }
                                 const dmgSuffixParts: string[] = [];
 
@@ -3374,6 +3421,23 @@ export function SheetExtras({
                                   👁️ {item.element ? item.element : 'Paranormal'}
                                 </span>
                               )}
+                              {system === 'ordem-paranormal' &&
+                                item.isEquipped &&
+                                (() => {
+                                  const protCheck = checkOrdemProtectionProficiency(
+                                    item,
+                                    bonuses.effectiveProficiencies
+                                  );
+                                  if (!protCheck.isProtection || protCheck.proficient) return null;
+                                  return (
+                                    <span
+                                      className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-200 border border-red-700"
+                                      title={`Exige ${protCheck.requiredLabel} (p. 62: -2d20 em testes de Força e Agilidade)`}
+                                    >
+                                      ⚠️ Sem Proficiência (-2d20 FOR/AGI)
+                                    </span>
+                                  );
+                                })()}
                               {item.isFavoriteTool && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
                                   🔧 Ferramenta Favorita (-1 Cat.)
@@ -3642,6 +3706,19 @@ export function SheetExtras({
             );
           })()}
         </div>
+      )}
+
+      {/* CONTEÚDO DA ABA 5: PESSOAL & HISTÓRIA */}
+      {activeSubTab === 'personal' && (
+        <CharacterPersonalTab
+          system={system}
+          personalProfile={personalProfile || {}}
+          canEditPersonal={Boolean(canEditPersonal)}
+          proficiencies={
+            system === 'ordem-paranormal' ? bonuses.effectiveProficiencies : []
+          }
+          onUpdateProfile={(nextProfile) => onUpdatePersonalProfile?.(nextProfile)}
+        />
       )}
     </div>
   );

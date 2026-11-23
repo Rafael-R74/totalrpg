@@ -28,6 +28,7 @@ import {
   AttackDamageRollPayload,
   ForcaOpressoraRollPayload,
   CursePricePrompt,
+  CharacterPersonalProfile,
   getOrdemItemEffectiveSlots,
 } from '@totalrpg/shared';
 import {
@@ -1701,7 +1702,26 @@ export function SheetContainer({
                   p.toLowerCase().includes('protecoes pesadas')
               )
             ) {
-              nextProficiencies.push('Proteções pesadas');
+              nextProficiencies.push('Proteções pesadas (e Escudos)');
+            }
+            if (
+              (lowerPowerName.includes('balística avançada') ||
+                lowerPowerName.includes('balistica avancada')) &&
+              !nextProficiencies.some((p) => p.toLowerCase().includes('táticas de fogo'))
+            ) {
+              nextProficiencies.push('Armas táticas de fogo');
+            }
+            if (
+              lowerPowerName.includes('ninja urbano') &&
+              !nextProficiencies.some((p) => p.toLowerCase().includes('corpo a corpo e de disparo'))
+            ) {
+              nextProficiencies.push('Armas táticas corpo a corpo e de disparo');
+            }
+            if (
+              lowerPowerName.includes('mira de elite') &&
+              !nextProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+            ) {
+              nextProficiencies.push('Armas de fogo (balas longas)');
             }
             if (
               lowerPowerName.includes('artista marcial') &&
@@ -2267,9 +2287,18 @@ export function SheetContainer({
                       className="bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-xl font-extrabold text-white"
                     />
                   ) : (
-                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                      {character.name}
-                    </h2>
+                    <div className="flex flex-wrap items-baseline gap-2.5">
+                      <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                        {character.name}
+                      </h2>
+                      {(rawSheet.personalProfile?.age || rawSheet.personalProfile?.pronouns) && (
+                        <span className="text-xs font-medium text-zinc-400 bg-zinc-950 border border-zinc-800 px-2.5 py-0.5 rounded-full">
+                          {[rawSheet.personalProfile?.age, rawSheet.personalProfile?.pronouns]
+                            .filter(Boolean)
+                            .join(' • ')}
+                        </span>
+                      )}
+                    </div>
                   )}
 
                   {activeConditions.map((cond) => (
@@ -3824,6 +3853,8 @@ export function SheetContainer({
                   tempHp: updatedData.tempHp ?? prevRaw.tempHp ?? 0,
                   tempPe: updatedData.tempPe ?? prevRaw.tempPe ?? 0,
                   sceneEffects: updatedData.sceneEffects ?? prevRaw.sceneEffects ?? [],
+                  proficiencies: updatedData.proficiencies ?? prevRaw.proficiencies,
+                  personalProfile: updatedData.personalProfile ?? prevRaw.personalProfile,
                 } as any,
               };
             })
@@ -3866,6 +3897,8 @@ export function SheetContainer({
                   tempHp: prevRaw.tempHp || 0,
                   tempPe: prevRaw.tempPe || 0,
                   sceneEffects: prevRaw.sceneEffects || [],
+                  proficiencies: updatedData.proficiencies ?? prevRaw.proficiencies,
+                  personalProfile: updatedData.personalProfile ?? prevRaw.personalProfile,
                 } as any,
               };
             })
@@ -3895,6 +3928,20 @@ export function SheetContainer({
         abilities={characterAbilities}
         inventory={character.inventory || []}
         maxLoadSlots={maxLoadSlots}
+        personalProfile={(rawSheet.personalProfile || {}) as CharacterPersonalProfile}
+        canEditPersonal={!isLockedByMaster}
+        onUpdatePersonalProfile={(nextProfile) =>
+          applyLocalCharacterUpdate(
+            (base) => ({
+              ...base,
+              sheetData: {
+                ...((base.sheetData || {}) as Record<string, any>),
+                personalProfile: nextProfile,
+              },
+            }),
+            true
+          )
+        }
         onUpdateAttacks={(newAttacks) =>
           applyLocalCharacterUpdate((base) => ({ ...base, attacks: newAttacks }))
         }
