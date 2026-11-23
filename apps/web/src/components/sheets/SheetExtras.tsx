@@ -38,6 +38,7 @@ import {
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 import { ItemCustomizationModal } from './ItemCustomizationModal';
+import { InventoryItemActionBar } from './InventoryItemActionBar';
 
 interface SheetExtrasProps {
   system: SystemId;
@@ -3482,6 +3483,43 @@ export function SheetExtras({
                           )}
                         </div>
                       </div>
+
+                      {/* Ações Mecânicas do Item (Consumíveis, Granadas, Selos, Operacionais, Itens Amaldiçoados e Maldições Ativas) */}
+                      {system === 'ordem-paranormal' && ordemSheetData && (
+                        <InventoryItemActionBar
+                          item={item}
+                          ordemSheetData={ordemSheetData}
+                          bonuses={bonuses}
+                          abilities={abilities}
+                          compendiumEntries={compendiumEntries}
+                          onUpdateItem={(updated) =>
+                            onUpdateInventory(
+                              inventory.map((i) => (i.id === updated.id ? updated : i))
+                            )
+                          }
+                          onConsumeUnit={(id) => {
+                            const target = inventory.find((i) => i.id === id);
+                            if (!target) return;
+                            if ((target.quantity || 1) > 1) {
+                              onUpdateInventory(
+                                inventory.map((i) =>
+                                  i.id === id ? { ...i, quantity: (i.quantity || 1) - 1 } : i
+                                )
+                              );
+                            } else {
+                              onUpdateInventory(inventory.filter((i) => i.id !== id));
+                            }
+                          }}
+                          onOpenCustomize={(id) => setCustomizingItemId(id)}
+                          onSpendResource={onSpendResource}
+                          onHealPv={onHealPv}
+                          onTakePvDamage={onTakePvDamage}
+                          onGrantTempPe={onGrantTempPe}
+                          onAddSceneEffect={onAddSceneEffect}
+                          onFeedback={(msg) => setInventoryFeedback(msg)}
+                          onRoll={onRoll}
+                        />
+                      )}
 
                       {/* Rodapé do Card: Controles secundários, Imagem, Trocas e Exclusão */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/70">
