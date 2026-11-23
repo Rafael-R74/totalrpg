@@ -327,6 +327,21 @@ export interface SceneEffect {
   modifiers?: RuleModifier[];
 }
 
+export interface CharacterPersonalProfile {
+  age?: string;
+  pronouns?: string;
+  height?: string;
+  weight?: string;
+  birthplace?: string;
+  occupation?: string;
+  appearance?: string;
+  personality?: string;
+  backstory?: string;
+  goals?: string;
+  bonds?: string;
+  personalNotes?: string;
+}
+
 export interface OrdemSheetData {
   origin: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -347,6 +362,7 @@ export interface OrdemSheetData {
   skills: OrdemSkill[];
   abilities?: CharacterAbility[];
   activeConditions?: ActiveCondition[];
+  personalProfile?: CharacterPersonalProfile;
 }
 
 // Estrutura Específica de Ficha: Tormenta 20
@@ -373,12 +389,14 @@ export interface T20SheetData {
   level: number;
   deity: string;
   origin: string;
+  proficiencies?: string[];
   tempHp?: number;
   sceneEffects?: SceneEffect[];
   attributes: T20Attributes;
   skills: T20Skill[];
   abilities?: CharacterAbility[];
   activeConditions?: ActiveCondition[];
+  personalProfile?: CharacterPersonalProfile;
 }
 
 // Modelo unificado de personagem com dados completos

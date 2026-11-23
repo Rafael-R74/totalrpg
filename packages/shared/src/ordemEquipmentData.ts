@@ -1285,6 +1285,341 @@ export interface OrdemInventoryDerivedEffects {
   cursePriceByAttr: Record<keyof OrdemAttributes, OrdemCursePriceByAttr | null>;
   totalCursesCarried: number;
   hasFearCurse: boolean;
+  effectiveProficiencies: string[];
+  nonProficientProtections: Array<{ itemId: string; itemName: string; requiredLabel: string }>;
+  hasProtectionProficiencyPenalty: boolean;
+}
+
+// ============================================================================
+// 5B. PROFICIÊNCIAS OFICIAIS DE ORDEM PARANORMAL v1.3 (p. 54 e p. 62)
+// ============================================================================
+export const ORDEM_PROFICIENCY_OPTIONS = [
+  { id: 'armas_simples', label: 'Armas simples' },
+  { id: 'armas_taticas', label: 'Armas táticas' },
+  { id: 'armas_taticas_corpo_disparo', label: 'Armas táticas corpo a corpo e de disparo' },
+  { id: 'armas_taticas_fogo', label: 'Armas táticas de fogo' },
+  { id: 'armas_balas_longas', label: 'Armas de fogo (balas longas)' },
+  { id: 'armas_pesadas', label: 'Armas pesadas' },
+  { id: 'protecoes_leves', label: 'Proteções leves' },
+  { id: 'protecoes_pesadas', label: 'Proteções pesadas (e Escudos)' },
+] as const;
+
+export const ORDEM_FOR_AGI_SKILL_IDS = [
+  'acrobacia',
+  'atletismo',
+  'crime',
+  'furtividade',
+  'iniciativa',
+  'luta',
+  'pilotagem',
+  'pontaria',
+  'reflexos',
+] as const;
+
+const DEFAULT_CLASS_PROFICIENCIES: Record<string, string[]> = {
+  combatente: ['Armas simples', 'Armas táticas', 'Proteções leves'],
+  especialista: ['Armas simples', 'Proteções leves'],
+  ocultista: ['Armas simples'],
+  mundano: ['Armas simples'],
+};
+
+function normalizeProfKey(p: string): string {
+  const lp = p.trim().toLowerCase();
+  if (lp.includes('proteções pesadas') || lp.includes('protecoes pesadas')) {
+    return 'protecoes_pesadas';
+  }
+  if (lp.includes('proteções leves') || lp.includes('protecoes leves')) {
+    return 'protecoes_leves';
+  }
+  return lp;
+}
+
+export function computeOrdemEffectiveProficiencies(
+  sheetData?: Partial<OrdemSheetData>,
+  abilities: CharacterAbility[] = []
+): string[] {
+  const baseList =
+    Array.isArray(sheetData?.proficiencies) && sheetData.proficiencies.length > 0
+      ? [...sheetData.proficiencies]
+      : [...(DEFAULT_CLASS_PROFICIENCIES[sheetData?.characterClass || 'ocultista'] || ['Armas simples'])];
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  const pushUnique = (label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const key = normalizeProfKey(trimmed);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(trimmed);
+  };
+
+  for (const item of baseList) {
+    pushUnique(item);
+  }
+  if (result.length === 0) {
+    pushUnique('Armas simples');
+  }
+
+  for (const ab of abilities) {
+    const an = (ab.name || '').toLowerCase();
+    const aid = (ab.id || '').toLowerCase();
+    if (an.includes('armamento pesado') || aid.includes('armamento-pesado')) {
+      pushUnique('Armas pesadas');
+    }
+    if (
+      an.includes('proteção pesada') ||
+      an.includes('protecao pesada') ||
+      aid.includes('protecao-pesada')
+    ) {
+      pushUnique('Proteções pesadas (e Escudos)');
+    }
+    if (
+      an.includes('balística avançada') ||
+      an.includes('balistica avancada') ||
+      aid.includes('balistica-avancada')
+    ) {
+      pushUnique('Armas táticas de fogo');
+    }
+    if (an.includes('ninja urbano') || aid.includes('ninja-urbano')) {
+      pushUnique('Armas táticas corpo a corpo e de disparo');
+    }
+    if (an.includes('mira de elite') || aid.includes('mira-elite')) {
+      pushUnique('Armas de fogo (balas longas)');
+    }
+  }
+
+  return result;
+}
+
+export type OrdemWeaponProficiencyCategory =
+  | 'simples'
+  | 'tatica_corpo'
+  | 'tatica_disparo'
+  | 'tatica_fogo'
+  | 'pesada';
+
+export function classifyOrdemWeaponProficiency(
+  weaponName: string,
+  description = '',
+  isUnarmed = false
+): {
+  category: OrdemWeaponProficiencyCategory;
+  usesBalasLongas: boolean;
+  requiredLabel: string;
+} {
+  const ln = (weaponName || '').toLowerCase();
+  const ld = (description || '').toLowerCase();
+
+  if (
+    isUnarmed ||
+    ln.includes('desarmado') ||
+    ln.includes('soqueira') ||
+    ln.includes('punhos enraivecidos') ||
+    ln.includes('arcabuz dos moretti')
+  ) {
+    return { category: 'simples', usesBalasLongas: false, requiredLabel: 'Armas simples' };
+  }
+
+  // Armas Pesadas (checar antes de lança / metralhadora simples)
+  if (
+    (ln.includes('metralhadora') && !ln.includes('submetralhadora')) ||
+    ln.includes('lança-chamas') ||
+    ln.includes('lanca-chamas') ||
+    ln.includes('bazuca') ||
+    ln.includes('lança-foguetes') ||
+    ln.includes('lanca-foguetes') ||
+    ln.includes('(pesada')
+  ) {
+    return {
+      category: 'pesada',
+      usesBalasLongas: ln.includes('metralhadora') && !ln.includes('submetralhadora'),
+      requiredLabel: 'Armas pesadas',
+    };
+  }
+
+  // Armas Táticas de Fogo
+  if (
+    ln.includes('submetralhadora') ||
+    ln.includes('espingarda') ||
+    ln.includes('escopeta') ||
+    ln.includes('fuzil de assalto') ||
+    ln.includes('fuzil de precisão') ||
+    ln.includes('fuzil de precisao') ||
+    ln.includes('sniper') ||
+    (ln.includes('(tática') && ln.includes('fogo')) ||
+    (ln.includes('(tatica') && ln.includes('fogo'))
+  ) {
+    const usesLong =
+      ln.includes('fuzil de assalto') ||
+      ln.includes('fuzil de precisão') ||
+      ln.includes('fuzil de precisao') ||
+      ln.includes('sniper') ||
+      ld.includes('balas longas');
+    return {
+      category: 'tatica_fogo',
+      usesBalasLongas: usesLong,
+      requiredLabel: 'Armas táticas de fogo',
+    };
+  }
+
+  // Armas Táticas de Disparo (exceto fogo)
+  if (ln.includes('arco composto') || ln.includes('balestra')) {
+    return {
+      category: 'tatica_disparo',
+      usesBalasLongas: false,
+      requiredLabel: 'Armas táticas de disparo',
+    };
+  }
+
+  // Armas Táticas Corpo a Corpo
+  if (
+    ln.includes('machadinha') ||
+    ln.includes('nunchaku') ||
+    ln.includes('corrente') ||
+    ln.includes('espada') ||
+    ln.includes('florete') ||
+    ln.includes('machado') ||
+    ln.includes('maça') ||
+    ln.includes('maca') ||
+    ln.includes('acha') ||
+    ln.includes('gadanho') ||
+    ln.includes('foice') ||
+    ln.includes('katana') ||
+    ln.includes('marreta') ||
+    ln.includes('montante') ||
+    ln.includes('motosserra') ||
+    ln.includes('(tática') ||
+    ln.includes('(tatica')
+  ) {
+    return {
+      category: 'tatica_corpo',
+      usesBalasLongas: false,
+      requiredLabel: 'Armas táticas corpo a corpo',
+    };
+  }
+
+  // Armas Simples (faca, martelo, punhal, bastão, machete, lança, cajado, arco simples, besta, pistola, revólver, fuzil de caça...)
+  const isFuzilCaca = ln.includes('fuzil de caça') || ln.includes('fuzil de caca');
+  return {
+    category: 'simples',
+    usesBalasLongas: isFuzilCaca || ld.includes('balas longas'),
+    requiredLabel: 'Armas simples',
+  };
+}
+
+export function checkOrdemWeaponProficiency(
+  weaponName: string,
+  effectiveProficiencies: string[],
+  description = '',
+  isUnarmed = false
+): { proficient: boolean; requiredLabel: string; penaltyDice: number } {
+  const { category, usesBalasLongas, requiredLabel } = classifyOrdemWeaponProficiency(
+    weaponName,
+    description,
+    isUnarmed
+  );
+
+  const lowerProfs = effectiveProficiencies.map((p) => p.trim().toLowerCase());
+  const cleanWeaponName = weaponName.split('(')[0].trim().toLowerCase();
+
+  if (cleanWeaponName && lowerProfs.some((p) => p === cleanWeaponName || (cleanWeaponName.length >= 4 && p.includes(cleanWeaponName)))) {
+    return { proficient: true, requiredLabel, penaltyDice: 0 };
+  }
+
+  const hasGeneralTaticas = lowerProfs.some(
+    (p) =>
+      p === 'armas táticas' ||
+      p === 'armas taticas' ||
+      (p.includes('armas táticas') && !p.includes('de fogo') && !p.includes('corpo'))
+  );
+  const hasBalasLongas = lowerProfs.some((p) => p.includes('balas longas'));
+
+  let proficient = false;
+  switch (category) {
+    case 'simples':
+      proficient =
+        lowerProfs.length === 0 ||
+        lowerProfs.some((p) => p.includes('armas simples') || p === 'todas as armas');
+      break;
+    case 'tatica_corpo':
+      proficient =
+        hasGeneralTaticas ||
+        lowerProfs.some(
+          (p) =>
+            p.includes('corpo a corpo') ||
+            p.includes('armas táticas corpo') ||
+            p.includes('armas taticas corpo') ||
+            p === 'todas as armas'
+        );
+      break;
+    case 'tatica_disparo':
+      proficient =
+        hasGeneralTaticas ||
+        lowerProfs.some(
+          (p) => p.includes('de disparo') || p === 'todas as armas'
+        );
+      break;
+    case 'tatica_fogo':
+      proficient =
+        hasGeneralTaticas ||
+        lowerProfs.some(
+          (p) =>
+            p.includes('armas táticas de fogo') ||
+            p.includes('armas taticas de fogo') ||
+            p === 'armas de fogo' ||
+            p === 'todas as armas'
+        ) ||
+        (usesBalasLongas && hasBalasLongas);
+      break;
+    case 'pesada':
+      proficient =
+        lowerProfs.some((p) => p.includes('armas pesadas') || p === 'todas as armas') ||
+        (usesBalasLongas && hasBalasLongas);
+      break;
+  }
+
+  return {
+    proficient,
+    requiredLabel,
+    penaltyDice: proficient ? 0 : -2,
+  };
+}
+
+export function checkOrdemProtectionProficiency(
+  item: Pick<RPGItem, 'name' | 'description' | 'itemKind' | 'isCursedSpecial' | 'isParanormal'>,
+  effectiveProficiencies: string[]
+): { isProtection: boolean; proficient: boolean; requiredLabel: string } {
+  const kind = inferOrdemItemKind(item);
+  const lowerProfs = effectiveProficiencies.map((p) => p.trim().toLowerCase());
+
+  if (kind === 'protection_light') {
+    const ok = lowerProfs.some(
+      (p) =>
+        p.includes('proteções leves') ||
+        p.includes('protecoes leves') ||
+        p.includes('todas as prote')
+    );
+    return { isProtection: true, proficient: ok, requiredLabel: 'Proteções leves' };
+  }
+
+  if (kind === 'protection_heavy' || kind === 'shield') {
+    const ok = lowerProfs.some(
+      (p) =>
+        p.includes('proteções pesadas') ||
+        p.includes('protecoes pesadas') ||
+        (kind === 'shield' && p.includes('escudo')) ||
+        p.includes('todas as prote')
+    );
+    return {
+      isProtection: true,
+      proficient: ok,
+      requiredLabel: 'Proteções pesadas (e Escudos)',
+    };
+  }
+
+  return { isProtection: false, proficient: true, requiredLabel: '' };
 }
 
 export function computeOrdemInventoryDerivedEffects(
@@ -1347,6 +1682,14 @@ export function computeOrdemInventoryDerivedEffects(
   // Kits presentes na mochila (não precisam estar equipados, basta possuir no inventário — ou acessório Instrumental)
   const ownedKitSkills = new Set<string>();
 
+  // Proficiências efetivas e rastreamento de proteções/escudos equipados sem proficiência (p. 62)
+  const effectiveProficiencies = computeOrdemEffectiveProficiencies(sheetData, abilities);
+  const nonProficientProtections: Array<{
+    itemId: string;
+    itemName: string;
+    requiredLabel: string;
+  }> = [];
+
   for (const item of inventory) {
     const ln = (item.name || '').toLowerCase();
     const kind = inferOrdemItemKind(item);
@@ -1378,6 +1721,16 @@ export function computeOrdemInventoryDerivedEffects(
 
     // Os bônus mecânicos de equipamento aplicam-se enquanto EQUIPADO / EM MÃOS
     if (!item.isEquipped) continue;
+
+    // 2B. Checagem de Proficiência em Proteção / Escudo equipado (p. 62)
+    const protCheck = checkOrdemProtectionProficiency(item, effectiveProficiencies);
+    if (protCheck.isProtection && !protCheck.proficient) {
+      nonProficientProtections.push({
+        itemId: item.id,
+        itemName: item.name,
+        requiredLabel: protCheck.requiredLabel,
+      });
+    }
 
     // Vestimentas: limite de 2 simultâneas (p. 63)
     const isVestimenta =
@@ -1576,6 +1929,26 @@ export function computeOrdemInventoryDerivedEffects(
     });
   }
 
+  // Penalidade por Não Proficiência em Proteções / Escudos (p. 62):
+  // -2d20 em testes baseados em Força e Agilidade (aplica 1 única vez mesmo se houver escudo + proteção)
+  const hasProtectionProficiencyPenalty = nonProficientProtections.length > 0;
+  if (hasProtectionProficiencyPenalty) {
+    const targetKeys = new Set<string>(['for', 'agi', ...ORDEM_FOR_AGI_SKILL_IDS]);
+    for (const sk of sheetData?.skills || []) {
+      if (sk.attribute === 'for' || sk.attribute === 'agi') {
+        targetKeys.add(sk.id.toLowerCase().trim());
+      }
+    }
+    for (const key of targetKeys) {
+      dynamicModifiers.push({
+        id: `dyn-nonprof-prot-${key}`,
+        targetType: 'skill_dice',
+        targetKey: key,
+        value: -2,
+      });
+    }
+  }
+
   // Kits faltantes
   const missingSkillKits = ORDEM_KIT_REQUIRED_SKILLS.filter(
     (k) => !ownedKitSkills.has(k.skillId)
@@ -1627,5 +2000,8 @@ export function computeOrdemInventoryDerivedEffects(
     cursePriceByAttr,
     totalCursesCarried,
     hasFearCurse: curseCountsByElement.Medo > 0,
+    effectiveProficiencies,
+    nonProficientProtections,
+    hasProtectionProficiencyPenalty,
   };
 }

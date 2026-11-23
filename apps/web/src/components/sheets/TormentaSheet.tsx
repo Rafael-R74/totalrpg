@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   T20SheetData,
   T20Attributes,
@@ -37,6 +38,7 @@ export function TormentaSheet({
   onChange,
   onRoll,
 }: TormentaSheetProps) {
+  const [newProfText, setNewProfText] = useState('');
   const fallback = createDefaultT20Sheet().sheetData;
   const baseSkills = data?.skills && data.skills.length > 0 ? data.skills : fallback.skills;
 
@@ -149,6 +151,74 @@ export function TormentaSheet({
               </span>
             )}
           </div>
+        </div>
+
+        {/* Painel de Proficiências (Tormenta 20) */}
+        <div className="col-span-2 md:col-span-6 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-red-400 font-black">
+            🎖️ Proficiências:
+          </span>
+          {(safeData.proficiencies || []).length === 0 ? (
+            <span className="text-xs text-zinc-500">Nenhuma proficiência listada</span>
+          ) : (
+            (safeData.proficiencies || []).map((prof, idx) => (
+              <span
+                key={`${prof}-${idx}`}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-200 border border-zinc-700"
+              >
+                <span>{prof}</span>
+                {(allowAttrEdit || allowSkillEdit) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        ...safeData,
+                        proficiencies: (safeData.proficiencies || []).filter((_, i) => i !== idx),
+                      })
+                    }
+                    className="text-zinc-500 hover:text-red-400 text-[10px] font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </span>
+            ))
+          )}
+          {(allowAttrEdit || allowSkillEdit) && (
+            <div className="flex items-center gap-1 ml-auto">
+              <input
+                type="text"
+                value={newProfText}
+                onChange={(e) => setNewProfText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newProfText.trim()) {
+                    e.preventDefault();
+                    onChange({
+                      ...safeData,
+                      proficiencies: [...(safeData.proficiencies || []), newProfText.trim()],
+                    });
+                    setNewProfText('');
+                  }
+                }}
+                placeholder="Adicionar proficiência..."
+                className="bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-[11px] text-white w-44"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!newProfText.trim()) return;
+                  onChange({
+                    ...safeData,
+                    proficiencies: [...(safeData.proficiencies || []), newProfText.trim()],
+                  });
+                  setNewProfText('');
+                }}
+                className="px-2 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded text-[10px] font-bold cursor-pointer"
+              >
+                + Add
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
