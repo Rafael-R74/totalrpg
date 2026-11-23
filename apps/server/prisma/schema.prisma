@@ -36,6 +36,8 @@ model Campaign {
   allowEditInventory  Boolean @default(true)
   allowEditAbilities  Boolean @default(true)
   allowEditAttributes Boolean @default(false)
+  requiredNex         Int?
+  requiredPatent      String?
 
   // Dados Persistentes do Escudo do Mestre (Etapa 4D - Usando Json? compatível com SQLite)
   dmNotes       String @default("")
@@ -54,9 +56,11 @@ model Campaign {
 
 // 3. Tabela de Convites
 model CampaignInvite {
-  id        String   @id @default(uuid())
-  status    String   @default("PENDING")
-  createdAt DateTime @default(now())
+  id             String   @id @default(uuid())
+  status         String   @default("PENDING")
+  requiredNex    Int?
+  requiredPatent String?
+  createdAt      DateTime @default(now())
 
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)

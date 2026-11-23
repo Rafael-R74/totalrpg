@@ -27,6 +27,8 @@ export interface CampaignData {
   description?: string;
   system: SystemId;
   inviteCode: string;
+  requiredNex?: number | null;
+  requiredPatent?: string | null;
   createdAt: string;
   dm?: { username: string };
   characters?: Array<{
@@ -41,10 +43,14 @@ export interface CampaignData {
 export interface InviteData {
   id: string;
   status: string;
+  requiredNex?: number | null;
+  requiredPatent?: string | null;
   campaign: {
     id: string;
     name: string;
     system: SystemId;
+    requiredNex?: number | null;
+    requiredPatent?: string | null;
     dm: { username: string };
   };
 }
@@ -55,6 +61,7 @@ export interface CharacterData {
   name: string;
   system: SystemId;
   portraitUrl?: string;
+  sheetData?: Record<string, any>;
   campaign?: {
     id: string;
     name: string;
@@ -103,22 +110,41 @@ export async function fetchDMCampaigns(): Promise<CampaignData[]> {
   return data;
 }
 
-export async function createCampaign(name: string, description: string, system: SystemId): Promise<CampaignData> {
+export async function createCampaign(
+  name: string,
+  description: string,
+  system: SystemId,
+  options?: { requiredNex?: number | null; requiredPatent?: string | null }
+): Promise<CampaignData> {
   const response = await fetch(`${API_URL}/campaigns`, {
     method: 'POST',
     headers: getAuthHeader(),
-    body: JSON.stringify({ name, description, system }),
+    body: JSON.stringify({
+      name,
+      description,
+      system,
+      requiredNex: options?.requiredNex ?? null,
+      requiredPatent: options?.requiredPatent ?? null,
+    }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao criar campanha.');
   return data;
 }
 
-export async function sendCampaignInvite(campaignId: string, targetUsername: string): Promise<void> {
+export async function sendCampaignInvite(
+  campaignId: string,
+  targetUsername: string,
+  options?: { requiredNex?: number | null; requiredPatent?: string | null }
+): Promise<void> {
   const response = await fetch(`${API_URL}/campaigns/${campaignId}/invite`, {
     method: 'POST',
     headers: getAuthHeader(),
-    body: JSON.stringify({ targetUsername }),
+    body: JSON.stringify({
+      targetUsername,
+      requiredNex: options?.requiredNex ?? null,
+      requiredPatent: options?.requiredPatent ?? null,
+    }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao enviar convite.');

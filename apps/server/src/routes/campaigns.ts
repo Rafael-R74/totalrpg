@@ -35,7 +35,7 @@ campaignsRouter.get('/dm', async (req: AuthenticatedRequest, res) => {
 // ABA DM: CRIAR UMA NOVA AVENTURA
 campaignsRouter.post('/', async (req: AuthenticatedRequest, res) => {
   try {
-    const { name, description, system } = req.body;
+    const { name, description, system, requiredNex, requiredPatent } = req.body;
 
     if (!name || !system) {
       return res.status(400).json({ error: 'Nome e sistema são obrigatórios.' });
@@ -43,6 +43,14 @@ campaignsRouter.post('/', async (req: AuthenticatedRequest, res) => {
 
    
     const inviteCode = `TR-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const parsedReqNex =
+      typeof requiredNex === 'number' && !Number.isNaN(requiredNex)
+        ? requiredNex
+        : null;
+    const parsedReqPatent =
+      typeof requiredPatent === 'string' && requiredPatent.trim()
+        ? requiredPatent.trim()
+        : null;
 
     const newCampaign = await prisma.campaign.create({
       data: {
@@ -50,6 +58,8 @@ campaignsRouter.post('/', async (req: AuthenticatedRequest, res) => {
         description: description || '',
         system,
         inviteCode,
+        requiredNex: system === 'ordem-paranormal' ? parsedReqNex : null,
+        requiredPatent: system === 'ordem-paranormal' ? parsedReqPatent : null,
         dmId: req.userId!
       }
     });
@@ -112,7 +122,7 @@ campaignsRouter.get('/invites', async (req: AuthenticatedRequest, res) => {
 campaignsRouter.post('/:campaignId/invite', async (req: AuthenticatedRequest, res) => {
   try {
     const { campaignId } = req.params;
-    const { targetUsername } = req.body;
+    const { targetUsername, requiredNex, requiredPatent } = req.body;
 
     if (!campaignId || typeof campaignId !== 'string') {
       return res.status(400).json({ error: 'ID da campanha inválido.' });
@@ -138,22 +148,84 @@ campaignsRouter.post('/:campaignId/invite', async (req: AuthenticatedRequest, re
       return res.status(404).json({ error: 'Jogador não encontrado.' });
     }
 
-    const invite = await prisma.campaignInvite.create({
-      data: {
-        campaignId,
-        userId: targetUser.id,
-        status: 'PENDING'
-      }
+    const parsedReqNex =
+      campaign.system === 'ordem-paranormal' &&
+      typeof requiredNex === 'number' &&
+      !Number.isNaN(requiredNex)
+        ? requiredNex
+        : null;
+    const parsedReqPatent =
+      campaign.system === 'ordem-paranormal' &&
+      typeof requiredPatent === 'string' &&
+      requiredPatent.trim()
+        ? requiredPatent.trim()
+        : null;
+
+    const existingInvite = await prisma.campaignInvite.findUnique({
+      where: {
+        campaignId_userId: { campaignId, userId: targetUser.id },
+      },
     });
 
-    return res.status(201).json({ message: 'Convite enviado com sucesso!', invite });
+    const invite = existingInvite
+      ? existingInvite.status === 'PENDING'
+        ? await prisma.campaignInvite.update({
+            where: { id: existingInvite.id },
+            data: {
+              requiredNex: parsedReqNex,
+              requiredPatent: parsedReqPatent,
+            },
+          })
+        : await prisma.campaignInvite.update({
+            where: { id: existingInvite.id },
+            data: {
+              status: 'PENDING',
+              requiredNex: parsedReqNex,
+              requiredPatent: parsedReqPatent,
+            },
+          })
+      : await prisma.campaignInvite.create({
+          data: {
+            campaignId,
+            userId: targetUser.id,
+            status: 'PENDING',
+            requiredNex: parsedReqNex,
+            requiredPatent: parsedReqPatent,
+          },
+        });
+
+    return res.status(201).json({
+      message: existingInvite
+        ? 'Convite atualizado com sucesso!'
+        : 'Convite enviado com sucesso!',
+      invite,
+    });
   } catch (error: any) {
-    if (error.code === 'P2002') {
-      return res.status(409).json({ error: 'Este jogador já foi convidado para esta aventura.' });
-    }
     return res.status(500).json({ error: 'Erro ao enviar convite.' });
   }
 });
+
+function validateOrdemCharacterRequirements(
+  character: { system: string; sheetData: any },
+  expectedNex?: number | null,
+  expectedPatent?: string | null
+): string | null {
+  if (character.system !== 'ordem-paranormal') return null;
+  const charRaw = (character.sheetData || {}) as Record<string, any>;
+  const charNex = Number(charRaw.nex ?? 5);
+  const charPatent = String(charRaw.patent || 'Recruta');
+
+  if (typeof expectedNex === 'number' && charNex !== expectedNex) {
+    return `O Mestre exige um personagem com NEX ${expectedNex}% para este convite (o personagem escolhido está em NEX ${charNex}%).`;
+  }
+  if (
+    expectedPatent &&
+    charPatent.trim().toLowerCase() !== expectedPatent.trim().toLowerCase()
+  ) {
+    return `O Mestre exige um personagem com patente "${expectedPatent}" para este convite (o personagem escolhido possui patente "${charPatent}").`;
+  }
+  return null;
+}
 
 // Aceitar convite pendente vinculando um personagem do cofre
 campaignsRouter.post('/invites/:inviteId/accept', async (req: AuthenticatedRequest, res) => {
@@ -190,6 +262,17 @@ campaignsRouter.post('/invites/:inviteId/accept', async (req: AuthenticatedReque
       return res.status(400).json({
         error: `Esta campanha exige um personagem do sistema ${invite.campaign.system}.`,
       });
+    }
+
+    const expectedNex = invite.requiredNex ?? invite.campaign.requiredNex;
+    const expectedPatent = invite.requiredPatent ?? invite.campaign.requiredPatent;
+    const reqError = validateOrdemCharacterRequirements(
+      character,
+      expectedNex,
+      expectedPatent
+    );
+    if (reqError) {
+      return res.status(400).json({ error: reqError });
     }
 
     // Executa o vínculo do personagem e a confirmação do convite em uma única transação
@@ -244,6 +327,22 @@ campaignsRouter.post('/join-code', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({
         error: `A campanha "${campaign.name}" usa o sistema ${campaign.system.toUpperCase()}, mas o personagem escolhido é de ${character.system.toUpperCase()}.`,
       });
+    }
+
+    const existingInvite = await prisma.campaignInvite.findUnique({
+      where: {
+        campaignId_userId: { campaignId: campaign.id, userId: req.userId! },
+      },
+    });
+    const expectedNex = existingInvite?.requiredNex ?? campaign.requiredNex;
+    const expectedPatent = existingInvite?.requiredPatent ?? campaign.requiredPatent;
+    const reqError = validateOrdemCharacterRequirements(
+      character,
+      expectedNex,
+      expectedPatent
+    );
+    if (reqError) {
+      return res.status(400).json({ error: reqError });
     }
 
     await prisma.character.update({

@@ -916,6 +916,10 @@ export interface BuildOrdemCharacterInput {
   nex?: number;
   patent?: string;
   trailId?: string;
+  affinity?: string;
+  chosenClassPowerIds?: string[];
+  versatilityTrailId?: string;
+  skillTrainingDegrees?: Record<string, 5 | 10 | 15>;
 }
 
 export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
@@ -932,7 +936,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
   const nex = input.nex ?? cls.initialNex;
   const patent = input.patent || (cls.id === 'mundano' ? 'Mundano' : 'Recruta');
 
-  // 1. Marcar perícias treinadas (Origem + Escolhas)
+  // 1. Marcar perícias treinadas (Origem + Escolhas + Graus Veterano/Expert)
   const allTrainedSet = new Set<string>([
     ...origin.skills,
     ...input.trainedSkillIds,
@@ -942,14 +946,27 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     allTrainedSet.add('vontade');
   }
 
-  const skills = base.sheetData.skills.map((sk) => ({
-    ...sk,
-    trainingDegree: (allTrainedSet.has(sk.id) ? 5 : 0) as 0 | 5 | 10 | 15,
-  }));
+  const skills = base.sheetData.skills.map((sk) => {
+    const isTrained = allTrainedSet.has(sk.id);
+    const customDeg = input.skillTrainingDegrees?.[sk.id];
+    const validDeg: 0 | 5 | 10 | 15 = !isTrained
+      ? 0
+      : customDeg === 15 && nex >= 70
+      ? 15
+      : customDeg && customDeg >= 10 && nex >= 35
+      ? 10
+      : 5;
+    return {
+      ...sk,
+      trainingDegree: validDeg,
+    };
+  });
 
-  // 2. Montar lista de Habilidades (Poder da Origem + Habilidades Iniciais da Classe + Trilha se NEX >= 10 + Rituais do Ocultista)
+  // 2. Montar lista de Habilidades (Origem + Classe + Trilha + Poderes + Rituais)
   const isOriginPassive =
     origin.powerCost === 0 && !origin.requiresManualActivation;
+  const finalProficiencies = [...cls.proficiencies];
+  let transcendedCount = 0;
 
   const abilities: CharacterAbility[] = [
     {
@@ -991,6 +1008,68 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     }
   }
 
+  const extraInventoryFromGrants: RPGItem[] = [];
+  const extraAttacksFromGrants: PreparedAttack[] = [];
+
+  function applyBuildPowerAutoGrants(entry: CompendiumEntryData) {
+    const lowerName = entry.name.toLowerCase();
+    if (
+      lowerName.includes('armamento pesado') &&
+      !finalProficiencies.some((p) => p.toLowerCase().includes('armas pesadas'))
+    ) {
+      finalProficiencies.push('Armas pesadas');
+    }
+    if (
+      (lowerName.includes('balística avançada') ||
+        lowerName.includes('balistica avancada')) &&
+      !finalProficiencies.some((p) => p.toLowerCase().includes('armas táticas de fogo'))
+    ) {
+      finalProficiencies.push('Armas táticas de fogo');
+    }
+    if (
+      lowerName.includes('ninja urbano') &&
+      !finalProficiencies.some((p) => p.toLowerCase().includes('corpo a corpo e de disparo'))
+    ) {
+      finalProficiencies.push('Armas táticas corpo a corpo e de disparo');
+    }
+    if (
+      (lowerName.includes('proteção pesada') ||
+        lowerName.includes('protecao pesada')) &&
+      !finalProficiencies.some(
+        (p) =>
+          p.toLowerCase().includes('proteções pesadas') ||
+          p.toLowerCase().includes('protecoes pesadas')
+      )
+    ) {
+      finalProficiencies.push('Proteções pesadas (e Escudos)');
+    }
+    if (
+      lowerName.includes('mira de elite') &&
+      !finalProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+    ) {
+      finalProficiencies.push('Armas de fogo (balas longas)');
+    }
+    if (
+      lowerName.includes('artista marcial') &&
+      !extraAttacksFromGrants.some((a) => a.isUnarmed)
+    ) {
+      const lutaSk = skills.find((s) => s.id === 'luta');
+      const dieSides = nex >= 70 ? 10 : nex >= 35 ? 8 : 6;
+      extraAttacksFromGrants.push({
+        id: `atk-unarmed-${Math.random().toString(36).slice(2, 7)}`,
+        name: 'Ataque Desarmado (Artista Marcial)',
+        diceCount: Math.max(1, input.attributes.for, input.attributes.agi),
+        attackBonus: Number(lutaSk?.trainingDegree ?? 0),
+        damageFormula: `1d${dieSides}`,
+        critRange: '20/x2',
+        damageType: 'Impacto',
+        isMelee: true,
+        isFirearm: false,
+        isUnarmed: true,
+      });
+    }
+  }
+
   // Se tiver trilha e NEX >= 10, adiciona poderes da trilha até o NEX
   if (input.trailId && nex >= 10) {
     const trail = ORDEM_TRAILS.find((t) => t.id === input.trailId);
@@ -1008,6 +1087,100 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
           });
         }
       }
+      if (
+        trail.id === 'atirador_elite' &&
+        !finalProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+      ) {
+        finalProficiencies.push('Armas de fogo (balas longas)');
+      }
+      if (trail.id === 'graduado' && nex >= 40) {
+        extraInventoryFromGrants.push({
+          id: 'item-grimorio-ritualistico',
+          name: 'Grimório Ritualístico',
+          slots: 1,
+          quantity: 1,
+          category: 0,
+          description:
+            'Grimório especial de Ocultista Graduado (40%): armazena seus rituais extras (até seu Intelecto).',
+        });
+      }
+      if (cls.id === 'ocultista' && nex === 99) {
+        const trail99Map: Record<string, string> = {
+          conduite: 'ord-rit-canalizar-medo',
+          flagelador: 'ord-rit-medo-tangivel',
+          graduado: 'ord-rit-conhecendo-medo',
+          intuitivo: 'ord-rit-presenca-medo',
+          lamina_paranormal: 'ord-rit-lamina-medo',
+        };
+        const fearRitId = trail99Map[trail.id];
+        const r99 = fearRitId
+          ? ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === fearRitId)
+          : undefined;
+        if (r99) {
+          abilities.push({
+            id: `rit-nex99-${r99.id}`,
+            name: r99.name,
+            category: 'ritual',
+            cost: r99.cost,
+            element: 'Medo',
+            description: r99.description,
+            damageFormula: r99.metadata?.damageFormula,
+            isActive: false,
+            modifiers: r99.modifiers || [],
+          });
+        }
+      }
+    }
+  }
+
+  // Versatilidade (NEX 50%): 1º poder (10%) de outra trilha
+  if (input.versatilityTrailId && nex >= 50) {
+    const versTrail = ORDEM_TRAILS.find((t) => t.id === input.versatilityTrailId);
+    const p10 = versTrail?.powers.find((p) => p.nex === 10);
+    if (versTrail && p10) {
+      abilities.push({
+        id: `versatility-${versTrail.id}-10`,
+        name: `Versatilidade (${versTrail.name} 10%): ${p10.name}`,
+        category: 'classe',
+        cost: p10.cost,
+        description: p10.description,
+        isActive: p10.cost === 0,
+        modifiers: p10.modifiers || [],
+      });
+      if (
+        versTrail.id === 'atirador_elite' &&
+        !finalProficiencies.some((p) => p.toLowerCase().includes('balas longas'))
+      ) {
+        finalProficiencies.push('Armas de fogo (balas longas)');
+      }
+    }
+  }
+
+  // Poderes de Classe e Poderes Paranormais acumulados nos marcos (15%, 30%, 45%, 60%, 75%, 90%)
+  if (input.chosenClassPowerIds && input.chosenClassPowerIds.length > 0) {
+    for (let idx = 0; idx < input.chosenClassPowerIds.length; idx++) {
+      const pId = input.chosenClassPowerIds[idx];
+      const pEntry = ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === pId);
+      if (!pEntry) continue;
+      if (pEntry.category === 'paranormal_power') {
+        transcendedCount += 1;
+      }
+      const requiresManualToggle =
+        pEntry.id === 'ord-pwr-comb-defensivo' ||
+        pEntry.id === 'ord-pwr-comb-duas-armas' ||
+        pEntry.name.toLowerCase().includes('combate defensivo') ||
+        pEntry.name.toLowerCase().includes('combater com duas armas');
+      abilities.push({
+        id: `build-pwr-${idx}-${pEntry.id}`,
+        name: pEntry.name,
+        category: pEntry.category === 'paranormal_power' ? 'poder_paranormal' : 'poder',
+        cost: pEntry.cost,
+        element: pEntry.metadata?.element,
+        description: pEntry.description,
+        isActive: pEntry.cost === 0 && !requiresManualToggle,
+        modifiers: pEntry.modifiers || [],
+      });
+      applyBuildPowerAutoGrants(pEntry);
     }
   }
 
@@ -1040,8 +1213,8 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
   }
 
   // 3. Montar Inventário Inicial e Ataques Preparados (com suporte a múltiplas unidades!)
-  const inventory: RPGItem[] = [];
-  const attacks: PreparedAttack[] = [];
+  const inventory: RPGItem[] = [...extraInventoryFromGrants];
+  const attacks: PreparedAttack[] = [...extraAttacksFromGrants];
 
   const normalizedItems: Array<{ id: string; quantity: number }> =
     input.chosenItems && input.chosenItems.length > 0
@@ -1115,7 +1288,8 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         : classif.isAgile
         ? Math.max(input.attributes.for, input.attributes.agi)
         : input.attributes.for;
-      const skillBonus = allTrainedSet.has(classif.skillId) ? 5 : 0;
+      const matchedSkill = skills.find((s) => s.id === classif.skillId);
+      const skillBonus = matchedSkill ? matchedSkill.trainingDegree : 0;
 
       attacks.push({
         id: `atk-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1141,10 +1315,8 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     attributes: input.attributes,
     nex,
     originIdOrName: origin.id,
-    transcendedCount: 0,
+    transcendedCount,
   });
-
-  const finalProficiencies = [...cls.proficiencies];
 
   const sheetData: OrdemSheetData = {
     origin: origin.name,
@@ -1152,11 +1324,12 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     nex,
     patent,
     trail: input.trailId || undefined,
+    affinity: nex >= 50 && input.affinity ? input.affinity : undefined,
     prestigePoints:
-      ORDEM_PATENTS.find((p) => p.name === patent)?.minPrestige ?? 0,
+      ORDEM_PATENTS.find((p) => p.name.toLowerCase() === patent.toLowerCase())?.minPrestige ?? 0,
     peritoSkills: input.peritoSkillIds || [],
     proficiencies: finalProficiencies,
-    transcendedCount: 0,
+    transcendedCount,
     displacement: 9,
     attributes: { ...input.attributes },
     skills,
@@ -1204,6 +1377,7 @@ export interface BuildT20CharacterInput {
   classId: string;
   originId: string;
   deity: string;
+  level?: number;
   baseAttributes: T20Attributes;
   freeChosenAttrs?: Array<keyof T20Attributes>;
   trainedSkillIds: string[];
@@ -1242,8 +1416,14 @@ export function buildT20Character(input: BuildT20CharacterInput): {
     isTrained: allTrainedSet.has(sk.id),
   }));
 
-  const pvMax = Math.max(1, cls.basePv + finalAttrs.constituicao);
-  const pmMax = Math.max(1, cls.pmPerLevel);
+  const level = Math.max(1, Math.min(20, Number(input.level || 1)));
+  const pvMax = Math.max(
+    1,
+    cls.basePv +
+      finalAttrs.constituicao +
+      (level - 1) * (cls.pvPerLevel + finalAttrs.constituicao)
+  );
+  const pmMax = Math.max(1, level * cls.pmPerLevel);
 
   const vitals: VitalBar[] = [
     { id: 'pv', label: 'Pontos de Vida', current: pvMax, max: pvMax, color: '#dc2626' },
@@ -1265,7 +1445,7 @@ export function buildT20Character(input: BuildT20CharacterInput): {
   const sheetData: T20SheetData = {
     race: race.name,
     characterClass: cls.name,
-    level: 1,
+    level,
     deity: input.deity || 'Nenhuma',
     origin: originName,
     attributes: finalAttrs,

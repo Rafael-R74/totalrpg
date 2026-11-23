@@ -5,8 +5,12 @@ import {
   T20Attributes,
   ORDEM_ORIGINS,
   ORDEM_CLASSES,
+  ORDEM_PATENTS,
+  ORDEM_NEX_PROGRESSION,
+  ORDEM_TRAILS,
   ORDEM_SKILLS_METADATA,
   ORDEM_COMPENDIUM_ENTRIES,
+  checkOrdemPowerRequirements,
   T20_RACES,
   T20_CLASSES,
   T20_ORIGINS,
@@ -22,6 +26,8 @@ import { ImageUploadField } from './ImageUploadField';
 
 interface CharacterWizardModalProps {
   lockedSystem?: SystemId;
+  lockedNex?: number | null;
+  lockedPatent?: string | null;
   onClose: () => void;
   onCreated: (created: CharacterData) => void;
 }
@@ -37,6 +43,8 @@ const T20_POINT_COSTS: Record<number, number> = {
 
 export function CharacterWizardModal({
   lockedSystem,
+  lockedNex,
+  lockedPatent,
   onClose,
   onCreated,
 }: CharacterWizardModalProps) {
@@ -48,6 +56,11 @@ export function CharacterWizardModal({
   const [errorMsg, setErrorMsg] = useState('');
 
   // --- Estados Ordem Paranormal v1.3 ---
+  const initialLockedNex = typeof lockedNex === 'number' ? lockedNex : 5;
+  const [ordemNex, setOrdemNex] = useState<number>(initialLockedNex);
+  const [ordemPatent, setOrdemPatent] = useState<string>(
+    lockedPatent || (initialLockedNex === 0 ? 'Mundano' : 'Recruta')
+  );
   const [originSearch, setOriginSearch] = useState('');
   const [ordemOriginId, setOrdemOriginId] = useState<string>('academico');
   const [amnesicoSkills, setAmnesicoSkills] = useState<string[]>(['percepcao', 'vontade']);
@@ -56,7 +69,13 @@ export function CharacterWizardModal({
 
   const [ordemClassId, setOrdemClassId] = useState<
     'combatente' | 'especialista' | 'ocultista' | 'mundano'
-  >('combatente');
+  >(initialLockedNex === 0 ? 'mundano' : 'combatente');
+  const [ordemTrailId, setOrdemTrailId] = useState<string>('');
+  const [ordemAffinity, setOrdemAffinity] = useState<string>('Sangue');
+  const [versatilityMode, setVersatilityMode] = useState<'class_power' | 'trail_10'>('class_power');
+  const [versatilityTrailId, setVersatilityTrailId] = useState<string>('');
+  const [chosenClassPowerIds, setChosenClassPowerIds] = useState<string[]>([]);
+  const [classPowerSearch, setClassPowerSearch] = useState<string>('');
   const [ordemAttrs, setOrdemAttrs] = useState<OrdemAttributes>({
     agi: 1,
     for: 1,
@@ -69,18 +88,21 @@ export function CharacterWizardModal({
   const [combatAttackSkill, setCombatAttackSkill] = useState<'luta' | 'pontaria'>('luta');
   const [combatDefenseSkill, setCombatDefenseSkill] = useState<'fortitude' | 'reflexos'>('fortitude');
   const [ordemFreeSkills, setOrdemFreeSkills] = useState<string[]>([]);
+  const [upgradedSkillDegrees, setUpgradedSkillDegrees] = useState<Record<string, 10 | 15>>({});
   const [peritoSkills, setPeritoSkills] = useState<string[]>([]);
   const [chosenRitualIds, setChosenRitualIds] = useState<string[]>([]);
   const [ritualSearch, setRitualSearch] = useState<string>('');
   const [ritualElementFilter, setRitualElementFilter] = useState<string>('ALL');
+  const [ritualCircleFilter, setRitualCircleFilter] = useState<'ALL' | 1 | 2 | 3 | 4>('ALL');
   const [showAmaldicoarElementPrompt, setShowAmaldicoarElementPrompt] = useState<boolean>(false);
 
   const [itemSearch, setItemSearch] = useState<string>('');
-  const [itemCategoryFilter, setItemCategoryFilter] = useState<'ALL' | 0 | 1>('ALL');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState<'ALL' | 0 | 1 | 2 | 3 | 4>('ALL');
   const [itemRealmTab, setItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
   const [chosenItemQuantities, setChosenItemQuantities] = useState<Record<string, number>>({});
 
   // --- Estados Tormenta 20 ---
+  const [t20Level, setT20Level] = useState<number>(1);
   const [t20RaceId, setT20RaceId] = useState<string>('humano');
   const [t20ClassId, setT20ClassId] = useState<string>('Guerreiro');
   const [t20Origin, setT20Origin] = useState<string>('Plebeu');
@@ -118,8 +140,15 @@ export function CharacterWizardModal({
     return selectedOrdemOrigin.skills;
   }, [selectedOrdemOrigin, amnesicoSkills]);
 
-  // Pontos de atributo Ordem: começa tudo em 1 (soma 5). +4 pontos (total 9) ou +3 para Mundano (total 8)
-  const targetOrdemAttrSum = 5 + selectedOrdemClass.attributePoints;
+  // Pontos de atributo Ordem: começa tudo em 1 (soma 5) + pontos iniciais da classe + aumentos de atributo por NEX (20%, 50%, 80%, 95%)
+  const bonusNexAttrPoints =
+    ordemClassId === 'mundano'
+      ? 0
+      : [20, 50, 80, 95].filter((n) => ordemNex >= n).length;
+  const maxOrdemAttrCap =
+    bonusNexAttrPoints > 0 ? Math.min(5, 3 + bonusNexAttrPoints) : 3;
+  const targetOrdemAttrSum =
+    5 + selectedOrdemClass.attributePoints + bonusNexAttrPoints;
   const currentOrdemAttrSum =
     ordemAttrs.agi +
     ordemAttrs.for +
@@ -128,6 +157,46 @@ export function CharacterWizardModal({
     ordemAttrs.vig;
   const remainingOrdemAttrPoints = targetOrdemAttrSum - currentOrdemAttrSum;
   const zeroAttrsCount = Object.values(ordemAttrs).filter((v) => v === 0).length;
+
+  // Trilhas, Poderes de Classe / Transcender & Rituais desbloqueados pelo NEX
+  const availableClassTrails = useMemo(
+    () => ORDEM_TRAILS.filter((t) => t.classId === ordemClassId),
+    [ordemClassId]
+  );
+  const effectiveTrailId = useMemo(() => {
+    if (ordemNex < 10 || ordemClassId === 'mundano') return '';
+    if (availableClassTrails.some((t) => t.id === ordemTrailId)) return ordemTrailId;
+    return availableClassTrails[0]?.id || '';
+  }, [ordemNex, ordemClassId, availableClassTrails, ordemTrailId]);
+  const selectedTrailObj = useMemo(
+    () => availableClassTrails.find((t) => t.id === effectiveTrailId),
+    [availableClassTrails, effectiveTrailId]
+  );
+
+  const classPowerMilestoneCount =
+    ordemClassId === 'mundano'
+      ? 0
+      : [15, 30, 45, 60, 75, 90].filter((n) => ordemNex >= n).length;
+  const totalClassPowerSlots =
+    classPowerMilestoneCount +
+    (ordemClassId !== 'mundano' && ordemNex >= 50 && versatilityMode === 'class_power'
+      ? 1
+      : 0);
+
+  const transcendedCountPreview = useMemo(
+    () =>
+      chosenClassPowerIds.slice(0, totalClassPowerSlots).filter(
+        (id) =>
+          ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === id)?.category ===
+          'paranormal_power'
+      ).length,
+    [chosenClassPowerIds, totalClassPowerSlots]
+  );
+
+  const maxRitualCircle: 1 | 2 | 3 | 4 =
+    ordemNex >= 85 ? 4 : ordemNex >= 55 ? 3 : ordemNex >= 25 ? 2 : 1;
+  const maxInitialRituals =
+    3 + Math.max(0, (ordemNex === 99 ? 20 : Math.floor(ordemNex / 5)) - 1);
 
   // Perícias obrigatórias da classe Ordem e cálculo de colisão com a Origem (p. 22)
   const classMandatorySkillIds = useMemo(() => {
@@ -173,9 +242,9 @@ export function CharacterWizardModal({
     const base = calculateOrdemBaseVitals({
       characterClass: ordemClassId,
       attributes: ordemAttrs,
-      nex: selectedOrdemClass.initialNex,
+      nex: ordemNex,
       originIdOrName: selectedOrdemOrigin.id,
-      transcendedCount: 0,
+      transcendedCount: transcendedCountPreview,
     });
     const extraPv = selectedOrdemOrigin.id === 'desgarrado' ? 1 : 0;
     const extraSan = selectedOrdemOrigin.id === 'vitima' ? 1 : 0;
@@ -186,15 +255,43 @@ export function CharacterWizardModal({
       defense: 10 + ordemAttrs.agi,
       maxSlots: ordemAttrs.for <= 0 ? 2 : ordemAttrs.for * 5,
     };
-  }, [ordemClassId, ordemAttrs, selectedOrdemClass, selectedOrdemOrigin]);
+  }, [ordemClassId, ordemAttrs, ordemNex, selectedOrdemOrigin, transcendedCountPreview]);
 
   // Listas do Compêndio para o Wizard
-  const firstCircleRituals = useMemo(
+  const availableRituals = useMemo(
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter(
-        (e) => e.category === 'spell' && (e.metadata?.circle || 1) === 1
-      ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    []
+        (e) => e.category === 'spell' && (e.metadata?.circle || 1) <= maxRitualCircle
+      ).sort(
+        (a, b) =>
+          (a.metadata?.circle || 1) - (b.metadata?.circle || 1) ||
+          a.name.localeCompare(b.name, 'pt-BR')
+      ),
+    [maxRitualCircle]
+  );
+
+  const selectableClassAndParanormalPowers = useMemo(
+    () =>
+      ORDEM_COMPENDIUM_ENTRIES.filter((e) => {
+        if (e.category === 'paranormal_power') return true;
+        if (e.category !== 'power') return false;
+        const req = (e.metadata?.requirements || '').toLowerCase();
+        if (ordemClassId === 'combatente') {
+          return (
+            e.id.startsWith('ord-pwr-comb') ||
+            req.includes('combatente') ||
+            !req.includes('especialista') && !req.includes('ocultista')
+          );
+        }
+        if (ordemClassId === 'especialista') {
+          return e.id.startsWith('ord-pwr-esp') || req.includes('especialista');
+        }
+        if (ordemClassId === 'ocultista') {
+          return e.id.startsWith('ord-pwr-ocu') || req.includes('ocultista');
+        }
+        return false;
+      }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [ordemClassId]
   );
 
   const initialParanormalPowers = useMemo(
@@ -219,6 +316,36 @@ export function CharacterWizardModal({
     []
   );
 
+  const selectedPatentDef = useMemo(
+    () =>
+      ORDEM_PATENTS.find(
+        (p) => p.name.toLowerCase() === ordemPatent.toLowerCase()
+      ) || ORDEM_PATENTS[0],
+    [ordemPatent]
+  );
+
+  const patentCategoryLimits = useMemo<Record<1 | 2 | 3 | 4, number>>(
+    () =>
+      ordemPatent.toLowerCase() === 'mundano'
+        ? { 1: 1, 2: 0, 3: 0, 4: 0 }
+        : selectedPatentDef.categoryLimits,
+    [ordemPatent, selectedPatentDef]
+  );
+
+  const allowsCursedSpecial = useMemo(
+    () =>
+      ['agente_especial', 'oficial_operacoes', 'agente_elite'].includes(
+        selectedPatentDef.id
+      ) && ordemPatent.toLowerCase() !== 'mundano',
+    [selectedPatentDef, ordemPatent]
+  );
+
+  const maxAllowedItemCategory = useMemo(
+    () =>
+      ([4, 3, 2, 1] as const).find((c) => patentCategoryLimits[c] > 0) || 0,
+    [patentCategoryLimits]
+  );
+
   const getEffectiveRecruitItemCat = (entry: (typeof ORDEM_COMPENDIUM_ENTRIES)[number]) => {
     const rawCat = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
     if (
@@ -235,34 +362,37 @@ export function CharacterWizardModal({
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter((e) => {
         if (e.category !== 'item') return false;
-        // Itens amaldiçoados especiais (Cap. 6, p. 144) só são liberados a partir de Agente Especial!
-        if (e.metadata?.isCursedSpecial) return false;
+        if (e.metadata?.isCursedSpecial && !allowsCursedSpecial) return false;
         const effCat = getEffectiveRecruitItemCat(e);
-        return effCat <= 1;
+        return effCat <= maxAllowedItemCategory;
       }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    [selectedOrdemOrigin.id, engenheiroFavItemId]
+    [selectedOrdemOrigin.id, engenheiroFavItemId, allowsCursedSpecial, maxAllowedItemCategory]
   );
 
-  const selectedCat1Count = useMemo(() => {
-    return Object.entries(chosenItemQuantities).reduce((acc, [id, qty]) => {
-      if (qty <= 0) return acc;
+  const selectedCatCounts = useMemo(() => {
+    const counts: Record<1 | 2 | 3 | 4, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    for (const [id, qty] of Object.entries(chosenItemQuantities)) {
+      if (qty <= 0) continue;
       const entry = recruitItems.find((e) => e.id === id);
-      if (!entry) return acc;
+      if (!entry) continue;
       const rawCat = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
       const isFavTool =
         selectedOrdemOrigin.id === 'engenheiro' &&
         !entry.metadata?.damageFormula &&
         entry.id === engenheiroFavItemId;
       if (isFavTool) {
-        // Apenas a 1ª unidade da Ferramenta Favorita tem categoria reduzida em 1
         const firstUnitCat = Math.max(0, rawCat - 1);
-        const otherUnitsCat = rawCat;
-        const firstCat1 = firstUnitCat === 1 ? 1 : 0;
-        const othersCat1 = otherUnitsCat === 1 ? Math.max(0, qty - 1) : 0;
-        return acc + firstCat1 + othersCat1;
+        if (firstUnitCat >= 1 && firstUnitCat <= 4) {
+          counts[firstUnitCat as 1 | 2 | 3 | 4] += 1;
+        }
+        if (qty > 1 && rawCat >= 1 && rawCat <= 4) {
+          counts[rawCat as 1 | 2 | 3 | 4] += qty - 1;
+        }
+      } else if (rawCat >= 1 && rawCat <= 4) {
+        counts[rawCat as 1 | 2 | 3 | 4] += qty;
       }
-      return rawCat === 1 ? acc + qty : acc;
-    }, 0);
+    }
+    return counts;
   }, [chosenItemQuantities, recruitItems, selectedOrdemOrigin.id, engenheiroFavItemId]);
 
   const filteredRecruitItems = useMemo(() => {
@@ -302,7 +432,7 @@ export function CharacterWizardModal({
   const handleOrdemAttrChange = (key: keyof OrdemAttributes, delta: number) => {
     setOrdemAttrs((prev) => {
       const nextVal = prev[key] + delta;
-      if (nextVal < 0 || nextVal > 3) return prev;
+      if (nextVal < 0 || nextVal > maxOrdemAttrCap) return prev;
       if (nextVal === 0 && prev[key] !== 0 && zeroAttrsCount >= 1) return prev;
       if (delta > 0 && remainingOrdemAttrPoints <= 0) return prev;
       return { ...prev, [key]: nextVal };
@@ -337,7 +467,7 @@ export function CharacterWizardModal({
     }
     setChosenRitualIds((prev) => {
       if (prev.includes(ritualId)) return prev.filter((id) => id !== ritualId);
-      if (prev.length >= 3) {
+      if (prev.length >= maxInitialRituals) {
         return [...prev.slice(1), ritualId];
       }
       return [...prev, ritualId];
@@ -348,7 +478,7 @@ export function CharacterWizardModal({
     const compositeId = `ord-rit-amaldicoar-arma:${element}`;
     setChosenRitualIds((prev) => {
       if (prev.includes(compositeId)) return prev.filter((id) => id !== compositeId);
-      if (prev.length >= 3) {
+      if (prev.length >= maxInitialRituals) {
         return [...prev.slice(1), compositeId];
       }
       return [...prev, compositeId];
@@ -359,13 +489,24 @@ export function CharacterWizardModal({
   const changeRecruitItemQty = (itemId: string, delta: number) => {
     const entry = recruitItems.find((e) => e.id === itemId);
     if (!entry) return;
-    const effCat = getEffectiveRecruitItemCat(entry);
+    const rawCat = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
+    const isFavTool =
+      selectedOrdemOrigin.id === 'engenheiro' &&
+      !entry.metadata?.damageFormula &&
+      entry.id === engenheiroFavItemId;
 
     setChosenItemQuantities((prev) => {
       const currentQty = prev[itemId] || 0;
       const nextQty = Math.max(0, currentQty + delta);
-      if (delta > 0 && effCat === 1 && selectedCat1Count >= 2) {
-        return prev;
+      if (delta > 0) {
+        const addedUnitCat =
+          isFavTool && currentQty === 0 ? Math.max(0, rawCat - 1) : rawCat;
+        if (addedUnitCat >= 1 && addedUnitCat <= 4) {
+          const catKey = addedUnitCat as 1 | 2 | 3 | 4;
+          if (selectedCatCounts[catKey] >= patentCategoryLimits[catKey]) {
+            return prev;
+          }
+        }
       }
       const next = { ...prev };
       if (nextQty === 0) {
@@ -412,6 +553,16 @@ export function CharacterWizardModal({
           chosenItems: chosenItemsArray,
           favoriteToolItemId:
             selectedOrdemOrigin.id === 'engenheiro' ? engenheiroFavItemId : undefined,
+          nex: ordemNex,
+          patent: ordemPatent,
+          trailId: effectiveTrailId || undefined,
+          affinity: ordemNex >= 50 ? ordemAffinity : undefined,
+          chosenClassPowerIds: chosenClassPowerIds.slice(0, totalClassPowerSlots),
+          versatilityTrailId:
+            ordemNex >= 50 && versatilityMode === 'trail_10'
+              ? versatilityTrailId || undefined
+              : undefined,
+          skillTrainingDegrees: upgradedSkillDegrees,
         });
 
         const created = await createCharacter(name.trim(), system, {
@@ -428,6 +579,7 @@ export function CharacterWizardModal({
           classId: t20ClassId,
           originId: t20Origin,
           deity: t20Deity,
+          level: t20Level,
           baseAttributes: t20BaseAttrs,
           freeChosenAttrs: selectedT20Race.freeAttributeChoices
             ? t20FreeRaceAttrs
@@ -467,11 +619,17 @@ export function CharacterWizardModal({
 
   const filteredRituals = useMemo(() => {
     const q = ritualSearch.trim().toLowerCase();
-    return firstCircleRituals.filter((r) => {
+    return availableRituals.filter((r) => {
       const el = (r.metadata?.element || '').toLowerCase();
       if (
         ritualElementFilter !== 'ALL' &&
         !el.includes(ritualElementFilter.toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        ritualCircleFilter !== 'ALL' &&
+        (r.metadata?.circle || 1) !== ritualCircleFilter
       ) {
         return false;
       }
@@ -481,7 +639,7 @@ export function CharacterWizardModal({
         r.description.toLowerCase().includes(q)
       );
     });
-  }, [firstCircleRituals, ritualElementFilter, ritualSearch]);
+  }, [availableRituals, ritualElementFilter, ritualCircleFilter, ritualSearch]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
@@ -583,6 +741,85 @@ export function CharacterWizardModal({
                   />
                 </div>
               </div>
+
+              {system === 'ordem-paranormal' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-zinc-950/60 p-4 rounded-xl border border-indigo-500/30">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-indigo-300 mb-1">
+                      ⚡ NEX Inicial {typeof lockedNex === 'number' ? '(Definido pelo Mestre)' : ''}
+                    </label>
+                    <select
+                      value={ordemNex}
+                      disabled={typeof lockedNex === 'number'}
+                      onChange={(e) => {
+                        const nextN = Number(e.target.value);
+                        setOrdemNex(nextN);
+                        if (nextN === 0) {
+                          setOrdemClassId('mundano');
+                          if (!lockedPatent) setOrdemPatent('Mundano');
+                        } else if (ordemClassId === 'mundano') {
+                          setOrdemClassId('combatente');
+                          if (!lockedPatent && ordemPatent === 'Mundano') setOrdemPatent('Recruta');
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-sm disabled:opacity-60"
+                    >
+                      {ORDEM_NEX_PROGRESSION.map((m) => (
+                        <option key={m.nex} value={m.nex}>
+                          NEX {m.nex}% — {m.summary}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-emerald-300 mb-1">
+                      🎖️ Patente Inicial {lockedPatent ? '(Definida pelo Mestre)' : ''}
+                    </label>
+                    <select
+                      value={ordemPatent}
+                      disabled={Boolean(lockedPatent)}
+                      onChange={(e) => {
+                        setOrdemPatent(e.target.value);
+                        setChosenItemQuantities({});
+                        setItemCategoryFilter('ALL');
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-sm disabled:opacity-60"
+                    >
+                      <option value="Mundano">Mundano (1 item Cat. I)</option>
+                      {ORDEM_PATENTS.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name} (Cat I:{p.categoryLimits[1]} II:{p.categoryLimits[2]} III:{p.categoryLimits[3]} IV:{p.categoryLimits[4]} • Créd. {p.creditLimit})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {system === 'tormenta20' && (
+                <div className="bg-zinc-950/60 p-4 rounded-xl border border-amber-500/30 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold uppercase text-amber-400 block">
+                      ⚔️ Nível Inicial (Tormenta 20)
+                    </span>
+                    <span className="text-xs text-zinc-400">
+                      PV e PM iniciais serão escalonados automaticamente para o nível escolhido.
+                    </span>
+                  </div>
+                  <select
+                    value={t20Level}
+                    onChange={(e) => setT20Level(Number(e.target.value))}
+                    className="px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-sm font-mono font-bold"
+                  >
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((lvl) => (
+                      <option key={lvl} value={lvl}>
+                        Nível {lvl}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {system === 'ordem-paranormal' && (
                 <div className="space-y-4">
@@ -818,7 +1055,14 @@ export function CharacterWizardModal({
                   </h3>
                   <p className="text-xs text-zinc-400">
                     Todos os atributos começam em <strong>1</strong>. Você recebe{' '}
-                    <strong>+{selectedOrdemClass.attributePoints} pontos</strong> para distribuir (valor máximo inicial <strong>3</strong>). Você pode reduzir no máximo 1 atributo para 0 para receber +1 ponto extra.
+                    <strong>+{selectedOrdemClass.attributePoints} pontos base</strong>
+                    {bonusNexAttrPoints > 0 && (
+                      <span className="text-indigo-300 font-bold">
+                        {' '}
+                        + {bonusNexAttrPoints} aumento(s) por NEX {ordemNex}%
+                      </span>
+                    )}{' '}
+                    para distribuir (máximo por atributo: <strong>{maxOrdemAttrCap}</strong>). Você pode reduzir no máximo 1 atributo para 0 para receber +1 ponto extra.
                   </p>
                 </div>
                 <div className="px-4 py-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-center">
@@ -973,15 +1217,33 @@ export function CharacterWizardModal({
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 {ORDEM_CLASSES.map((cls) => {
                   const active = cls.id === ordemClassId;
+                  const disabledByLockedNex =
+                    typeof lockedNex === 'number' &&
+                    ((lockedNex === 0 && cls.id !== 'mundano') ||
+                      (lockedNex > 0 && cls.id === 'mundano'));
                   return (
                     <button
                       key={cls.id}
                       type="button"
-                      onClick={() => setOrdemClassId(cls.id)}
+                      disabled={disabledByLockedNex}
+                      onClick={() => {
+                        setOrdemClassId(cls.id);
+                        setOrdemTrailId('');
+                        setChosenClassPowerIds([]);
+                        if (cls.id === 'mundano') {
+                          setOrdemNex(0);
+                          if (!lockedPatent) setOrdemPatent('Mundano');
+                        } else if (ordemNex === 0) {
+                          setOrdemNex(5);
+                          if (!lockedPatent && ordemPatent === 'Mundano') setOrdemPatent('Recruta');
+                        }
+                      }}
                       className={`p-4 rounded-xl border text-left transition-all ${
-                        active
-                          ? 'bg-amber-600/15 border-amber-500 shadow-lg'
-                          : 'bg-zinc-950 border-zinc-800 hover:border-zinc-600'
+                        disabledByLockedNex
+                          ? 'bg-zinc-950 border-zinc-800/50 opacity-40 cursor-not-allowed'
+                          : active
+                          ? 'bg-amber-600/15 border-amber-500 shadow-lg cursor-pointer'
+                          : 'bg-zinc-950 border-zinc-800 hover:border-zinc-600 cursor-pointer'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -989,7 +1251,7 @@ export function CharacterWizardModal({
                           {cls.name}
                         </span>
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-amber-300">
-                          NEX {cls.initialNex}%
+                          {cls.id === 'mundano' ? 'NEX 0%' : `NEX ${ordemNex}%`}
                         </span>
                       </div>
                       <p className="text-[11px] text-amber-200/80 font-semibold mb-2">
@@ -997,20 +1259,20 @@ export function CharacterWizardModal({
                       </p>
                       <p className="text-xs text-zinc-400 mb-3">{cls.description}</p>
                       <div className="text-[10px] text-zinc-300 space-y-0.5 border-t border-zinc-800 pt-2">
-                        <div>❤️ PV Inicial: {cls.basePv} + VIG (+{cls.pvPerNex}/NEX)</div>
-                        <div>⚡ PE Inicial: {cls.basePe} + PRE (+{cls.pePerNex}/NEX)</div>
-                        <div>🧠 SAN Inicial: {cls.baseSan} (+{cls.sanPerNex}/NEX)</div>
+                        <div>❤️ PV Base: {cls.basePv} + VIG (+{cls.pvPerNex}/NEX)</div>
+                        <div>⚡ PE Base: {cls.basePe} + PRE (+{cls.pePerNex}/NEX)</div>
+                        <div>🧠 SAN Base: {cls.baseSan} (+{cls.sanPerNex}/NEX)</div>
                       </div>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Resumo Matemático Calculado em Tempo Real */}
+              {/* Resumo Matemático Calculado em Tempo Real (Escalonado por NEX) */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-red-400">
-                    ❤️ PV Inicial
+                    ❤️ PV (NEX {ordemNex}%)
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.pv}
@@ -1018,7 +1280,7 @@ export function CharacterWizardModal({
                 </div>
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-amber-400">
-                    ⚡ PE Inicial
+                    ⚡ PE (NEX {ordemNex}%)
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.pe}
@@ -1026,7 +1288,7 @@ export function CharacterWizardModal({
                 </div>
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-blue-400">
-                    🧠 SAN Inicial
+                    🧠 SAN (NEX {ordemNex}%)
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.san}
@@ -1078,16 +1340,233 @@ export function CharacterWizardModal({
                 </div>
               </div>
 
-              {/* Se for Ocultista: Escolher os 3 Rituais de 1º Círculo Iniciais */}
+              {/* Trilha de Classe (Desbloqueada em NEX >= 10%) */}
+              {ordemNex >= 10 && ordemClassId !== 'mundano' && availableClassTrails.length > 0 && (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-indigo-500/40 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-indigo-300">
+                        🛤️ Trilha de Classe (NEX {ordemNex}%)
+                      </h4>
+                      <p className="text-[11px] text-zinc-400">
+                        Escolha sua trilha; todos os poderes desbloqueados até {ordemNex}% NEX serão adicionados automaticamente.
+                      </p>
+                    </div>
+                    <select
+                      value={effectiveTrailId}
+                      onChange={(e) => setOrdemTrailId(e.target.value)}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-indigo-600/60 text-xs font-bold text-white"
+                    >
+                      {availableClassTrails.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedTrailObj && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {selectedTrailObj.powers
+                        .filter((tp) => ordemNex >= tp.nex)
+                        .map((tp) => (
+                          <div
+                            key={tp.nex}
+                            className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-indigo-200">
+                                ({tp.nex}%) {tp.name}
+                              </span>
+                              {tp.cost > 0 && (
+                                <span className="text-[10px] font-bold text-amber-400">
+                                  {tp.cost} PE
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-zinc-400 mt-1">{tp.description}</p>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Afinidade Elemental & Versatilidade (NEX >= 50%) */}
+              {ordemNex >= 50 && ordemClassId !== 'mundano' && (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-purple-500/40 space-y-3">
+                  <h4 className="text-xs font-black uppercase text-purple-300">
+                    👁️ Marcos de NEX 50%: Afinidade Elemental & Versatilidade
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-300 mb-1">
+                        Elemento de Afinidade Elemental
+                      </label>
+                      <select
+                        value={ordemAffinity}
+                        onChange={(e) => setOrdemAffinity(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-700/60 text-xs text-white"
+                      >
+                        {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                          <option key={el} value={el}>
+                            {el}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-300 mb-1">
+                        Versatilidade (50% NEX)
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVersatilityMode('class_power');
+                            setVersatilityTrailId('');
+                          }}
+                          className={`flex-1 py-2 px-2.5 rounded-lg text-xs font-bold border cursor-pointer ${
+                            versatilityMode === 'class_power'
+                              ? 'bg-purple-600 text-white border-purple-400'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                          }`}
+                        >
+                          +1 Poder de Classe
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVersatilityMode('trail_10');
+                            const other = availableClassTrails.find((t) => t.id !== effectiveTrailId);
+                            setVersatilityTrailId(other?.id || '');
+                          }}
+                          className={`flex-1 py-2 px-2.5 rounded-lg text-xs font-bold border cursor-pointer ${
+                            versatilityMode === 'trail_10'
+                              ? 'bg-purple-600 text-white border-purple-400'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                          }`}
+                        >
+                          Poder 10% Outra Trilha
+                        </button>
+                      </div>
+                      {versatilityMode === 'trail_10' && (
+                        <select
+                          value={versatilityTrailId}
+                          onChange={(e) => setVersatilityTrailId(e.target.value)}
+                          className="w-full mt-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
+                        >
+                          {availableClassTrails
+                            .filter((t) => t.id !== effectiveTrailId)
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}: {t.powers.find((p) => p.nex === 10)?.name}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Poderes de Classe & Transcender Acumulados (NEX >= 15%) */}
+              {totalClassPowerSlots > 0 && (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-amber-500/40 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-amber-400">
+                        ⚡ Poderes de Classe & Transcender Acumulados ({chosenClassPowerIds.length} / {totalClassPowerSlots})
+                      </h4>
+                      <p className="text-[11px] text-zinc-400">
+                        Marcos 15%, 30%, 45%, 60%, 75%, 90%{ordemNex >= 50 && versatilityMode === 'class_power' ? ' + Versatilidade 50%' : ''}. Poderes Paranormais descontam SAN por Transcender ({transcendedCountPreview} selecionado(s)).
+                      </p>
+                    </div>
+                    <input
+                      type="text"
+                      value={classPowerSearch}
+                      onChange={(e) => setClassPowerSearch(e.target.value)}
+                      placeholder="🔎 Filtrar poder..."
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                    {selectableClassAndParanormalPowers
+                      .filter((pw) => {
+                        const q = classPowerSearch.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          pw.name.toLowerCase().includes(q) ||
+                          pw.description.toLowerCase().includes(q)
+                        );
+                      })
+                      .map((pw) => {
+                        const isPicked = chosenClassPowerIds.includes(pw.id);
+                        const reqCheck = checkOrdemPowerRequirements(
+                          pw,
+                          {
+                            origin: selectedOrdemOrigin.name,
+                            characterClass: ordemClassId,
+                            nex: ordemNex,
+                            patent: ordemPatent,
+                            displacement: 9,
+                            attributes: ordemAttrs,
+                            skills: [],
+                          },
+                          []
+                        );
+                        return (
+                          <button
+                            key={pw.id}
+                            type="button"
+                            onClick={() => {
+                              setChosenClassPowerIds((prev) => {
+                                if (prev.includes(pw.id)) return prev.filter((id) => id !== pw.id);
+                                if (prev.length >= totalClassPowerSlots) return prev;
+                                return [...prev, pw.id];
+                              });
+                            }}
+                            className={`p-2.5 rounded-lg border text-left transition cursor-pointer ${
+                              isPicked
+                                ? 'bg-amber-600/20 border-amber-500'
+                                : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-white">{pw.name}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {pw.category === 'paranormal_power' && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
+                                    Transcender
+                                  </span>
+                                )}
+                                {!reqCheck.met && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-300">
+                                    Req: {reqCheck.missing[0]}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 mt-1 line-clamp-2">
+                              {pw.description}
+                            </p>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Se for Ocultista: Escolher os Rituais Iniciais até o Círculo desbloqueado */}
               {ordemClassId === 'ocultista' && (
                 <div className="p-4 rounded-xl bg-zinc-950 border-2 border-purple-500/60 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h4 className="text-sm font-black uppercase text-purple-300">
-                        🔮 Escolhido pelo Outro Lado: Selecione seus 3 Rituais de 1º Círculo ({chosenRitualIds.length}/3)
+                        🔮 Escolhido pelo Outro Lado: Selecione seus Rituais ({chosenRitualIds.length}/{maxInitialRituals} máx • mín. 3 • até {maxRitualCircle}º Círculo)
                       </h4>
                       <p className="text-xs text-zinc-400">
-                        Clique em até 3 rituais abaixo. Os rituais selecionados aparecem destacados em roxo/verde e no painel de escolhidos!
+                        Em NEX {ordemNex}%, você pode escolher até {maxInitialRituals} rituais até o {maxRitualCircle}º Círculo.
                       </p>
                     </div>
                     <input
@@ -1102,16 +1581,16 @@ export function CharacterWizardModal({
                   {/* Barra Visual dos Rituais Selecionados */}
                   <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-700/60 flex flex-wrap items-center gap-2">
                     <span className="text-xs font-black uppercase text-purple-300">
-                      Rituais Escolhidos ({chosenRitualIds.length}/3):
+                      Rituais Escolhidos ({chosenRitualIds.length}/{maxInitialRituals}):
                     </span>
                     {chosenRitualIds.length === 0 ? (
                       <span className="text-xs text-zinc-400 italic">
-                        Nenhum ritual selecionado ainda. Clique nos cards abaixo para escolher 3 rituais!
+                        Nenhum ritual selecionado ainda. Clique nos cards abaixo para escolher seus rituais!
                       </span>
                     ) : (
                       chosenRitualIds.map((rawId, idx) => {
                         const [baseId, chosenEl] = rawId.split(':');
-                        const rObj = firstCircleRituals.find((r) => r.id === baseId);
+                        const rObj = availableRituals.find((r) => r.id === baseId);
                         if (!rObj) return null;
                         const displayName = chosenEl
                           ? `Amaldiçoar Arma — ${chosenEl} (1º Círculo)`
@@ -1188,21 +1667,44 @@ export function CharacterWizardModal({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
-                      <button
-                        key={el}
-                        type="button"
-                        onClick={() => setRitualElementFilter(el)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
-                          ritualElementFilter === el
-                            ? 'bg-purple-600 text-white shadow'
-                            : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
-                        }`}
-                      >
-                        {el === 'ALL' ? 'Todos os Elementos' : el}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                        <button
+                          key={el}
+                          type="button"
+                          onClick={() => setRitualElementFilter(el)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
+                            ritualElementFilter === el
+                              ? 'bg-purple-600 text-white shadow'
+                              : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                          }`}
+                        >
+                          {el === 'ALL' ? 'Todos Elementos' : el}
+                        </button>
+                      ))}
+                    </div>
+
+                    {maxRitualCircle > 1 && (
+                      <div className="flex flex-wrap gap-1">
+                        {(['ALL', 1, 2, 3, 4] as const)
+                          .filter((c) => c === 'ALL' || c <= maxRitualCircle)
+                          .map((c) => (
+                            <button
+                              key={String(c)}
+                              type="button"
+                              onClick={() => setRitualCircleFilter(c)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
+                                ritualCircleFilter === c
+                                  ? 'bg-amber-600 text-white'
+                                  : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+                              }`}
+                            >
+                              {c === 'ALL' ? 'Todos Círc.' : `${c}ºC`}
+                            </button>
+                          ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
@@ -1235,7 +1737,7 @@ export function CharacterWizardModal({
                             </span>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-purple-300">
-                                {rit.metadata?.element}
+                                {rit.metadata?.circle || 1}ºC • {rit.metadata?.element}
                               </span>
                               {picked && (
                                 <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500 text-zinc-950">
@@ -1424,26 +1926,119 @@ export function CharacterWizardModal({
                 </div>
               )}
 
-              {/* Equipamento Inicial de Recruta (Patente Recruta: 2 itens Cat I, Cat 0 livre, Ordem Alfabética, Busca e Quantidade) */}
+              {/* Graus de Treinamento Avançados (NEX >= 35% Veterano +10 / NEX >= 70% Expert +15) */}
+              {ordemNex >= 35 && ordemClassId !== 'mundano' && (
+                <div className="bg-zinc-950 p-4 rounded-xl border border-indigo-500/40 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-indigo-300">
+                        🎖️ Graus de Treinamento (Veterano +10{ordemNex >= 70 ? ' / Expert +15' : ''})
+                      </h4>
+                      <p className="text-[11px] text-zinc-400">
+                        Promova até{' '}
+                        <strong>
+                          {selectedOrdemClass.freeSkillsBase + Math.max(0, ordemAttrs.int)}
+                        </strong>{' '}
+                        perícias treinadas para Veterano (+10){ordemNex >= 70 ? ' ou Expert (+15)' : ''}.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-indigo-300">
+                      Promovidas:{' '}
+                      {
+                        allOrdemTrainedList.filter(
+                          (id) => (upgradedSkillDegrees[id] || 5) >= 10
+                        ).length
+                      }{' '}
+                      / {selectedOrdemClass.freeSkillsBase + Math.max(0, ordemAttrs.int)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {allOrdemTrainedList.map((id) => {
+                      const meta = ORDEM_SKILLS_METADATA.find((m) => m.id === id);
+                      const deg: 5 | 10 | 15 =
+                        (upgradedSkillDegrees[id] as 5 | 10 | 15 | undefined) ?? 5;
+                      const maxUpgrades =
+                        selectedOrdemClass.freeSkillsBase + Math.max(0, ordemAttrs.int);
+                      const upgradedCount = allOrdemTrainedList.filter(
+                        (skId) => ((upgradedSkillDegrees[skId] as 5 | 10 | 15 | undefined) ?? 5) >= 10
+                      ).length;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setUpgradedSkillDegrees((prev) => {
+                              const curr: 5 | 10 | 15 =
+                                (prev[id] as 5 | 10 | 15 | undefined) ?? 5;
+                              const nextDeg: 5 | 10 | 15 =
+                                curr === 5
+                                  ? 10
+                                  : curr === 10 && ordemNex >= 70
+                                  ? 15
+                                  : 5;
+                              if (curr === 5 && nextDeg === 10 && upgradedCount >= maxUpgrades) {
+                                return prev;
+                              }
+                              const copy = { ...prev };
+                              if (nextDeg === 5) delete copy[id];
+                              else copy[id] = nextDeg;
+                              return copy;
+                            });
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
+                            deg === 15
+                              ? 'bg-purple-600 text-white border-purple-400'
+                              : deg === 10
+                              ? 'bg-indigo-600 text-white border-indigo-400'
+                              : 'bg-zinc-900 text-zinc-300 border-zinc-700'
+                          }`}
+                        >
+                          {meta?.name || id} (+{deg})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Arsenal & Equipamento Inicial conforme Patente Selecionada */}
               <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h4 className="text-sm font-black uppercase text-amber-400">
-                      🎒 Arsenal & Equipamento Inicial (Patente Recruta — Ordem Alfabética)
+                      🎒 Arsenal & Equipamento Inicial (Patente {ordemPatent} — Ordem Alfabética)
                     </h4>
                     <p className="text-xs text-zinc-400">
-                      Como <strong>Recruta</strong>, você tem direito a até <strong>2 itens de Categoria I</strong> e itens de <strong>Categoria 0</strong> à vontade (inclusive múltiplas unidades do mesmo item, como munições!).
+                      Limites da patente <strong>{ordemPatent}</strong>: itens de{' '}
+                      <strong>Categoria 0</strong> são livres.
+                      {allowsCursedSpecial && (
+                        <span className="text-purple-300 font-semibold ml-1">
+                          Itens Amaldiçoados Especiais (Cat. II+) desbloqueados!
+                        </span>
+                      )}
                     </p>
                   </div>
-                  <span
-                    className={`px-3 py-1 rounded-lg text-xs font-black border ${
-                      selectedCat1Count >= 2
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                        : 'bg-zinc-900 border-zinc-700 text-zinc-300'
-                    }`}
-                  >
-                    Categoria I usada: {selectedCat1Count} / 2
-                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([1, 2, 3, 4] as const)
+                      .filter((c) => patentCategoryLimits[c] > 0)
+                      .map((c) => {
+                        const roman = ['', 'I', 'II', 'III', 'IV'][c];
+                        const used = selectedCatCounts[c];
+                        const lim = patentCategoryLimits[c];
+                        return (
+                          <span
+                            key={c}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-black border ${
+                              used >= lim
+                                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                                : 'bg-zinc-900 border-zinc-700 text-zinc-300'
+                            }`}
+                          >
+                            Cat. {roman}: {used}/{lim}
+                          </span>
+                        );
+                      })}
+                  </div>
                 </div>
 
                 {/* Separação em 2 Abas: Equipamentos Normais vs Paranormais */}
@@ -1472,9 +2067,9 @@ export function CharacterWizardModal({
                   </button>
                 </div>
 
-                {itemRealmTab === 'paranormal' && (
+                {itemRealmTab === 'paranormal' && !allowsCursedSpecial && (
                   <p className="text-[11px] text-purple-300/90 bg-purple-950/30 border border-purple-800/50 rounded-lg px-3 py-1.5">
-                    👁️ Na patente <strong>Recruta</strong>, apenas itens paranormais de Cat. 0 e I (como Componentes Ritualísticos e Selo 1º Círculo) estão disponíveis. Itens amaldiçoados especiais (Cat. II+) são liberados a partir de <strong>Agente Especial</strong> (p. 144).
+                    👁️ Na patente <strong>{ordemPatent}</strong>, itens amaldiçoados especiais (Cat. II+) só são liberados a partir de <strong>Agente Especial</strong> (p. 144).
                   </p>
                 )}
 
@@ -1487,11 +2082,18 @@ export function CharacterWizardModal({
                     placeholder="🔎 Pesquisar arma, proteção, munição ou equipamento..."
                     className="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:border-amber-500 focus:outline-none"
                   />
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1">
                     {[
                       { val: 'ALL' as const, label: 'Todos' },
                       { val: 0 as const, label: 'Cat. 0 (Livre)' },
-                      { val: 1 as const, label: 'Cat. I (Máx. 2)' },
+                      ...(
+                        [
+                          { val: 1 as const, label: 'Cat. I' },
+                          { val: 2 as const, label: 'Cat. II' },
+                          { val: 3 as const, label: 'Cat. III' },
+                          { val: 4 as const, label: 'Cat. IV' },
+                        ] as const
+                      ).filter((c) => c.val <= maxAllowedItemCategory),
                     ].map((f) => (
                       <button
                         key={String(f.val)}
@@ -1519,7 +2121,15 @@ export function CharacterWizardModal({
                       item.id === engenheiroFavItemId;
                     const qty = chosenItemQuantities[item.id] || 0;
                     const picked = qty > 0;
-                    const canAddMore = cat === 0 || selectedCat1Count < 2;
+                    const nextUnitCat =
+                      isEngFav && qty === 0 ? Math.max(0, rawCat - 1) : rawCat;
+                    const canAddMore =
+                      nextUnitCat === 0 ||
+                      (nextUnitCat >= 1 &&
+                        nextUnitCat <= 4 &&
+                        selectedCatCounts[nextUnitCat as 1 | 2 | 3 | 4] <
+                          patentCategoryLimits[nextUnitCat as 1 | 2 | 3 | 4]);
+                    const catRoman = ['0', 'I', 'II', 'III', 'IV'];
 
                     return (
                       <div
@@ -1542,8 +2152,8 @@ export function CharacterWizardModal({
                                   : 'bg-amber-950 text-amber-300'
                               }`}
                             >
-                              Cat. {cat === 0 ? '0' : 'I'}
-                              {isEngFav ? ` (era ${rawCat === 2 ? 'II' : 'I'})` : ''} • {item.metadata?.slots ?? 1} esp.
+                              Cat. {catRoman[cat] || cat}
+                              {isEngFav ? ` (era ${catRoman[rawCat] || rawCat})` : ''} • {item.metadata?.slots ?? 1} esp.
                             </span>
                           </div>
                           {isEngFav && (

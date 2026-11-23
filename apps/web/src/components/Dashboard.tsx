@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { SystemId } from '@totalrpg/shared';
+import { SystemId, ORDEM_NEX_PROGRESSION, ORDEM_PATENTS } from '@totalrpg/shared';
 import {
   CampaignData,
   CharacterData,
@@ -41,6 +41,8 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newCampaignDesc, setNewCampaignDesc] = useState('');
   const [newCampaignSystem, setNewCampaignSystem] = useState<SystemId>('ordem-paranormal');
+  const [newCampaignReqNex, setNewCampaignReqNex] = useState<string>('');
+  const [newCampaignReqPatent, setNewCampaignReqPatent] = useState<string>('');
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
 
   const [newCharName, setNewCharName] = useState('');
@@ -48,10 +50,14 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   const [newCharPortrait, setNewCharPortrait] = useState('');
   const [isCreatingChar, setIsCreatingChar] = useState(false);
   const [wizardLockedSystem, setWizardLockedSystem] = useState<SystemId | undefined>(undefined);
+  const [wizardLockedNex, setWizardLockedNex] = useState<number | null>(null);
+  const [wizardLockedPatent, setWizardLockedPatent] = useState<string | null>(null);
 
   // Estados para enviar convite (Mestre)
   const [invitingCampaignId, setInvitingCampaignId] = useState<string | null>(null);
   const [targetUsername, setTargetUsername] = useState('');
+  const [inviteReqNex, setInviteReqNex] = useState<string>('');
+  const [inviteReqPatent, setInviteReqPatent] = useState<string>('');
 
   // Estados do Modal de Aceitar Convite / Entrar por Código (Jogador)
   const [selectedInviteToAccept, setSelectedInviteToAccept] = useState<InviteData | null>(null);
@@ -95,9 +101,20 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   async function handleCreateCampaign(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await createCampaign(newCampaignName, newCampaignDesc, newCampaignSystem);
+      await createCampaign(newCampaignName, newCampaignDesc, newCampaignSystem, {
+        requiredNex:
+          newCampaignSystem === 'ordem-paranormal' && newCampaignReqNex !== ''
+            ? Number(newCampaignReqNex)
+            : null,
+        requiredPatent:
+          newCampaignSystem === 'ordem-paranormal' && newCampaignReqPatent !== ''
+            ? newCampaignReqPatent
+            : null,
+      });
       setNewCampaignName('');
       setNewCampaignDesc('');
+      setNewCampaignReqNex('');
+      setNewCampaignReqPatent('');
       setIsCreatingCampaign(false);
       loadDashboardData();
     } catch (err: any) {
@@ -121,10 +138,16 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   async function handleSendInvite(campaignId: string) {
     if (!targetUsername.trim()) return;
     try {
-      await sendCampaignInvite(campaignId, targetUsername.trim());
+      await sendCampaignInvite(campaignId, targetUsername.trim(), {
+        requiredNex: inviteReqNex !== '' ? Number(inviteReqNex) : null,
+        requiredPatent: inviteReqPatent !== '' ? inviteReqPatent : null,
+      });
       alert(`Convite enviado para ${targetUsername}!`);
       setTargetUsername('');
+      setInviteReqNex('');
+      setInviteReqPatent('');
       setInvitingCampaignId(null);
+      loadDashboardData();
     } catch (err: any) {
       alert(err.message);
     }
@@ -190,12 +213,44 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     }
   }
 
+  // Requisitos efetivos do convite selecionado
+  const inviteRequiredNex = selectedInviteToAccept
+    ? selectedInviteToAccept.requiredNex ?? selectedInviteToAccept.campaign.requiredNex ?? null
+    : null;
+  const inviteRequiredPatent = selectedInviteToAccept
+    ? selectedInviteToAccept.requiredPatent ?? selectedInviteToAccept.campaign.requiredPatent ?? null
+    : null;
+
+  function checkInviteRequirements(c: CharacterData): { ok: boolean; reason?: string } {
+    if (!selectedInviteToAccept) return { ok: true };
+    if (c.system !== selectedInviteToAccept.campaign.system) {
+      return { ok: false, reason: `Sistema ${c.system}` };
+    }
+    if (c.system === 'ordem-paranormal') {
+      const charNex = Number(c.sheetData?.nex ?? 5);
+      const charPatent = String(c.sheetData?.patent || 'Recruta');
+      if (typeof inviteRequiredNex === 'number' && charNex !== inviteRequiredNex) {
+        return { ok: false, reason: `NEX ${charNex}% ≠ exigido ${inviteRequiredNex}%` };
+      }
+      if (
+        inviteRequiredPatent &&
+        charPatent.trim().toLowerCase() !== inviteRequiredPatent.trim().toLowerCase()
+      ) {
+        return { ok: false, reason: `Patente "${charPatent}" ≠ "${inviteRequiredPatent}"` };
+      }
+    }
+    return { ok: true };
+  }
+
   // Filtra personagens livres do cofre compatíveis com o convite selecionado
   const compatibleCharactersForInvite = selectedInviteToAccept
     ? characters.filter(
         (c) => !c.campaign && c.system === selectedInviteToAccept.campaign.system
       )
     : [];
+  const matchingCharactersForInvite = compatibleCharactersForInvite.filter(
+    (c) => checkInviteRequirements(c).ok
+  );
 
   const availableVaultCharacters = characters.filter((c) => !c.campaign);
 
@@ -205,13 +260,19 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
       {isCreatingChar && (
         <CharacterWizardModal
           lockedSystem={wizardLockedSystem}
+          lockedNex={wizardLockedNex}
+          lockedPatent={wizardLockedPatent}
           onClose={() => {
             setIsCreatingChar(false);
             setWizardLockedSystem(undefined);
+            setWizardLockedNex(null);
+            setWizardLockedPatent(null);
           }}
           onCreated={async (created) => {
             setIsCreatingChar(false);
             setWizardLockedSystem(undefined);
+            setWizardLockedNex(null);
+            setWizardLockedPatent(null);
             await loadDashboardData();
             setSelectedCharIdForJoin(created.id);
             setQuickCharName('');
@@ -237,6 +298,20 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                 <span className="text-xs text-zinc-400">
                   Sistema exigido: <strong>{selectedInviteToAccept.campaign.system.toUpperCase()}</strong>
                 </span>
+                {(typeof inviteRequiredNex === 'number' || inviteRequiredPatent) && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {typeof inviteRequiredNex === 'number' && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-600/70">
+                        ⚡ NEX Exigido: {inviteRequiredNex}%
+                      </span>
+                    )}
+                    {inviteRequiredPatent && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-200 border border-emerald-600/70">
+                        🎖️ Patente Exigida: {inviteRequiredPatent}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -250,7 +325,7 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
             {compatibleCharactersForInvite.length > 0 && (
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Opção A: Escolher um personagem livre do seu Cofre
+                  Opção A: Escolher um personagem livre do seu Cofre ({matchingCharactersForInvite.length} compatível(is))
                 </label>
                 <select
                   value={selectedCharIdForJoin}
@@ -261,11 +336,16 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                   className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
                 >
                   <option value="">-- Selecionar ficha existente --</option>
-                  {compatibleCharactersForInvite.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.system})
-                    </option>
-                  ))}
+                  {compatibleCharactersForInvite.map((c) => {
+                    const check = checkInviteRequirements(c);
+                    const cNex = c.system === 'ordem-paranormal' ? ` • NEX ${c.sheetData?.nex ?? 5}%` : '';
+                    const cPat = c.system === 'ordem-paranormal' ? ` • ${c.sheetData?.patent || 'Recruta'}` : '';
+                    return (
+                      <option key={c.id} value={c.id} disabled={!check.ok}>
+                        {c.name} ({c.system}{cNex}{cPat}){!check.ok ? ` — [Bloqueado: ${check.reason}]` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}
@@ -280,22 +360,28 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                 type="button"
                 onClick={() => {
                   setWizardLockedSystem(selectedInviteToAccept.campaign.system);
+                  setWizardLockedNex(inviteRequiredNex);
+                  setWizardLockedPatent(inviteRequiredPatent);
                   setIsCreatingChar(true);
                 }}
                 className="w-full py-2.5 mb-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/50 rounded-lg text-xs font-black text-amber-300 transition cursor-pointer"
               >
-                ✨ Criar Personagem Completo no Assistente Guiado ({selectedInviteToAccept.campaign.system.toUpperCase()})
+                ✨ Criar Personagem Completo no Assistente Guiado ({selectedInviteToAccept.campaign.system.toUpperCase()}
+                {typeof inviteRequiredNex === 'number' ? ` • NEX ${inviteRequiredNex}%` : ''}
+                {inviteRequiredPatent ? ` • ${inviteRequiredPatent}` : ''})
               </button>
-              <input
-                type="text"
-                value={quickCharName}
-                onChange={(e) => {
-                  setQuickCharName(e.target.value);
-                  if (e.target.value) setSelectedCharIdForJoin('');
-                }}
-                placeholder="Ou digite apenas o nome para criação rápida..."
-                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
-              />
+              {typeof inviteRequiredNex !== 'number' && !inviteRequiredPatent && (
+                <input
+                  type="text"
+                  value={quickCharName}
+                  onChange={(e) => {
+                    setQuickCharName(e.target.value);
+                    if (e.target.value) setSelectedCharIdForJoin('');
+                  }}
+                  placeholder="Ou digite apenas o nome para criação rápida..."
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -481,6 +567,23 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                         Mestre: <span className="text-amber-400 font-medium">{inv.campaign.dm.username}</span> | Sistema:{' '}
                         {inv.campaign.system.toUpperCase()}
                       </p>
+                      {((inv.requiredNex ?? inv.campaign.requiredNex) !== null &&
+                        (inv.requiredNex ?? inv.campaign.requiredNex) !== undefined) ||
+                      (inv.requiredPatent ?? inv.campaign.requiredPatent) ? (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {(inv.requiredNex ?? inv.campaign.requiredNex) !== null &&
+                            (inv.requiredNex ?? inv.campaign.requiredNex) !== undefined && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/70">
+                                ⚡ NEX Exigido: {inv.requiredNex ?? inv.campaign.requiredNex}%
+                              </span>
+                            )}
+                          {(inv.requiredPatent ?? inv.campaign.requiredPatent) && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/70">
+                              🎖️ Patente: {inv.requiredPatent ?? inv.campaign.requiredPatent}
+                            </span>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -777,6 +880,45 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
+              {newCampaignSystem === 'ordem-paranormal' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 border-t border-zinc-800/80">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">
+                      NEX Padrão Exigido na Mesa (Opcional)
+                    </label>
+                    <select
+                      value={newCampaignReqNex}
+                      onChange={(e) => setNewCampaignReqNex(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm"
+                    >
+                      <option value="">Qualquer NEX (Livre)</option>
+                      {ORDEM_NEX_PROGRESSION.map((m) => (
+                        <option key={m.nex} value={String(m.nex)}>
+                          NEX {m.nex}%
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">
+                      Patente Padrão Exigida na Mesa (Opcional)
+                    </label>
+                    <select
+                      value={newCampaignReqPatent}
+                      onChange={(e) => setNewCampaignReqPatent(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm"
+                    >
+                      <option value="">Qualquer Patente (Livre)</option>
+                      <option value="Mundano">Mundano</option>
+                      {ORDEM_PATENTS.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
               <button
                 type="submit"
                 className="self-end px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition cursor-pointer"
@@ -806,6 +948,20 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                       </span>
                     </div>
                     {camp.description && <p className="text-xs text-zinc-400 mt-2">{camp.description}</p>}
+                    {(typeof camp.requiredNex === 'number' || camp.requiredPatent) && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {typeof camp.requiredNex === 'number' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/70">
+                            ⚡ NEX Exigido: {camp.requiredNex}%
+                          </span>
+                        )}
+                        {camp.requiredPatent && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/70">
+                            🎖️ Patente: {camp.requiredPatent}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mt-3 bg-zinc-950 px-3 py-2 rounded-lg border border-zinc-800">
                       <span className="text-xs font-mono text-zinc-400">
                         Código: <strong className="text-amber-500">{camp.inviteCode}</strong>
@@ -817,27 +973,70 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                   </div>
 
                   {invitingCampaignId === camp.id ? (
-                    <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 flex flex-col gap-2">
-                      <label className="text-xs text-zinc-400">Nome de usuário do jogador:</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={targetUsername}
-                          onChange={(e) => setTargetUsername(e.target.value)}
-                          placeholder="Ex: jogador_1"
-                          className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
-                        />
+                    <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 flex flex-col gap-2.5">
+                      <label className="text-xs font-bold text-amber-400">
+                        ✉️ Convidar Jogador para {camp.name}:
+                      </label>
+                      <input
+                        type="text"
+                        value={targetUsername}
+                        onChange={(e) => setTargetUsername(e.target.value)}
+                        placeholder="Nome de usuário do jogador (Ex: teste)"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-white"
+                      />
+                      {camp.system === 'ordem-paranormal' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-zinc-400 mb-0.5">
+                              NEX Exigido
+                            </label>
+                            <select
+                              value={inviteReqNex}
+                              onChange={(e) => setInviteReqNex(e.target.value)}
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
+                            >
+                              <option value="">Qualquer NEX</option>
+                              {ORDEM_NEX_PROGRESSION.map((m) => (
+                                <option key={m.nex} value={String(m.nex)}>
+                                  NEX {m.nex}%
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-zinc-400 mb-0.5">
+                              Patente Exigida
+                            </label>
+                            <select
+                              value={inviteReqPatent}
+                              onChange={(e) => setInviteReqPatent(e.target.value)}
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
+                            >
+                              <option value="">Qualquer Patente</option>
+                              <option value="Mundano">Mundano</option>
+                              {ORDEM_PATENTS.map((p) => (
+                                <option key={p.id} value={p.name}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex justify-end gap-2">
                         <button
-                          onClick={() => handleSendInvite(camp.id)}
-                          className="px-3 py-1 bg-amber-600 text-white rounded text-xs font-bold cursor-pointer"
+                          type="button"
+                          onClick={() => setInvitingCampaignId(null)}
+                          className="px-2.5 py-1 bg-zinc-800 text-zinc-400 rounded text-xs cursor-pointer"
                         >
-                          Enviar
+                          Cancelar
                         </button>
                         <button
-                          onClick={() => setInvitingCampaignId(null)}
-                          className="px-2 py-1 bg-zinc-800 text-zinc-400 rounded text-xs cursor-pointer"
+                          type="button"
+                          onClick={() => handleSendInvite(camp.id)}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold cursor-pointer"
                         >
-                          X
+                          Enviar Convite
                         </button>
                       </div>
                     </div>
@@ -848,6 +1047,21 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                       className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
                     >
                       Abrir Escudo do Mestre
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInvitingCampaignId(camp.id);
+                        setTargetUsername('');
+                        setInviteReqNex(
+                          typeof camp.requiredNex === 'number' ? String(camp.requiredNex) : ''
+                        );
+                        setInviteReqPatent(camp.requiredPatent || '');
+                      }}
+                      className="px-3 py-2 bg-indigo-950/70 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/70 rounded-lg text-xs font-bold transition cursor-pointer"
+                      title="Convidar jogador definindo NEX e Patente exigidos"
+                    >
+                      ✉️ Convidar
                     </button>
                     <button
                       type="button"
