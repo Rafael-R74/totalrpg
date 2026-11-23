@@ -9,35 +9,52 @@ export const compendiumRouter = Router();
 compendiumRouter.use(authMiddleware as any);
 
 let ordemSeedPromise: Promise<void> | null = null;
+let ordemSyncedOnce = false;
 
 async function ensureOrdemCompendiumSynchronized(): Promise<void> {
+  if (ordemSyncedOnce) return;
   if (ordemSeedPromise) return ordemSeedPromise;
   ordemSeedPromise = (async () => {
     try {
       const existingOrdemEntries = await prisma.compendiumEntry.findMany({
         where: { system: 'ordem-paranormal' },
-        select: { name: true },
+        select: { id: true, name: true },
       });
-      const existingNames = new Set(
-        existingOrdemEntries.map((e) => e.name.toLowerCase().trim())
+      const existingByName = new Map(
+        existingOrdemEntries.map((e) => [e.name.toLowerCase().trim(), e.id])
       );
 
-      const missingEntries = ORDEM_COMPENDIUM_ENTRIES.filter(
-        (item) => !existingNames.has(item.name.toLowerCase().trim())
-      );
-
-      for (const item of missingEntries) {
-        await prisma.compendiumEntry.create({
-          data: {
-            system: item.system,
-            category: item.category,
-            name: item.name,
-            description: item.description,
-            cost: item.cost,
-            modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
-            metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
-          },
-        });
+      for (const item of ORDEM_COMPENDIUM_ENTRIES) {
+        const key = item.name.toLowerCase().trim();
+        const existingId = existingByName.get(key);
+        if (!existingId) {
+          await prisma.compendiumEntry.create({
+            data: {
+              system: item.system,
+              category: item.category,
+              name: item.name,
+              description: item.description,
+              cost: item.cost,
+              modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
+              metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
+            },
+          });
+        } else if (
+          item.category === 'spell' ||
+          item.category === 'power' ||
+          item.category === 'paranormal_power'
+        ) {
+          await prisma.compendiumEntry.update({
+            where: { id: existingId },
+            data: {
+              category: item.category,
+              description: item.description,
+              cost: item.cost,
+              modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
+              metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
+            },
+          });
+        }
       }
 
       // Sincroniza metadados oficiais (isParanormal, itemSubtype, isWeapon, categoryLevel) em itens já existentes no banco
@@ -78,24 +95,6 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
         },
       });
 
-      // Garante que Poderes Paranormais já existentes no banco sejam migrados para a categoria 'paranormal_power'
-      const paranormalNames = ORDEM_COMPENDIUM_ENTRIES.filter(
-        (e) => e.category === 'paranormal_power'
-      ).map((e) => e.name);
-
-      if (paranormalNames.length > 0) {
-        await prisma.compendiumEntry.updateMany({
-          where: {
-            system: 'ordem-paranormal',
-            name: { in: paranormalNames },
-            category: { not: 'paranormal_power' },
-          },
-          data: {
-            category: 'paranormal_power',
-          },
-        });
-      }
-
       const existingSkillCount = await prisma.systemSkill.count({
         where: { system: 'ordem-paranormal' },
       });
@@ -125,6 +124,7 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
           });
         }
       }
+      ordemSyncedOnce = true;
     } catch (err) {
       console.error('Erro ao sincronizar compêndio de Ordem Paranormal:', err);
     } finally {
