@@ -40,6 +40,31 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
         });
       }
 
+      // Sincroniza metadados oficiais (isParanormal, itemSubtype, isWeapon, categoryLevel) em itens já existentes no banco
+      const officialItems = ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'item');
+      for (const item of officialItems) {
+        if (
+          item.metadata &&
+          (item.metadata.isParanormal !== undefined ||
+            item.metadata.itemSubtype !== undefined ||
+            item.metadata.isWeapon !== undefined)
+        ) {
+          await prisma.compendiumEntry.updateMany({
+            where: {
+              system: 'ordem-paranormal',
+              category: 'item',
+              name: item.name,
+            },
+            data: {
+              description: item.description,
+              cost: item.cost,
+              modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
+              metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
+            },
+          });
+        }
+      }
+
       // Remove entradas legadas duplicadas/incorretas (Ataque Especial como poder avulso e Resistir a <Elemento> genérico)
       await prisma.compendiumEntry.deleteMany({
         where: {
