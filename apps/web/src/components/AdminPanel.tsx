@@ -6,6 +6,7 @@ import {
   SystemSkillDefinition,
   RuleModifier,
   ModifierTargetType,
+  isOrdemCompendiumItemParanormal,
 } from '@totalrpg/shared';
 import {
   fetchCompendium,
@@ -54,6 +55,8 @@ export function AdminPanel() {
   const [element, setElement] = useState('');
   const [requirements, setRequirements] = useState('');
   const [adminSearch, setAdminSearch] = useState('');
+  const [adminItemRealmTab, setAdminItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
+  const [itemIsParanormal, setItemIsParanormal] = useState(false);
   const [modifiers, setModifiers] = useState<RuleModifier[]>([]);
 
   // Estados do Formulário de Nova Perícia
@@ -130,6 +133,7 @@ export function AdminPanel() {
           circle: activeSection === 'spell' ? Number(circle) : undefined,
           element: element.trim() || undefined,
           requirements: requirements.trim() || undefined,
+          isParanormal: activeSection === 'item' ? itemIsParanormal : undefined,
         },
       });
 
@@ -178,6 +182,11 @@ export function AdminPanel() {
 
   const filteredEntries = entries.filter((e) => {
     if (e.category !== activeSection) return false;
+    if (activeSection === 'item' && selectedSystem === 'ordem-paranormal') {
+      const isPara = isOrdemCompendiumItemParanormal(e);
+      if (adminItemRealmTab === 'normal' && isPara) return false;
+      if (adminItemRealmTab === 'paranormal' && !isPara) return false;
+    }
     if (!adminSearch.trim()) return true;
     const q = adminSearch.toLowerCase();
     return (
@@ -400,6 +409,29 @@ export function AdminPanel() {
             <h3 className="font-bold text-sm text-amber-500">
               + Cadastrar em {CATEGORY_LABELS[activeSection]}
             </h3>
+
+            {activeSection === 'item' && selectedSystem === 'ordem-paranormal' && (
+              <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setItemIsParanormal(false)}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    !itemIsParanormal ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  🎒 Normal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setItemIsParanormal(true)}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    itemIsParanormal ? 'bg-purple-700 text-white' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  👁️ Paranormal / Amaldiçoado
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-2">
               <div className="col-span-2">
@@ -640,6 +672,33 @@ export function AdminPanel() {
                 className="px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white"
               />
             </div>
+
+            {activeSection === 'item' && selectedSystem === 'ordem-paranormal' && (
+              <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAdminItemRealmTab('normal')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    adminItemRealmTab === 'normal'
+                      ? 'bg-amber-600 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🎒 Equipamentos Normais
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminItemRealmTab('paranormal')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    adminItemRealmTab === 'paranormal'
+                      ? 'bg-purple-700 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  👁️ Equipamentos Paranormais & Amaldiçoados
+                </button>
+              </div>
+            )}
 
             {filteredEntries.length === 0 ? (
               <div className="bg-zinc-950 border border-dashed border-zinc-800 p-8 rounded-xl text-center">

@@ -7,6 +7,10 @@ import {
   CampaignMerchant,
   MerchantStockItem,
   MonitorProjection,
+  isOrdemCompendiumItemParanormal,
+  isOrdemItemWeaponEntry,
+  inferOrdemItemKind,
+  OrdemElement,
 } from '@totalrpg/shared';
 import { DMScreenCharacter } from '../../services/api';
 import { ImageUploadField } from '../ImageUploadField';
@@ -64,6 +68,8 @@ export function LootAndMerchantsManager({
 
   const [isCompendiumVaultModalOpen, setIsCompendiumVaultModalOpen] = useState(false);
   const [vaultSearchQuery, setVaultSearchQuery] = useState('');
+  const [vaultItemRealmTab, setVaultItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
+  const [stockItemRealmTab, setStockItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
 
   const [itemToGiveModal, setItemToGiveModal] = useState<{
     stored: CampaignStoredItem;
@@ -158,18 +164,37 @@ export function LootAndMerchantsManager({
 
   function handleImportFromCompendiumToVault(entry: CompendiumEntryData) {
     const id = Math.random().toString(36).substring(2, 9);
+    const catLevel = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
+    const baseSlots = entry.metadata?.slots ?? 1;
+    const isPara = isOrdemCompendiumItemParanormal(entry);
+    const isCursed = Boolean(entry.metadata?.isCursedSpecial);
     const newItem: RPGItem = {
       id,
       name: entry.name,
-      slots: entry.metadata?.slots ?? 1,
+      slots: baseSlots,
+      baseSlots,
+      category: catLevel,
+      baseCategory: catLevel,
       quantity: 1,
       isEquipped: false,
+      isParanormal: isPara,
+      isCursedSpecial: isCursed,
+      itemKind:
+        entry.metadata?.itemSubtype ||
+        inferOrdemItemKind({
+          name: entry.name,
+          description: entry.description,
+          isParanormal: isPara,
+          isCursedSpecial: isCursed,
+        }),
+      element: entry.metadata?.element as OrdemElement | undefined,
+      remainingCharges: entry.metadata?.uses,
       description: entry.description,
       modifiers: entry.modifiers || [],
     };
 
     let newAtk: PreparedAttack | undefined;
-    if (entry.metadata?.damageFormula) {
+    if (isOrdemItemWeaponEntry(entry) && entry.metadata?.damageFormula) {
       newAtk = {
         id: Math.random().toString(36).substring(2, 9),
         name: entry.name,
@@ -177,7 +202,8 @@ export function LootAndMerchantsManager({
         attackBonus: 5,
         damageFormula: entry.metadata.damageFormula,
         critRange: entry.metadata.critRange || '20/x2',
-        damageType: 'Arma',
+        damageType: entry.metadata.element || 'Arma',
+        linkedItemId: id,
       };
     }
 
@@ -307,23 +333,35 @@ export function LootAndMerchantsManager({
     setEditingStockItem(null);
   }
 
-  const filteredCompendiumForVault = compendiumEntries.filter(
-    (c) =>
-      c.category === 'item' &&
-      (c.name.toLowerCase().includes(vaultSearchQuery.toLowerCase()) ||
-        c.description.toLowerCase().includes(vaultSearchQuery.toLowerCase()))
-  );
+  const filteredCompendiumForVault = compendiumEntries.filter((c) => {
+    if (c.category !== 'item') return false;
+    if (system === 'ordem-paranormal') {
+      const isPara = isOrdemCompendiumItemParanormal(c);
+      if (vaultItemRealmTab === 'normal' && isPara) return false;
+      if (vaultItemRealmTab === 'paranormal' && !isPara) return false;
+    }
+    return (
+      c.name.toLowerCase().includes(vaultSearchQuery.toLowerCase()) ||
+      c.description.toLowerCase().includes(vaultSearchQuery.toLowerCase())
+    );
+  });
 
   const filteredAdventureForStock = campaignItems.filter((ci) =>
     ci.item.name.toLowerCase().includes(stockSearchQuery.toLowerCase())
   );
 
-  const filteredCompendiumForStock = compendiumEntries.filter(
-    (c) =>
-      c.category === 'item' &&
-      (c.name.toLowerCase().includes(stockSearchQuery.toLowerCase()) ||
-        c.description.toLowerCase().includes(stockSearchQuery.toLowerCase()))
-  );
+  const filteredCompendiumForStock = compendiumEntries.filter((c) => {
+    if (c.category !== 'item') return false;
+    if (system === 'ordem-paranormal') {
+      const isPara = isOrdemCompendiumItemParanormal(c);
+      if (stockItemRealmTab === 'normal' && isPara) return false;
+      if (stockItemRealmTab === 'paranormal' && !isPara) return false;
+    }
+    return (
+      c.name.toLowerCase().includes(stockSearchQuery.toLowerCase()) ||
+      c.description.toLowerCase().includes(stockSearchQuery.toLowerCase())
+    );
+  });
 
   const activeMerchantForModal = merchants.find((m) => m.id === stockModalMerchantId);
 
@@ -350,6 +388,33 @@ export function LootAndMerchantsManager({
                 ✕
               </button>
             </div>
+
+            {system === 'ordem-paranormal' && (
+              <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setVaultItemRealmTab('normal')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    vaultItemRealmTab === 'normal'
+                      ? 'bg-amber-600 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🎒 Equipamentos Normais
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVaultItemRealmTab('paranormal')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    vaultItemRealmTab === 'paranormal'
+                      ? 'bg-purple-700 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  👁️ Equipamentos Paranormais & Amaldiçoados
+                </button>
+              </div>
+            )}
 
             <input
               type="text"
@@ -447,6 +512,33 @@ export function LootAndMerchantsManager({
                 📚 Itens do Compêndio
               </button>
             </div>
+
+            {stockModalTab === 'compendium' && system === 'ordem-paranormal' && (
+              <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setStockItemRealmTab('normal')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    stockItemRealmTab === 'normal'
+                      ? 'bg-amber-600 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🎒 Equipamentos Normais
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockItemRealmTab('paranormal')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    stockItemRealmTab === 'paranormal'
+                      ? 'bg-purple-700 text-white shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  👁️ Equipamentos Paranormais & Amaldiçoados
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
               <div className="sm:col-span-2">
@@ -549,17 +641,37 @@ export function LootAndMerchantsManager({
                     <button
                       type="button"
                       onClick={() => {
+                        const newItemId = Math.random().toString(36).substring(2, 9);
+                        const catLevel = entry.metadata?.categoryLevel ?? entry.cost ?? 0;
+                        const baseSlots = entry.metadata?.slots ?? 1;
+                        const isPara = isOrdemCompendiumItemParanormal(entry);
+                        const isCursed = Boolean(entry.metadata?.isCursedSpecial);
                         const newItem: RPGItem = {
-                          id: Math.random().toString(36).substring(2, 9),
+                          id: newItemId,
                           name: entry.name,
-                          slots: entry.metadata?.slots ?? 1,
+                          slots: baseSlots,
+                          baseSlots,
+                          category: catLevel,
+                          baseCategory: catLevel,
                           quantity: 1,
                           isEquipped: false,
+                          isParanormal: isPara,
+                          isCursedSpecial: isCursed,
+                          itemKind:
+                            entry.metadata?.itemSubtype ||
+                            inferOrdemItemKind({
+                              name: entry.name,
+                              description: entry.description,
+                              isParanormal: isPara,
+                              isCursedSpecial: isCursed,
+                            }),
+                          element: entry.metadata?.element as OrdemElement | undefined,
+                          remainingCharges: entry.metadata?.uses,
                           description: entry.description,
                           modifiers: entry.modifiers || [],
                         };
                         let newAtk: PreparedAttack | undefined;
-                        if (entry.metadata?.damageFormula) {
+                        if (isOrdemItemWeaponEntry(entry) && entry.metadata?.damageFormula) {
                           newAtk = {
                             id: Math.random().toString(36).substring(2, 9),
                             name: entry.name,
@@ -567,7 +679,8 @@ export function LootAndMerchantsManager({
                             attackBonus: 5,
                             damageFormula: entry.metadata.damageFormula,
                             critRange: entry.metadata.critRange || '20/x2',
-                            damageType: 'Arma',
+                            damageType: entry.metadata.element || 'Arma',
+                            linkedItemId: newItemId,
                           };
                         }
                         handleAddToMerchantStock(newItem, newAtk);

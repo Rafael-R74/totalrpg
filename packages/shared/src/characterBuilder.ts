@@ -22,6 +22,11 @@ import {
   T20_RACES,
 } from './wizardData';
 import { ORDEM_COMPENDIUM_ENTRIES } from './ordemCompendiumData';
+import {
+  isOrdemCompendiumItemParanormal,
+  isOrdemItemWeaponEntry,
+  inferOrdemItemKind,
+} from './ordemEquipmentData';
 
 export interface OrdemVitalsCalcInput {
   characterClass: OrdemSheetData['characterClass'];
@@ -789,7 +794,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     const itemEntry = ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === picked.id);
     if (!itemEntry) continue;
 
-    const isWeapon = Boolean(itemEntry.metadata?.damageFormula);
+    const isWeapon = isOrdemItemWeaponEntry(itemEntry);
     const isFavTool =
       origin.id === 'engenheiro' &&
       !isWeapon &&
@@ -798,22 +803,47 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     if (isFavTool) favToolAssigned = true;
 
     const baseCategory = itemEntry.metadata?.categoryLevel ?? itemEntry.cost ?? 0;
+    const baseSlots = itemEntry.metadata?.slots ?? 1;
+    const isPara = isOrdemCompendiumItemParanormal(itemEntry);
+    const isCursed = Boolean(itemEntry.metadata?.isCursedSpecial);
+    const itemKind =
+      itemEntry.metadata?.itemSubtype ||
+      inferOrdemItemKind({
+        name: itemEntry.name,
+        description: itemEntry.description,
+        isParanormal: isPara,
+        isCursedSpecial: isCursed,
+      });
+    const isUtensilio =
+      itemEntry.name.toLowerCase().includes('utensílio') ||
+      itemEntry.name.toLowerCase().includes('utensilio');
+    const isVestimenta = itemEntry.name.toLowerCase().includes('vestimenta');
 
     const invItem: RPGItem = {
       id: `init-item-${itemEntry.id}-${Math.random().toString(36).slice(2, 6)}`,
       name: itemEntry.name,
-      slots: itemEntry.metadata?.slots ?? 1,
+      slots: baseSlots,
+      baseSlots,
       quantity: Math.max(1, picked.quantity),
       category: baseCategory,
+      baseCategory,
       description: itemEntry.description,
       isEquipped: true,
+      isParanormal: isPara,
+      isCursedSpecial: isCursed,
+      itemKind,
+      remainingCharges: itemEntry.metadata?.uses,
+      accessoryConfig:
+        isUtensilio || isVestimenta
+          ? { accessoryType: isVestimenta ? 'vestimenta' : 'utensilio' }
+          : undefined,
       isFavoriteTool: isFavTool || undefined,
       modifiers: itemEntry.modifiers || [],
     };
     inventory.push(invItem);
 
-    // Se for arma (possui damageFormula), cria ataque preparado automaticamente!
-    if (itemEntry.metadata?.damageFormula) {
+    // Se for arma real, cria ataque preparado automaticamente!
+    if (isWeapon && itemEntry.metadata?.damageFormula) {
       const classif = classifyOrdemWeapon(
         itemEntry.name,
         itemEntry.description,
@@ -840,6 +870,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         isMelee: classif.isMelee,
         isFirearm: classif.isFirearm,
         isDisparo: classif.isDisparo,
+        linkedItemId: invItem.id,
       });
     }
   }
