@@ -7,6 +7,8 @@ import {
   StickyPostIt,
   CharacterAbility,
   ActiveCondition,
+  SceneEffect,
+  CharacterLivePatch,
   calculateActiveBonuses,
   ServerToClientEvents,
   ClientToServerEvents,
@@ -14,6 +16,7 @@ import {
 import { DMScreenCampaignData, fetchDMScreenData } from '../services/api';
 import { CombatantEntry } from './DMScreen';
 import { FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
+import { TempVitalBar } from './TempVitalBar';
 
 const monitorSocket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
 
@@ -141,6 +144,9 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
   } | null>(null);
   const [spinningBatchRollIds, setSpinningBatchRollIds] = useState<Record<string, boolean>>({});
   const batchCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recentLivePatchedCharsRef = useRef<Record<string, number>>({});
+  const recentBatchPatchAtRef = useRef<number>(0);
+  const fetchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Referências e Níveis de Adaptação (0 = Tamanho Natural; só sobe se scrollHeight > clientHeight)
   const playersGridRef = useRef<HTMLDivElement | null>(null);
@@ -202,10 +208,78 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
 
     initialHydrate();
 
+    function applySinglePatchToCampaign(
+      prev: DMScreenCampaignData | null,
+      patch: CharacterLivePatch
+    ): DMScreenCampaignData | null {
+      if (!prev) return prev;
+      let matched = false;
+      const nextCharacters = prev.characters.map((ch) => {
+        if (ch.id !== patch.characterId) return ch;
+        matched = true;
+        const prevRaw = (ch.sheetData || {}) as Record<string, any>;
+        const nextRaw: Record<string, any> = { ...prevRaw };
+        if (patch.tempHp !== undefined) nextRaw.tempHp = patch.tempHp;
+        if (patch.tempHpMax !== undefined) nextRaw.tempHpMax = patch.tempHpMax;
+        if (patch.tempPe !== undefined) nextRaw.tempPe = patch.tempPe;
+        if (patch.tempPeMax !== undefined) nextRaw.tempPeMax = patch.tempPeMax;
+        if (patch.conditions !== undefined) nextRaw.conditions = patch.conditions;
+        if (patch.sceneEffects !== undefined) nextRaw.sceneEffects = patch.sceneEffects;
+        if (patch.pendingInterlude !== undefined) nextRaw.pendingInterlude = patch.pendingInterlude;
+
+        return {
+          ...ch,
+          vitals: patch.vitals ?? ch.vitals,
+          inventory: patch.inventory ?? ch.inventory,
+          sheetData: nextRaw,
+        };
+      });
+      return matched ? { ...prev, characters: nextCharacters } : prev;
+    }
+
     monitorSocket.emit('session:join', { campaignId, role: 'monitor' });
 
-    monitorSocket.on('character:updated', () => {
-      fetchCharactersOnly();
+    monitorSocket.on('character:patched', (patch) => {
+      if (!patch || patch.campaignId !== campaignId) return;
+      recentLivePatchedCharsRef.current[patch.characterId] = Date.now();
+      setCampaign((prev) => applySinglePatchToCampaign(prev, patch));
+    });
+
+    monitorSocket.on('characters:batchPatched', ({ campaignId: cId, patches }) => {
+      if (cId !== campaignId || !Array.isArray(patches)) return;
+      const now = Date.now();
+      recentBatchPatchAtRef.current = now;
+      for (const p of patches) {
+        recentLivePatchedCharsRef.current[p.characterId] = now;
+      }
+      setCampaign((prev) => {
+        let acc = prev;
+        for (const p of patches) {
+          acc = applySinglePatchToCampaign(acc, p);
+        }
+        return acc;
+      });
+    });
+
+    monitorSocket.on('character:updated', ({ characterId }) => {
+      const now = Date.now();
+      if (characterId === 'ALL' && now - recentBatchPatchAtRef.current < 2200) {
+        return;
+      }
+      if (
+        characterId &&
+        characterId !== 'ALL' &&
+        now - (recentLivePatchedCharsRef.current[characterId] || 0) < 2200
+      ) {
+        return;
+      }
+      if (fetchDebounceTimerRef.current) {
+        clearTimeout(fetchDebounceTimerRef.current);
+      }
+      fetchDebounceTimerRef.current = setTimeout(() => {
+        fetchDebounceTimerRef.current = null;
+        fetchCharactersOnly();
+      }, 180);
     });
 
     monitorSocket.on(
@@ -319,6 +393,11 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       if (batchCloseTimerRef.current) {
         clearTimeout(batchCloseTimerRef.current);
       }
+      if (fetchDebounceTimerRef.current) {
+        clearTimeout(fetchDebounceTimerRef.current);
+      }
+      monitorSocket.off('character:patched');
+      monitorSocket.off('characters:batchPatched');
       monitorSocket.off('character:updated');
       monitorSocket.off('monitor:updated');
       monitorSocket.off('combat:initiativeRequested');
@@ -929,7 +1008,8 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                   levelOrNex,
                   abilities,
                   char.inventory || [],
-                  conditions
+                  conditions,
+                  Array.isArray(raw.sceneEffects) ? (raw.sceneEffects as SceneEffect[]) : []
                 );
 
                 const agiOrDes =
@@ -1073,6 +1153,18 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                           0,
                           Math.min(100, (bar.current / effectiveMax) * 100)
                         );
+                        const tempAmount =
+                          bar.id === 'pv'
+                            ? Number(raw.tempHp || 0)
+                            : bar.id === 'pe'
+                            ? Number(raw.tempPe || 0)
+                            : 0;
+                        const tempMax =
+                          bar.id === 'pv'
+                            ? Number(raw.tempHpMax || 0)
+                            : bar.id === 'pe'
+                            ? Number(raw.tempPeMax || 0)
+                            : 0;
 
                         return (
                           <div key={bar.id} className="flex flex-col gap-1">
@@ -1090,10 +1182,18 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                               } bg-zinc-950 rounded-full overflow-hidden border border-zinc-800`}
                             >
                               <div
-                                className="h-full transition-all duration-500"
+                                className="h-full transition-all duration-200 ease-out"
                                 style={{ width: `${pct}%`, backgroundColor: bar.color }}
                               />
                             </div>
+                            {(bar.id === 'pv' || bar.id === 'pe') && (
+                              <TempVitalBar
+                                current={tempAmount}
+                                max={tempMax}
+                                barId={bar.id}
+                                size={isUltra ? 'xs' : 'sm'}
+                              />
+                            )}
                           </div>
                         );
                       })}

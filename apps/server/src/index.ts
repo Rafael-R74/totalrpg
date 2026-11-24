@@ -68,6 +68,19 @@ io.on('connection', (socket) => {
     socket.to(campaignId).emit('character:updated', { characterId });
   });
 
+  // Atualização otimista em tempo real (<5ms) para barras vitais, PV/PE temporários, condições e equipamentos
+  socket.on('character:patch', (patch) => {
+    if (patch?.campaignId && patch?.characterId) {
+      socket.to(patch.campaignId).emit('character:patched', patch);
+    }
+  });
+
+  socket.on('characters:batchPatch', (payload) => {
+    if (payload?.campaignId && Array.isArray(payload.patches)) {
+      socket.to(payload.campaignId).emit('characters:batchPatched', payload);
+    }
+  });
+
   socket.on('campaign:syncPermissions', ({ campaignId, permissions }) => {
     socket.to(campaignId).emit('campaign:permissionsUpdated', permissions);
   });

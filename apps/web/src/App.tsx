@@ -24,6 +24,7 @@ import {
   ClientToServerEvents,
   applyContentPack,
   SessionActivityLogEntry,
+  CharacterLivePatch,
 } from '@totalrpg/shared';
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
@@ -172,6 +173,18 @@ export default function App() {
       setLastUpdatedCharSignal({ characterId, timestamp: Date.now() });
     });
 
+    socket.on('character:patched', (patch) => {
+      window.dispatchEvent(
+        new CustomEvent('totalrpg:character-patched', { detail: patch })
+      );
+    });
+
+    socket.on('characters:batchPatched', (payload) => {
+      window.dispatchEvent(
+        new CustomEvent('totalrpg:characters-batch-patched', { detail: payload })
+      );
+    });
+
     socket.on('combat:initiativeRequested', () => {
       setInitiativeRequestSignal(Date.now());
     });
@@ -259,6 +272,8 @@ export default function App() {
       socket.off('dice:rolled');
       socket.off('campaign:permissionsUpdated');
       socket.off('character:updated');
+      socket.off('character:patched');
+      socket.off('characters:batchPatched');
       socket.off('combat:initiativeRequested');
       socket.off('combat:initiativeSubmitted');
       socket.off('postit:received');
@@ -756,6 +771,16 @@ export default function App() {
               socket.emit('character:sync', { campaignId: room, characterId: charId });
             }
           }}
+          onBroadcastCharacterPatch={(patch) => {
+            const room = patch.campaignId || openedCharacter.campaignId;
+            if (room) {
+              socket.emit('character:patch', {
+                ...patch,
+                campaignId: room,
+                patchTimestamp: Date.now(),
+              });
+            }
+          }}
           onNotifyItemGiven={(targetCharacterId, item, attack) => {
             const room = openedCharacter.campaignId || activeRoomId;
             if (room) {
@@ -829,6 +854,23 @@ export default function App() {
             socket.emit('character:sync', {
               campaignId: currentCampaignSession.campaignId,
               characterId,
+            })
+          }
+          onBroadcastCharacterPatch={(patch) =>
+            socket.emit('character:patch', {
+              ...patch,
+              campaignId: currentCampaignSession.campaignId,
+              patchTimestamp: Date.now(),
+            })
+          }
+          onBroadcastBatchCharacterPatch={(patches) =>
+            socket.emit('characters:batchPatch', {
+              campaignId: currentCampaignSession.campaignId,
+              patches: patches.map((p) => ({
+                ...p,
+                campaignId: currentCampaignSession.campaignId,
+                patchTimestamp: Date.now(),
+              })),
             })
           }
           onRequestPlayersInitiative={() =>

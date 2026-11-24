@@ -15,6 +15,8 @@ import {
   calculateActiveBonuses,
   SessionActivityCategory,
   SessionActivityLogEntry,
+  CharacterLivePatch,
+  resolveTempVitalMax,
 } from '@totalrpg/shared';
 import {
   DMScreenCampaignData,
@@ -30,6 +32,7 @@ import { BestiaryManager } from './dm/BestiaryManager';
 import { LootAndMerchantsManager, CampaignStoredItem } from './dm/LootAndMerchantsManager';
 import { NotesAndPostItsManager, FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
 import { MonitorDirectorPanel } from './dm/MonitorPanel';
+import { TempVitalBar } from './TempVitalBar';
 
 export interface CombatantEntry {
   id: string;
@@ -78,6 +81,12 @@ interface DMScreenProps {
   ) => void;
   onBroadcastPermissions: (permissions: SheetPermissions) => void;
   onBroadcastCharacterSync: (characterId: string) => void;
+  onBroadcastCharacterPatch?: (
+    patch: Omit<CharacterLivePatch, 'campaignId' | 'patchTimestamp'>
+  ) => void;
+  onBroadcastBatchCharacterPatch?: (
+    patches: Array<Omit<CharacterLivePatch, 'campaignId' | 'patchTimestamp'>>
+  ) => void;
   onRequestPlayersInitiative: () => void;
   onSharePostIt: (postIt: StickyPostIt, action: 'show' | 'hide') => void;
   onNotifyItemGiven: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
@@ -195,6 +204,8 @@ export function DMScreen({
   onRollDice,
   onBroadcastPermissions,
   onBroadcastCharacterSync,
+  onBroadcastCharacterPatch,
+  onBroadcastBatchCharacterPatch,
   onRequestPlayersInitiative,
   onSharePostIt,
   onNotifyItemGiven,
@@ -215,6 +226,9 @@ export function DMScreen({
   const pendingCharVitalSaveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const inFlightCharVitalSavesRef = useRef<Record<string, number>>({});
   const charMutationVersionRef = useRef<Record<string, number>>({});
+  const recentRemotePatchAtRef = useRef<Record<string, number>>({});
+  const recentBatchPatchAtRef = useRef<number>(0);
+  const reloadDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes' | 'monitor' | 'activity'>('table');
   const [sessionActivityLog, setSessionActivityLog] = useState<SessionActivityLogEntry[]>([]);
@@ -358,11 +372,90 @@ export function DMScreen({
     return () => {
       Object.values(pendingCharVitalSaveTimersRef.current).forEach((t) => clearTimeout(t));
       pendingCharVitalSaveTimersRef.current = {};
+      if (reloadDebounceTimerRef.current) {
+        clearTimeout(reloadDebounceTimerRef.current);
+      }
     };
   }, []);
 
   useEffect(() => {
-    if (lastUpdatedCharSignal) loadScreenData(true);
+    function applyLivePatch(patch: CharacterLivePatch) {
+      if (!patch || patch.campaignId !== campaignId) return;
+      recentRemotePatchAtRef.current[patch.characterId] = Date.now();
+      setCampaign((prev) => {
+        if (!prev) return prev;
+        let matched = false;
+        const nextChars = prev.characters.map((ch) => {
+          if (ch.id !== patch.characterId) return ch;
+          matched = true;
+          const prevRaw = (ch.sheetData || {}) as Record<string, any>;
+          const nextRaw: Record<string, any> = { ...prevRaw };
+          if (patch.tempHp !== undefined) nextRaw.tempHp = patch.tempHp;
+          if (patch.tempHpMax !== undefined) nextRaw.tempHpMax = patch.tempHpMax;
+          if (patch.tempPe !== undefined) nextRaw.tempPe = patch.tempPe;
+          if (patch.tempPeMax !== undefined) nextRaw.tempPeMax = patch.tempPeMax;
+          if (patch.conditions !== undefined) nextRaw.conditions = patch.conditions;
+          if (patch.sceneEffects !== undefined) nextRaw.sceneEffects = patch.sceneEffects;
+          if (patch.pendingInterlude !== undefined) nextRaw.pendingInterlude = patch.pendingInterlude;
+          return {
+            ...ch,
+            vitals: patch.vitals ?? ch.vitals,
+            inventory: patch.inventory ?? ch.inventory,
+            sheetData: nextRaw,
+          };
+        });
+        if (!matched) return prev;
+        const updated = { ...prev, characters: nextChars };
+        latestCampaignRef.current = updated;
+        return updated;
+      });
+    }
+
+    function onSinglePatch(ev: Event) {
+      const patch = (ev as CustomEvent<CharacterLivePatch>).detail;
+      applyLivePatch(patch);
+    }
+
+    function onBatchPatch(ev: Event) {
+      const payload = (
+        ev as CustomEvent<{ campaignId: string; patches: CharacterLivePatch[] }>
+      ).detail;
+      if (!payload || payload.campaignId !== campaignId || !Array.isArray(payload.patches)) return;
+      recentBatchPatchAtRef.current = Date.now();
+      for (const p of payload.patches) {
+        applyLivePatch(p);
+      }
+    }
+
+    window.addEventListener('totalrpg:character-patched', onSinglePatch);
+    window.addEventListener('totalrpg:characters-batch-patched', onBatchPatch);
+    return () => {
+      window.removeEventListener('totalrpg:character-patched', onSinglePatch);
+      window.removeEventListener('totalrpg:characters-batch-patched', onBatchPatch);
+    };
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (!lastUpdatedCharSignal) return;
+    const now = Date.now();
+    const sigCharId = lastUpdatedCharSignal.characterId;
+    if (sigCharId === 'ALL' && now - recentBatchPatchAtRef.current < 2200) {
+      return;
+    }
+    if (
+      sigCharId &&
+      sigCharId !== 'ALL' &&
+      now - (recentRemotePatchAtRef.current[sigCharId] || 0) < 2200
+    ) {
+      return;
+    }
+    if (reloadDebounceTimerRef.current) {
+      clearTimeout(reloadDebounceTimerRef.current);
+    }
+    reloadDebounceTimerRef.current = setTimeout(() => {
+      reloadDebounceTimerRef.current = null;
+      loadScreenData(true);
+    }, 180);
   }, [lastUpdatedCharSignal]);
 
   useEffect(() => {
@@ -682,6 +775,10 @@ async function handleDeliverItemToCharacter(
     const nextAttacks =
       attack && !alreadyHasAttack ? [...currentAttacks, attack] : currentAttacks;
 
+    onBroadcastCharacterPatch?.({
+      characterId: targetChar.id,
+      inventory: nextInventory,
+    });
     await updateCharacter(targetChar.id, {
       inventory: nextInventory,
       attacks: nextAttacks,
@@ -796,9 +893,11 @@ async function handleDeliverItemToCharacter(
       sceneEffects
     );
 
+    const prevTempHp = Number(rawSheet.tempHp || 0);
+    const prevTempPe = Number(rawSheet.tempPe || 0);
     let effectiveDelta = delta;
-    let nextTempHp = Number(rawSheet.tempHp || 0);
-    let nextTempPe = Number(rawSheet.tempPe || 0);
+    let nextTempHp = prevTempHp;
+    let nextTempPe = prevTempPe;
     let tempHpChanged = false;
     let tempPeChanged = false;
 
@@ -818,6 +917,9 @@ async function handleDeliverItemToCharacter(
       tempPeChanged = true;
     }
 
+    const nextTempHpMax = resolveTempVitalMax(prevTempHp, rawSheet.tempHpMax, nextTempHp);
+    const nextTempPeMax = resolveTempVitalMax(prevTempPe, rawSheet.tempPeMax, nextTempPe);
+
     const updatedVitals = targetChar.vitals.map((bar) => {
       if (bar.id !== barId) return bar;
       const effectiveMax = Math.max(1, bar.max + (bonuses.vitalMax[bar.id] || 0));
@@ -827,7 +929,13 @@ async function handleDeliverItemToCharacter(
 
     const nextSheetData =
       tempHpChanged || tempPeChanged
-        ? { ...rawSheet, tempHp: nextTempHp, tempPe: nextTempPe }
+        ? {
+            ...rawSheet,
+            tempHp: nextTempHp,
+            tempHpMax: nextTempHpMax,
+            tempPe: nextTempPe,
+            tempPeMax: nextTempPeMax,
+          }
         : rawSheet;
 
     if (activeCampaign) {
@@ -842,6 +950,16 @@ async function handleDeliverItemToCharacter(
       latestCampaignRef.current = nextCampaign;
       setCampaign(nextCampaign);
     }
+
+    // Dispara imediatamente em tempo real (<5ms) para o 2º Monitor e para a Ficha do Jogador!
+    onBroadcastCharacterPatch?.({
+      characterId: targetChar.id,
+      vitals: updatedVitals,
+      tempHp: nextTempHp,
+      tempHpMax: nextTempHpMax,
+      tempPe: nextTempPe,
+      tempPeMax: nextTempPeMax,
+    });
 
     const nextVer = (charMutationVersionRef.current[targetChar.id] || 0) + 1;
     charMutationVersionRef.current[targetChar.id] = nextVer;
@@ -886,24 +1004,33 @@ async function handleDeliverItemToCharacter(
         sheetData: {
           ...rawSheet,
           tempHp: 0,
+          tempHpMax: 0,
           tempPe: 0,
+          tempPeMax: 0,
           sceneEffects: [],
         },
       };
     });
 
     setCampaign({ ...campaign, characters: updatedChars });
+    onBroadcastBatchCharacterPatch?.(
+      updatedChars.map((c) => ({
+        characterId: c.id,
+        tempHp: 0,
+        tempHpMax: 0,
+        tempPe: 0,
+        tempPeMax: 0,
+        sceneEffects: [],
+      }))
+    );
     setSceneEndToast('🎬 Cena encerrada! Efeitos de cena e quantias temporárias foram encerrados.');
     setTimeout(() => setSceneEndToast(''), 3500);
 
     try {
       await Promise.all(
-        updatedChars.map((c) =>
-          updateCharacter(c.id, { sheetData: c.sheetData }).then(() =>
-            onBroadcastCharacterSync(c.id)
-          )
-        )
+        updatedChars.map((c) => updateCharacter(c.id, { sheetData: c.sheetData }))
       );
+      onBroadcastCharacterSync('ALL');
       onBroadcastSceneEnd?.();
       onLogActivity?.({
         characterName: '👑 Mestre',
@@ -957,18 +1084,21 @@ async function handleDeliverItemToCharacter(
     });
 
     setCampaign({ ...campaign, characters: updatedChars });
+    onBroadcastBatchCharacterPatch?.(
+      updatedChars.map((c) => ({
+        characterId: c.id,
+        pendingInterlude: (c.sheetData as any)?.pendingInterlude ?? null,
+      }))
+    );
     setIsDMInterludeModalOpen(false);
     setSceneEndToast('🌙 Cena de Interlúdio liberada para os jogadores!');
     setTimeout(() => setSceneEndToast(''), 3500);
 
     try {
       await Promise.all(
-        updatedChars.map((c) =>
-          updateCharacter(c.id, { sheetData: c.sheetData }).then(() =>
-            onBroadcastCharacterSync(c.id)
-          )
-        )
+        updatedChars.map((c) => updateCharacter(c.id, { sheetData: c.sheetData }))
       );
+      onBroadcastCharacterSync('ALL');
       onLogActivity?.({
         characterName: '👑 Mestre',
         category: 'interlude',
@@ -997,18 +1127,21 @@ async function handleDeliverItemToCharacter(
     });
 
     setCampaign({ ...campaign, characters: updatedChars });
+    onBroadcastBatchCharacterPatch?.(
+      updatedChars.map((c) => ({
+        characterId: c.id,
+        pendingInterlude: null,
+      }))
+    );
     setIsDMInterludeModalOpen(false);
     setSceneEndToast('🌙 Interlúdios pendentes recolhidos para todos os personagens.');
     setTimeout(() => setSceneEndToast(''), 3500);
 
     try {
       await Promise.all(
-        updatedChars.map((c) =>
-          updateCharacter(c.id, { sheetData: c.sheetData }).then(() =>
-            onBroadcastCharacterSync(c.id)
-          )
-        )
+        updatedChars.map((c) => updateCharacter(c.id, { sheetData: c.sheetData }))
       );
+      onBroadcastCharacterSync('ALL');
       onLogActivity?.({
         characterName: '👑 Mestre',
         category: 'interlude',
@@ -1049,6 +1182,10 @@ async function handleDeliverItemToCharacter(
         : null
     );
     setConditionPickerCharId(null);
+    onBroadcastCharacterPatch?.({
+      characterId: char.id,
+      conditions: nextSheetData.conditions,
+    });
 
     try {
       await updateCharacter(char.id, { sheetData: nextSheetData });
@@ -1079,6 +1216,11 @@ async function handleDeliverItemToCharacter(
           }
         : null
     );
+
+    onBroadcastCharacterPatch?.({
+      characterId: char.id,
+      conditions: nextSheetData.conditions,
+    });
 
     try {
       await updateCharacter(char.id, { sheetData: nextSheetData });
@@ -1941,6 +2083,12 @@ async function handleDeliverItemToCharacter(
                               : bar.id === 'pe'
                               ? Number(raw.tempPe || 0)
                               : 0;
+                          const tempMax =
+                            bar.id === 'pv'
+                              ? Number(raw.tempHpMax || 0)
+                              : bar.id === 'pe'
+                              ? Number(raw.tempPeMax || 0)
+                              : 0;
 
                           return (
                             <div key={bar.id} className="flex flex-col gap-1">
@@ -1985,24 +2133,18 @@ async function handleDeliverItemToCharacter(
 
                               <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
                                 <div
-                                  className="h-full transition-all duration-300"
+                                  className="h-full transition-all duration-200 ease-out"
                                   style={{ width: `${pct}%`, backgroundColor: bar.color }}
                                 />
                               </div>
 
-                              {tempAmount > 0 && (
-                                <div className="w-full h-4 bg-zinc-900 rounded-full overflow-hidden border border-cyan-500/60 relative flex items-center justify-center">
-                                  <div
-                                    className="h-full transition-all duration-300"
-                                    style={{
-                                      width: '100%',
-                                      backgroundColor: bar.id === 'pv' ? '#0891b2' : '#d97706',
-                                    }}
-                                  />
-                                  <span className="absolute inset-0 flex items-center justify-center text-[9px] font-mono font-extrabold uppercase tracking-wider text-white drop-shadow">
-                                    Temporário ({tempAmount})
-                                  </span>
-                                </div>
+                              {(bar.id === 'pv' || bar.id === 'pe') && (
+                                <TempVitalBar
+                                  current={tempAmount}
+                                  max={tempMax}
+                                  barId={bar.id}
+                                  size="sm"
+                                />
                               )}
                             </div>
                           );

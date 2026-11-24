@@ -245,11 +245,48 @@ export interface SessionActivityLogEntry {
   tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'purple';
 }
 
+export interface CharacterLivePatch {
+  campaignId: string;
+  characterId: string;
+  vitals?: VitalBar[];
+  tempHp?: number;
+  tempHpMax?: number;
+  tempPe?: number;
+  tempPeMax?: number;
+  conditions?: ActiveCondition[];
+  sceneEffects?: SceneEffect[];
+  pendingInterlude?: {
+    id: string;
+    comfort: 0.5 | 1 | 2 | 3;
+    grantedAt: number;
+  } | null;
+  inventory?: RPGItem[];
+  patchTimestamp: number;
+}
+
+export function resolveTempVitalMax(
+  prevCurrent: number,
+  prevMax: number | undefined,
+  nextCurrent: number
+): number {
+  if (nextCurrent <= 0) return 0;
+  const baselineMax = Math.max(Number(prevMax || 0), Number(prevCurrent || 0));
+  if (prevCurrent <= 0 || nextCurrent > baselineMax) {
+    return nextCurrent;
+  }
+  return baselineMax;
+}
+
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
   'vital:updated': (data: VitalBar) => void;
   'dice:rolled': (result: DiceRollResult) => void;
   'character:updated': (payload: { characterId: string }) => void;
+  'character:patched': (patch: CharacterLivePatch) => void;
+  'characters:batchPatched': (payload: {
+    campaignId: string;
+    patches: CharacterLivePatch[];
+  }) => void;
   'campaign:permissionsUpdated': (permissions: SheetPermissions) => void;
   'combat:initiativeRequested': (payload: { campaignId: string }) => void;
   'combat:initiativeSubmitted': (payload: {
@@ -309,6 +346,11 @@ export interface ClientToServerEvents {
     batchIsCrit?: boolean;
   }) => void;
   'character:sync': (payload: { campaignId: string; characterId: string }) => void;
+  'character:patch': (patch: CharacterLivePatch) => void;
+  'characters:batchPatch': (payload: {
+    campaignId: string;
+    patches: CharacterLivePatch[];
+  }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;
   'combat:requestInitiative': (payload: { campaignId: string }) => void;
   'postit:share': (payload: {
@@ -427,7 +469,9 @@ export interface OrdemSheetData {
   workToolWeaponName?: string;
   sangueFerventeAttr?: 'for' | 'agi';
   tempHp?: number;
+  tempHpMax?: number;
   tempPe?: number;
+  tempPeMax?: number;
   sceneEffects?: SceneEffect[];
   displacement: number;
   attributes: OrdemAttributes;
@@ -472,6 +516,7 @@ export interface T20SheetData {
   origin: string;
   proficiencies?: string[];
   tempHp?: number;
+  tempHpMax?: number;
   sceneEffects?: SceneEffect[];
   attributes: T20Attributes;
   skills: T20Skill[];

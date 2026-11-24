@@ -41,6 +41,8 @@ import {
   createKnownRitualsKeySet,
   SessionActivityCategory,
   SessionActivityLogEntry,
+  CharacterLivePatch,
+  resolveTempVitalMax,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -55,6 +57,7 @@ import { OrdemSheet } from './OrdemSheet';
 import { TormentaSheet } from './TormentaSheet';
 import { SheetExtras } from './SheetExtras';
 import { ImageUploadField } from '../ImageUploadField';
+import { TempVitalBar } from '../TempVitalBar';
 
 interface SheetContainerProps {
   characterId: string;
@@ -85,6 +88,9 @@ interface SheetContainerProps {
   ) => void;
   onRegisterSpendResource?: (fn: (amount: number) => boolean) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
+  onBroadcastCharacterPatch?: (
+    patch: Omit<CharacterLivePatch, 'campaignId' | 'patchTimestamp'> & { campaignId?: string }
+  ) => void;
   onNotifyItemGiven?: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
   onLogActivity?: (
     entry: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt' | 'campaignId'> & {
@@ -108,6 +114,7 @@ export function SheetContainer({
   onRollDice,
   onRegisterSpendResource,
   onCharacterSaved,
+  onBroadcastCharacterPatch,
   onNotifyItemGiven,
   onLogActivity,
   externalPermissions,
@@ -152,6 +159,56 @@ export function SheetContainer({
   const latestSpendResourceRef = useRef<(amount: number) => boolean>(() => false);
   const latestOnLogActivityRef = useRef(onLogActivity);
   latestOnLogActivityRef.current = onLogActivity;
+  const latestBroadcastPatchRef = useRef(onBroadcastCharacterPatch);
+  latestBroadcastPatchRef.current = onBroadcastCharacterPatch;
+  const recentRemotePatchAtRef = useRef<number>(0);
+
+  function withNormalizedTempMaxes(
+    prevChar: FullCharacterResponse,
+    nextChar: FullCharacterResponse
+  ): FullCharacterResponse {
+    const prevRaw = (prevChar.sheetData || {}) as Record<string, any>;
+    const nextRaw = (nextChar.sheetData || {}) as Record<string, any>;
+    const prevTempHp = Number(prevRaw.tempHp || 0);
+    const nextTempHp = Number(nextRaw.tempHp || 0);
+    const prevTempPe = Number(prevRaw.tempPe || 0);
+    const nextTempPe = Number(nextRaw.tempPe || 0);
+    const nextTempHpMax = resolveTempVitalMax(prevTempHp, prevRaw.tempHpMax, nextTempHp);
+    const nextTempPeMax = resolveTempVitalMax(prevTempPe, prevRaw.tempPeMax, nextTempPe);
+
+    if (
+      nextRaw.tempHpMax === nextTempHpMax &&
+      nextRaw.tempPeMax === nextTempPeMax
+    ) {
+      return nextChar;
+    }
+    return {
+      ...nextChar,
+      sheetData: {
+        ...nextRaw,
+        tempHpMax: nextTempHpMax,
+        tempPeMax: nextTempPeMax,
+      },
+    };
+  }
+
+  function emitLivePatchFromCharacter(charState: FullCharacterResponse) {
+    if (!charState.campaignId) return;
+    const raw = (charState.sheetData || {}) as Record<string, any>;
+    latestBroadcastPatchRef.current?.({
+      campaignId: charState.campaignId,
+      characterId: charState.id,
+      vitals: charState.vitals,
+      tempHp: Number(raw.tempHp || 0),
+      tempHpMax: Number(raw.tempHpMax || 0),
+      tempPe: Number(raw.tempPe || 0),
+      tempPeMax: Number(raw.tempPeMax || 0),
+      conditions: Array.isArray(raw.conditions) ? raw.conditions : [],
+      sceneEffects: Array.isArray(raw.sceneEffects) ? raw.sceneEffects : [],
+      pendingInterlude: raw.pendingInterlude ?? null,
+      inventory: charState.inventory,
+    });
+  }
 
   function logSheetActivity(entry: {
     category: SessionActivityCategory;
@@ -202,11 +259,13 @@ export function SheetContainer({
   ): FullCharacterResponse | null {
     const base = latestCharacterRef.current;
     if (!base) return null;
-    const nextChar = updater(base);
+    const rawNext = updater(base);
+    const nextChar = withNormalizedTempMaxes(base, rawNext);
     latestCharacterRef.current = nextChar;
     localMutationVersionRef.current += 1;
     setCharacter(nextChar);
     if (shouldAutoSave) {
+      emitLivePatchFromCharacter(nextChar);
       scheduleGameModeSave();
     }
     return nextChar;
@@ -332,16 +391,17 @@ export function SheetContainer({
         description: `+${newRoll.total} PV Temporários até o fim da cena (Rolagem: [${newRoll.rolls.join(', ')}])`,
         tempHpGranted: newRoll.total,
       };
-      const nextChar: FullCharacterResponse = {
+      const nextChar = withNormalizedTempMaxes(baseChar, {
         ...baseChar,
         sheetData: {
           ...baseRaw,
           tempHp: nextTempHp,
           sceneEffects: [...filteredEffects, newEffect],
         },
-      };
+      });
       latestCharacterRef.current = nextChar;
       setCharacter(nextChar);
+      emitLivePatchFromCharacter(nextChar);
       handleSaveSheet(nextChar);
       showHoverToast(
         `🛡️ ${ritualName}: +${newRoll.total} PV Temporários aplicados na ficha!`
@@ -529,11 +589,65 @@ export function SheetContainer({
   }, [externalPermissions]);
 
   useEffect(() => {
+    function applyRemotePatch(patch: CharacterLivePatch) {
+      if (!patch || patch.characterId !== characterId) return;
+      recentRemotePatchAtRef.current = Date.now();
+      setCharacter((prev) => {
+        if (!prev) return prev;
+        const prevRaw = (prev.sheetData || {}) as Record<string, any>;
+        const nextRaw: Record<string, any> = { ...prevRaw };
+        if (patch.tempHp !== undefined) nextRaw.tempHp = patch.tempHp;
+        if (patch.tempHpMax !== undefined) nextRaw.tempHpMax = patch.tempHpMax;
+        if (patch.tempPe !== undefined) nextRaw.tempPe = patch.tempPe;
+        if (patch.tempPeMax !== undefined) nextRaw.tempPeMax = patch.tempPeMax;
+        if (patch.conditions !== undefined) nextRaw.conditions = patch.conditions;
+        if (patch.sceneEffects !== undefined) nextRaw.sceneEffects = patch.sceneEffects;
+        if (patch.pendingInterlude !== undefined) nextRaw.pendingInterlude = patch.pendingInterlude;
+
+        const updated: FullCharacterResponse = {
+          ...prev,
+          vitals: patch.vitals ?? prev.vitals,
+          inventory: patch.inventory ?? prev.inventory,
+          sheetData: nextRaw as any,
+        };
+        latestCharacterRef.current = updated;
+        return updated;
+      });
+    }
+
+    function onSinglePatch(ev: Event) {
+      applyRemotePatch((ev as CustomEvent<CharacterLivePatch>).detail);
+    }
+
+    function onBatchPatch(ev: Event) {
+      const payload = (
+        ev as CustomEvent<{ campaignId: string; patches: CharacterLivePatch[] }>
+      ).detail;
+      if (!payload || !Array.isArray(payload.patches)) return;
+      for (const p of payload.patches) {
+        if (p.characterId === characterId) {
+          applyRemotePatch(p);
+        }
+      }
+    }
+
+    window.addEventListener('totalrpg:character-patched', onSinglePatch);
+    window.addEventListener('totalrpg:characters-batch-patched', onBatchPatch);
+    return () => {
+      window.removeEventListener('totalrpg:character-patched', onSinglePatch);
+      window.removeEventListener('totalrpg:characters-batch-patched', onBatchPatch);
+    };
+  }, [characterId]);
+
+  useEffect(() => {
     if (
       externalReloadSignal &&
       (externalReloadSignal.characterId === characterId ||
         externalReloadSignal.characterId === 'ALL')
     ) {
+      if (Date.now() - recentRemotePatchAtRef.current < 2200) {
+        return;
+      }
       if (saveDebounceTimerRef.current || inFlightSaveCountRef.current > 0) {
         return;
       }
@@ -1181,6 +1295,7 @@ export function SheetContainer({
       };
     }, false);
     if (!nextChar) return;
+    emitLivePatchFromCharacter(nextChar);
     setFeedbackMsg('🎬 Cena encerrada! Efeitos de cena e PVs temporários limpos.');
     setTimeout(() => setFeedbackMsg(''), 3500);
     handleSaveSheet(nextChar);
@@ -3536,6 +3651,12 @@ export function SheetContainer({
               const percent = Math.max(0, Math.min(100, (bar.current / effectiveMax) * 100));
               const tempAmount =
                 bar.id === 'pv' ? tempHp : bar.id === 'pe' ? tempPe : 0;
+              const tempMax =
+                bar.id === 'pv'
+                  ? Number(rawSheet.tempHpMax || 0)
+                  : bar.id === 'pe'
+                  ? Number(rawSheet.tempPeMax || 0)
+                  : 0;
 
               return (
                 <div
@@ -3620,27 +3741,18 @@ export function SheetContainer({
                   <div className="flex flex-col gap-1.5">
                     <div className="w-full h-3.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
                       <div
-                        className="h-full transition-all duration-300"
+                        className="h-full transition-all duration-200 ease-out"
                         style={{ width: `${percent}%`, backgroundColor: bar.color }}
                       />
                     </div>
 
-                    {tempAmount > 0 && (
-                      <div
-                        className="w-full h-5 bg-zinc-900 rounded-full overflow-hidden border border-cyan-500/70 relative flex items-center justify-center shadow-inner"
-                        title="Quantia temporária (diminuída antes da barra original e some assim que zerar)"
-                      >
-                        <div
-                          className="h-full transition-all duration-300"
-                          style={{
-                            width: '100%',
-                            backgroundColor: bar.id === 'pv' ? '#0891b2' : '#d97706',
-                          }}
-                        />
-                        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-extrabold uppercase tracking-wider text-white drop-shadow">
-                          Temporário ({tempAmount})
-                        </span>
-                      </div>
+                    {(bar.id === 'pv' || bar.id === 'pe') && (
+                      <TempVitalBar
+                        current={tempAmount}
+                        max={tempMax}
+                        barId={bar.id}
+                        size="md"
+                      />
                     )}
                   </div>
 
@@ -5488,7 +5600,9 @@ export function SheetContainer({
                   abilities: prevRaw.abilities || [],
                   conditions: prevRaw.conditions || [],
                   tempHp: updatedData.tempHp ?? prevRaw.tempHp ?? 0,
+                  tempHpMax: updatedData.tempHpMax ?? prevRaw.tempHpMax ?? 0,
                   tempPe: updatedData.tempPe ?? prevRaw.tempPe ?? 0,
+                  tempPeMax: updatedData.tempPeMax ?? prevRaw.tempPeMax ?? 0,
                   sceneEffects: updatedData.sceneEffects ?? prevRaw.sceneEffects ?? [],
                   proficiencies: updatedData.proficiencies ?? prevRaw.proficiencies,
                   personalProfile: updatedData.personalProfile ?? prevRaw.personalProfile,
@@ -5537,7 +5651,9 @@ export function SheetContainer({
                   abilities: prevRaw.abilities || [],
                   conditions: prevRaw.conditions || [],
                   tempHp: prevRaw.tempHp || 0,
+                  tempHpMax: prevRaw.tempHpMax || 0,
                   tempPe: prevRaw.tempPe || 0,
+                  tempPeMax: prevRaw.tempPeMax || 0,
                   sceneEffects: prevRaw.sceneEffects || [],
                   proficiencies: updatedData.proficiencies ?? prevRaw.proficiencies,
                   personalProfile: updatedData.personalProfile ?? prevRaw.personalProfile,
