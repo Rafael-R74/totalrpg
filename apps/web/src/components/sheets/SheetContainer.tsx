@@ -61,6 +61,7 @@ import { TempVitalBar } from '../TempVitalBar';
 import { useTheme } from '../../theme/themeEngine';
 
 import { Icon, stripEmoji } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface SheetContainerProps {
   characterId: string;
   currentUserId: string;
@@ -4809,13 +4810,16 @@ export function SheetContainer({
                               key={el}
                               type="button"
                               onClick={() => setEvoPowerElementFilter(el)}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                                evoPowerElementFilter === el
-                                  ? 'bg-purple-600 border-purple-400 text-white'
-                                  : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                              aria-pressed={evoPowerElementFilter === el}
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                el === 'ALL'
+                                  ? evoPowerElementFilter === el
+                                    ? 'border bg-zinc-800 border-zinc-500 text-zinc-100'
+                                    : 'border bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                                  : elementChoiceClasses(el, evoPowerElementFilter === el)
                               }`}
                             >
-                              {el === 'ALL' ? 'Todos Elementos' : el}
+                              {el === 'ALL' ? 'Todos os elementos' : el}
                             </button>
                           ))}
                         </div>
@@ -4920,9 +4924,7 @@ export function SheetContainer({
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-xs text-white">{pw.name}</span>
                                     {pw.metadata?.element && (
-                                      <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">
-                                        {pw.metadata.element}
-                                      </span>
+                                      <ElementBadge element={pw.metadata.element} />
                                     )}
                                   </div>
                                   <div className="flex items-center gap-1.5">
@@ -5224,16 +5226,20 @@ export function SheetContainer({
                     <label className="block text-xs font-black uppercase text-purple-300">
                       <Icon name="conhecimento" /> Afinidade com Elemento Paranormal (NEX 50%)
                     </label>
-                    <select
-                      value={evoAffinity}
-                      onChange={(e) => setEvoAffinity(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-500/40 text-sm text-white"
-                    >
-                      <option value="Sangue">Sangue</option>
-                      <option value="Morte">Morte</option>
-                      <option value="Conhecimento">Conhecimento</option>
-                      <option value="Energia">Energia</option>
-                    </select>
+                    <div role="radiogroup" aria-label="Elemento de afinidade" className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                        <button
+                          key={el}
+                          type="button"
+                          role="radio"
+                          aria-checked={evoAffinity === el}
+                          onClick={() => setEvoAffinity(el)}
+                          className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 ${elementChoiceClasses(el, evoAffinity === el)}`}
+                        >
+                          <Icon name={el.toLowerCase()} size={15} /> {el}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -5285,13 +5291,16 @@ export function SheetContainer({
                           key={el}
                           type="button"
                           onClick={() => setEvoRitualElementFilter(el)}
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
-                            evoRitualElementFilter === el
-                              ? 'bg-amber-600 border-amber-400 text-white'
-                              : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                          aria-pressed={evoRitualElementFilter === el}
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            el === 'ALL'
+                              ? evoRitualElementFilter === el
+                                ? 'border bg-zinc-800 border-zinc-500 text-zinc-100'
+                                : 'border bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                              : elementChoiceClasses(el, evoRitualElementFilter === el)
                           }`}
                         >
-                          {el === 'ALL' ? 'Todos Elementos' : el}
+                          {el === 'ALL' ? 'Todos os elementos' : el}
                         </button>
                       ))}
                     </div>
@@ -5318,10 +5327,10 @@ export function SheetContainer({
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           {(
                             [
-                              { el: 'Sangue', icon: 'sangue', color: 'bg-red-900/70 hover:bg-red-700 border-red-500 text-red-100' },
-                              { el: 'Morte', icon: 'morte', color: 'bg-zinc-900 hover:bg-zinc-700 border-zinc-400 text-zinc-100' },
-                              { el: 'Conhecimento', icon: 'conhecimento', color: 'bg-yellow-900/70 hover:bg-yellow-700 border-yellow-400 text-yellow-100' },
-                              { el: 'Energia', icon: 'energia', color: 'bg-purple-900/70 hover:bg-purple-700 border-purple-400 text-purple-100' },
+                              { el: 'Sangue', icon: 'sangue' },
+                              { el: 'Morte', icon: 'morte' },
+                              { el: 'Conhecimento', icon: 'conhecimento' },
+                              { el: 'Energia', icon: 'energia' },
                             ] as const
                           ).map((opt) => {
                             const hasThisEl = characterAbilities.some((ab) =>
@@ -5336,11 +5345,7 @@ export function SheetContainer({
                                   setEvoNewRitualId(`ord-rit-amaldicoar-arma:${opt.el}`);
                                   setEvoShowAmaldicoarPrompt(false);
                                 }}
-                                className={`py-2 px-2.5 rounded-lg border font-black text-xs transition flex items-center justify-center gap-1.5 ${
-                                  hasThisEl
-                                    ? 'bg-zinc-950 border-zinc-800 text-zinc-600 cursor-not-allowed'
-                                    : `${opt.color} cursor-pointer`
-                                }`}
+                                className={`py-2 px-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${elementChoiceClasses(opt.el, false)}`}
                               >
                                 <Icon name={opt.icon} size={16} />
                                 <span>{opt.el}</span>
@@ -5391,9 +5396,8 @@ export function SheetContainer({
                                   {r.name}
                                   {pickedElement ? ` (${pickedElement})` : ''}
                                 </span>
-                                <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">
-                                  {r.metadata?.circle || 1}º Círculo • {r.metadata?.element || 'Paranormal'}
-                                </span>
+                                <span className="text-xs text-zinc-400 trpg-num">{r.metadata?.circle || 1}º círculo</span>
+                                <ElementBadge element={r.metadata?.element || 'Paranormal'} />
                                 <span className="text-[10px] font-mono bg-blue-950 text-blue-300 border border-blue-800 px-1.5 py-0.5 rounded">
                                   {r.cost} PE
                                 </span>

@@ -54,6 +54,7 @@ import { CharacterPersonalTab } from './CharacterPersonalTab';
 import { applyCampaignSceneEffect, fetchCampaignTradeTargets } from '../../services/api';
 
 import { Icon, stripEmoji } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface SheetExtrasProps {
   system: SystemId;
   ordemSheetData?: OrdemSheetData;
@@ -1616,10 +1617,13 @@ export function SheetExtras({
                             key={el.id}
                             type="button"
                             onClick={() => setCompendiumElementFilter(el.id)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
-                              compendiumElementFilter === el.id
-                                ? 'bg-purple-700 border-purple-500 text-white'
-                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            aria-pressed={compendiumElementFilter === el.id}
+                            className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              ['Sangue', 'Morte', 'Conhecimento', 'Energia', 'Medo'].includes(el.id)
+                                ? elementChoiceClasses(el.id, compendiumElementFilter === el.id)
+                                : compendiumElementFilter === el.id
+                                ? 'border bg-zinc-800 border-zinc-500 text-zinc-100'
+                                : 'border bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200'
                             }`}
                           >
                             {el.label}
@@ -1665,14 +1669,15 @@ export function SheetExtras({
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-bold text-white">{entry.name}</span>
                               {entry.category === 'paranormal_power' && (
-                                <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
-                                  <Icon name="conhecimento" /> Paranormal {entry.metadata?.element ? `• ${entry.metadata.element}` : ''}
-                                </span>
+                                <ElementBadge element={entry.metadata?.element}>
+                                  Paranormal{entry.metadata?.element ? `: ${entry.metadata.element}` : ''}
+                                </ElementBadge>
                               )}
                               {entry.category === 'spell' && entry.metadata?.circle && (
-                                <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
-                                  {entry.metadata.circle}º Círculo • {entry.metadata.element || 'Paranormal'}
-                                </span>
+                                <>
+                                  <span className="text-xs text-zinc-400 trpg-num">{entry.metadata.circle}º círculo</span>
+                                  <ElementBadge element={entry.metadata.element || 'Paranormal'} />
+                                </>
                               )}
                               {entry.cost > 0 && entry.category !== 'item' && (
                                 <span className="text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">
@@ -1723,11 +1728,7 @@ export function SheetExtras({
                                       type="button"
                                       disabled={hasThisEl}
                                       onClick={() => handleSelectFromCompendium(entry, el)}
-                                      className={`px-2 py-1 rounded text-[10px] font-bold border ${
-                                        hasThisEl
-                                          ? 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
-                                          : 'bg-purple-800 hover:bg-purple-600 border-purple-500 text-white cursor-pointer'
-                                      }`}
+                                      className={`px-2 py-1 rounded text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed ${elementChoiceClasses(el, hasThisEl)}`}
                                     >
                                       {hasThisEl ? `✓ ${el}` : `+ ${el}`}
                                     </button>
@@ -4481,9 +4482,7 @@ export function SheetExtras({
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-sm text-white">{ab.name}</h4>
                         {isOrdemRitual && ritualElLabel && (
-                          <span className="text-[10px] font-mono font-bold bg-purple-950/70 text-purple-200 border border-purple-700/70 px-2 py-0.5 rounded">
-                            {ritualElLabel}
-                          </span>
+                          <ElementBadge element={ritualElLabel} />
                         )}
                         {ritualDtValue !== null && (
                           <span className="text-[10px] font-mono font-bold bg-indigo-950/70 text-indigo-200 border border-indigo-700/60 px-2 py-0.5 rounded">

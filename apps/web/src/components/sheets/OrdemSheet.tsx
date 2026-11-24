@@ -21,6 +21,7 @@ import {
 } from '@totalrpg/shared';
 
 import { Icon } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface OrdemSheetProps {
   data: OrdemSheetData;
   bonuses: ComputedBonuses;
@@ -540,9 +541,7 @@ export function OrdemSheet({
             </label>
             <div className="flex flex-wrap items-center gap-2">
               {safeData.affinity ? (
-                <span className="text-xs font-bold px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
-                  {safeData.affinity}
-                </span>
+                <ElementBadge element={safeData.affinity} size="md" />
               ) : (
                 <span className="text-xs text-zinc-500 font-semibold">
                   {safeData.nex >= 50 ? 'Não escolhida' : 'Bloqueada (<50%)'}
@@ -961,12 +960,9 @@ export function OrdemSheet({
                 rp.element ||
                 'Elemento';
               return (
-                <span
-                  key={rp.id}
-                  className="px-2.5 py-1 rounded-lg bg-purple-950/60 border border-purple-700/60 text-purple-200 text-xs font-bold"
-                >
-                  <Icon name="shield" /> RD {elLabel}: {isAff ? '20 (Afinidade)' : '10'}
-                </span>
+                <ElementBadge key={rp.id} element={elLabel} size="md" showIcon={false}>
+                  <Icon name="shield" size={13} /> RD {elLabel}: {isAff ? '20 (Afinidade)' : '10'}
+                </ElementBadge>
               );
             })}
             {sangueFerventeAb && (() => {

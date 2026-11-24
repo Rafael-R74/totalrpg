@@ -39,11 +39,12 @@
   --trpg-temp: oklch(0.72 0.09 188);
   --trpg-heal: oklch(0.7 0.12 155);
   --trpg-gold: oklch(0.79 0.13 86);
-  --trpg-el-sangue: oklch(0.6 0.19 25);
-  --trpg-el-morte: oklch(0.62 0.01 80);
-  --trpg-el-conhecimento: oklch(0.8 0.13 88);
-  --trpg-el-energia: oklch(0.66 0.17 300);
-  --trpg-el-medo: oklch(0.93 0.012 250);
+  /* Elementos do Outro Lado: cores fixas e inconfundíveis */
+  --trpg-el-sangue: #e0302f;
+  --trpg-el-morte: #0a0a0b;
+  --trpg-el-conhecimento: #f2c230;
+  --trpg-el-energia: #9b4dff;
+  --trpg-el-medo: #f4f2ee;
 }
 
 /* ----------------------------------------------------------------------------
@@ -1115,3 +1116,77 @@ html[data-motion="reduced"] *::after {
   from { transform: rotate(-120deg) scale(0.3); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
+
+
+/* ----------------------------------------------------------------------------
+   ELEMENTOS (Ordem Paranormal) — selos e botões de escolha
+   Sangue vermelho, Morte preto, Conhecimento amarelo, Energia roxo, Medo branco.
+   ---------------------------------------------------------------------------- */
+.trpg-el {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--trpg-r-xs);
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+.trpg-el-md {
+  padding: 0.2rem 0.65rem;
+  font-size: 0.8125rem;
+}
+.trpg-el-sangue {
+  background: #5c0d10;
+  color: #ffd9d6;
+  border-color: var(--trpg-el-sangue);
+}
+.trpg-el-morte {
+  background: var(--trpg-el-morte);
+  color: #e7e3dc;
+  border-color: #6b6762;
+}
+.trpg-el-conhecimento {
+  background: var(--trpg-el-conhecimento);
+  color: #241a00;
+  border-color: #ffd85c;
+}
+.trpg-el-energia {
+  background: #3d1478;
+  color: #eadbff;
+  border-color: var(--trpg-el-energia);
+}
+.trpg-el-medo {
+  background: var(--trpg-el-medo);
+  color: #121214;
+  border-color: #ffffff;
+}
+.trpg-el-neutral {
+  background: var(--trpg-elevated);
+  color: var(--trpg-ink-soft);
+  border-color: var(--trpg-border-strong);
+}
+
+/* Botões de escolha de elemento: contorno na cor do elemento; preenchido quando escolhido */
+.trpg-el-choice {
+  border: 1px solid var(--trpg-border-strong);
+  background: var(--trpg-bg);
+  color: var(--trpg-ink-soft);
+  transition: background-color var(--trpg-dur-hover) var(--trpg-ease), color var(--trpg-dur-hover) var(--trpg-ease),
+    border-color var(--trpg-dur-hover) var(--trpg-ease);
+}
+.trpg-el-choice-sangue { border-color: var(--trpg-el-sangue); color: #ff9a94; }
+.trpg-el-choice-morte { border-color: #6b6762; color: #d6d2cb; }
+.trpg-el-choice-conhecimento { border-color: var(--trpg-el-conhecimento); color: var(--trpg-el-conhecimento); }
+.trpg-el-choice-energia { border-color: var(--trpg-el-energia); color: #c9a3ff; }
+.trpg-el-choice-medo { border-color: var(--trpg-el-medo); color: var(--trpg-el-medo); }
+.trpg-el-choice-sangue:hover, .trpg-el-choice-sangue.is-selected { background: #5c0d10; color: #ffd9d6; }
+.trpg-el-choice-morte:hover, .trpg-el-choice-morte.is-selected { background: var(--trpg-el-morte); color: #f1ede6; border-color: #a29d96; }
+.trpg-el-choice-conhecimento:hover { background: color-mix(in oklab, var(--trpg-el-conhecimento) 22%, var(--trpg-bg)); }
+.trpg-el-choice-conhecimento.is-selected { background: var(--trpg-el-conhecimento); color: #241a00; }
+.trpg-el-choice-energia:hover, .trpg-el-choice-energia.is-selected { background: #3d1478; color: #eadbff; }
+.trpg-el-choice-medo:hover { background: color-mix(in oklab, var(--trpg-el-medo) 14%, var(--trpg-bg)); }
+.trpg-el-choice-medo.is-selected { background: var(--trpg-el-medo); color: #121214; }
+.trpg-el-choice.is-selected { box-shadow: 0 0 0 2px color-mix(in oklab, currentColor 30%, transparent); }

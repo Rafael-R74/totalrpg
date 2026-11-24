@@ -18,6 +18,7 @@ import {
 } from '@totalrpg/shared';
 
 import { Icon } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface ItemCustomizationModalProps {
   item: RPGItem;
   compendiumEntries: CompendiumEntryData[];
@@ -395,11 +396,8 @@ export function ItemCustomizationModal({
                       key={el}
                       type="button"
                       onClick={() => setDraft((prev) => ({ ...prev, element: el }))}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
-                        draft.element === el
-                          ? 'bg-purple-700 border-purple-400 text-white'
-                          : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-purple-500'
-                      }`}
+                      aria-pressed={draft.element === el}
+                      className={`px-2.5 py-1 rounded-lg text-sm font-semibold ${elementChoiceClasses(el, draft.element === el)}`}
                     >
                       {el}
                     </button>
@@ -511,13 +509,16 @@ export function ItemCustomizationModal({
                       key={el}
                       type="button"
                       onClick={() => setCurseElementFilter(el)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
-                        curseElementFilter === el
-                          ? 'bg-purple-700 border-purple-400 text-white'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      aria-pressed={curseElementFilter === el}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        el === 'ALL'
+                          ? curseElementFilter === el
+                            ? 'border bg-zinc-800 border-zinc-500 text-zinc-100'
+                            : 'border bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                          : elementChoiceClasses(el, curseElementFilter === el)
                       }`}
                     >
-                      {el === 'ALL' ? 'Todos Elementos' : el}
+                      {el === 'ALL' ? 'Todos os elementos' : el}
                     </button>
                   ))}
                 </div>
@@ -551,9 +552,7 @@ export function ItemCustomizationModal({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-bold text-white">{curse.name}</span>
-                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800">
-                              {appliedObj?.chosenElement || curse.element}
-                            </span>
+                            <ElementBadge element={appliedObj?.chosenElement || curse.element} />
                             <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-amber-300 border border-zinc-700">
                               {curse.shortEffect}
                             </span>
@@ -624,11 +623,7 @@ export function ItemCustomizationModal({
                                 disabled={!elCheck.allowed}
                                 title={elCheck.reason}
                                 onClick={() => handleAddCurse(curse.id, el)}
-                                className={`px-2.5 py-1 rounded text-[11px] font-bold border ${
-                                  elCheck.allowed
-                                    ? 'bg-purple-800 hover:bg-purple-600 text-white border-purple-500 cursor-pointer'
-                                    : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                                }`}
+                                className={`px-2.5 py-1 rounded text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed ${elementChoiceClasses(el, false)}`}
                               >
                                 {el}
                               </button>

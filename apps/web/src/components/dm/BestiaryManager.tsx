@@ -16,6 +16,7 @@ import {
 } from '@totalrpg/shared';
 
 import { Icon } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface BestiaryManagerProps {
   system: SystemId;
   threats: CampaignThreat[];
@@ -65,14 +66,6 @@ function formatD20Pool(diceCount: number, bonus: number): string {
   return `${diceCount}d20${modStr}`;
 }
 
-const ELEMENT_BADGE_STYLES: Record<string, string> = {
-  Sangue: 'bg-red-950/80 text-red-300 border-red-700/70',
-  Morte: 'bg-zinc-900 text-zinc-200 border-zinc-600',
-  Conhecimento: 'bg-amber-950/80 text-amber-300 border-amber-600/70',
-  Energia: 'bg-purple-950/80 text-purple-300 border-purple-600/70',
-  Medo: 'bg-cyan-950/80 text-cyan-200 border-cyan-600/70',
-  Realidade: 'bg-slate-900 text-slate-300 border-slate-700',
-};
 
 const ACTION_BADGE_STYLES: Record<ThreatActionType, string> = {
   Passiva: 'bg-zinc-800 text-zinc-300 border-zinc-700',
@@ -1285,13 +1278,15 @@ export function BestiaryManager({
                     if (pill.id !== 'realidade') setRealitySubFilter('ALL');
                   }}
                   aria-pressed={groupFilter === pill.id}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${
-                    groupFilter === pill.id
-                      ? 'bg-zinc-800 text-zinc-100 border-zinc-500'
-                      : 'bg-transparent text-zinc-400 border-zinc-800 hover:text-zinc-100 hover:border-zinc-600'
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5 ${
+                    pill.color
+                      ? elementChoiceClasses(pill.id, groupFilter === pill.id)
+                      : groupFilter === pill.id
+                      ? 'border bg-zinc-800 text-zinc-100 border-zinc-500'
+                      : 'border bg-transparent text-zinc-400 border-zinc-800 hover:text-zinc-100 hover:border-zinc-600'
                   }`}
                 >
-                  <Icon name={pill.icon} size={14} style={pill.color ? { color: pill.color } : undefined} />
+                  <Icon name={pill.icon} size={14} />
                   {pill.label}
                 </button>
               ))}
@@ -1335,8 +1330,6 @@ export function BestiaryManager({
                 const isExpanded = Boolean(expandedCatalogIds[tpl.id]);
                 const qty = catalogQtyById[tpl.id] || 1;
                 const diffBadge = getEncounterDifficultyBadge(tpl.vd, partyTotalNex);
-                const elStyle =
-                  ELEMENT_BADGE_STYLES[tpl.element] || ELEMENT_BADGE_STYLES.Realidade;
 
                 return (
                   <div
@@ -1351,23 +1344,16 @@ export function BestiaryManager({
                             <span className="px-2 py-0.5 rounded-md bg-red-950 text-red-200 border border-red-700/80 font-mono text-[11px] font-extrabold">
                               VD {tpl.vd}
                             </span>
-                            <span
-                              className={`px-2 py-0.5 rounded-md border text-[10px] font-extrabold uppercase ${elStyle}`}
-                            >
-                              {tpl.element}
-                            </span>
+                            <ElementBadge element={tpl.element} />
                             {tpl.secondaryElements.map((sec) => (
-                              <span
-                                key={sec}
-                                className="px-1.5 py-0.5 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-[10px] font-semibold"
-                              >
+                              <ElementBadge key={sec} element={sec}>
                                 +{sec}
-                              </span>
+                              </ElementBadge>
                             ))}
                             {tpl.hasEnigmaOfFear && (
-                              <span className="px-2 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-700/70 text-[10px] font-bold">
-                                <Icon name="puzzle" /> Enigma de Medo
-                              </span>
+                              <ElementBadge element="Medo" showIcon={false}>
+                                <Icon name="puzzle" size={12} /> Enigma de Medo
+                              </ElementBadge>
                             )}
                             {diffBadge && (
                               <span
@@ -1636,9 +1622,6 @@ export function BestiaryManager({
                 const qty = savedQtyById[threat.id] || 1;
                 const isProjected = activeProjectionId === threat.id;
                 const isExpanded = expandedSavedIds[threat.id] ?? true;
-                const elStyle = threat.element
-                  ? ELEMENT_BADGE_STYLES[threat.element] || ELEMENT_BADGE_STYLES.Realidade
-                  : '';
 
                 return (
                   <div
@@ -1667,11 +1650,7 @@ export function BestiaryManager({
                                 </span>
                               )}
                               {threat.element && (
-                                <span
-                                  className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase ${elStyle}`}
-                                >
-                                  {threat.element}
-                                </span>
+                                <ElementBadge element={threat.element} />
                               )}
                               {threat.size && (
                                 <span className="text-[10px] text-zinc-400">

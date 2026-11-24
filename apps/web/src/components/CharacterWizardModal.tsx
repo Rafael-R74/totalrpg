@@ -25,6 +25,7 @@ import { CharacterData, createCharacter } from '../services/api';
 import { ImageUploadField } from './ImageUploadField';
 
 import { Icon } from './ui/Icon';
+import { ElementBadge, elementChoiceClasses } from './ui/ElementBadge';
 interface CharacterWizardModalProps {
   lockedSystem?: SystemId;
   lockedNex?: number | null;
@@ -1410,17 +1411,20 @@ export function CharacterWizardModal({
                       <label className="block text-[11px] font-bold text-zinc-300 mb-1">
                         Elemento de Afinidade Elemental
                       </label>
-                      <select
-                        value={ordemAffinity}
-                        onChange={(e) => setOrdemAffinity(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-700/60 text-xs text-white"
-                      >
+                      <div role="radiogroup" aria-label="Elemento de afinidade" className="grid grid-cols-2 gap-1.5">
                         {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
-                          <option key={el} value={el}>
-                            {el}
-                          </option>
+                          <button
+                            key={el}
+                            type="button"
+                            role="radio"
+                            aria-checked={ordemAffinity === el}
+                            onClick={() => setOrdemAffinity(el)}
+                            className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 ${elementChoiceClasses(el, ordemAffinity === el)}`}
+                          >
+                            <Icon name={el.toLowerCase()} size={15} /> {el}
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-zinc-300 mb-1">
@@ -1649,10 +1653,10 @@ export function CharacterWizardModal({
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {(
                           [
-                            { el: 'Sangue', icon: 'sangue', color: 'bg-red-900/70 hover:bg-red-700 border-red-500 text-red-100' },
-                            { el: 'Morte', icon: 'morte', color: 'bg-zinc-900 hover:bg-zinc-700 border-zinc-400 text-zinc-100' },
-                            { el: 'Conhecimento', icon: 'conhecimento', color: 'bg-yellow-900/70 hover:bg-yellow-700 border-yellow-400 text-yellow-100' },
-                            { el: 'Energia', icon: 'energia', color: 'bg-purple-900/70 hover:bg-purple-700 border-purple-400 text-purple-100' },
+                            { el: 'Sangue', icon: 'sangue' },
+                            { el: 'Morte', icon: 'morte' },
+                            { el: 'Conhecimento', icon: 'conhecimento' },
+                            { el: 'Energia', icon: 'energia' },
                           ] as const
                         ).map((opt) => {
                           const alreadyPicked = chosenRitualIds.includes(
@@ -1663,7 +1667,7 @@ export function CharacterWizardModal({
                               key={opt.el}
                               type="button"
                               onClick={() => selectAmaldicoarArmaWithElement(opt.el)}
-                              className={`py-2.5 px-3 rounded-xl border font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${opt.color}`}
+                              className={`py-2.5 px-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 ${elementChoiceClasses(opt.el, alreadyPicked)}`}
                             >
                               <Icon name={opt.icon} size={16} />
                               <span>{opt.el}</span>
@@ -1682,13 +1686,16 @@ export function CharacterWizardModal({
                           key={el}
                           type="button"
                           onClick={() => setRitualElementFilter(el)}
-                          className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
-                            ritualElementFilter === el
-                              ? 'bg-purple-600 text-white shadow'
-                              : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                          aria-pressed={ritualElementFilter === el}
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            el === 'ALL'
+                              ? ritualElementFilter === el
+                                ? 'border bg-zinc-800 border-zinc-500 text-zinc-100'
+                                : 'border bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                              : elementChoiceClasses(el, ritualElementFilter === el)
                           }`}
                         >
-                          {el === 'ALL' ? 'Todos Elementos' : el}
+                          {el === 'ALL' ? 'Todos os elementos' : el}
                         </button>
                       ))}
                     </div>
@@ -1744,9 +1751,8 @@ export function CharacterWizardModal({
                               {pickedElements.length > 0 && ` (${pickedElements.join(', ')})`}
                             </span>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-purple-300">
-                                {rit.metadata?.circle || 1}ºC • {rit.metadata?.element}
-                              </span>
+                              <span className="text-xs text-zinc-400 trpg-num">{rit.metadata?.circle || 1}º círculo</span>
+                              <ElementBadge element={rit.metadata?.element} />
                               {picked && (
                                 <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500 text-zinc-950">
                                   ✓ #{pickedIndex + 1} ESCOLHIDO
