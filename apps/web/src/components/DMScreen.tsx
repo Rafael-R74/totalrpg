@@ -13,6 +13,8 @@ import {
   StickyPostIt,
   MonitorDirectorState,
   calculateActiveBonuses,
+  SessionActivityCategory,
+  SessionActivityLogEntry,
 } from '@totalrpg/shared';
 import {
   DMScreenCampaignData,
@@ -47,7 +49,14 @@ export interface CombatantEntry {
 interface DMScreenProps {
   campaignId: string;
   rollHistory: DiceRollResult[];
+  liveActivityLog?: SessionActivityLogEntry[];
   onClearRolls: () => void;
+  onClearActivityLog?: () => void;
+  onLogActivity?: (
+    entry: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt' | 'campaignId'> & {
+      campaignId?: string;
+    }
+  ) => void;
   onInspectCharacter: (characterId: string) => void;
   onRollDice: (
     characterName: string,
@@ -93,10 +102,88 @@ function parseFormula(formula: string): { count: number; sides: number; modifier
   };
 }
 
+const ACTIVITY_CATEGORY_META: Record<
+  SessionActivityCategory,
+  { icon: string; label: string; badgeClass: string }
+> = {
+  ability: {
+    icon: '✨',
+    label: 'Poder / Ritual',
+    badgeClass: 'bg-purple-950/70 text-purple-300 border-purple-700/60',
+  },
+  inventory: {
+    icon: '🎒',
+    label: 'Equipamento',
+    badgeClass: 'bg-blue-950/70 text-blue-300 border-blue-700/60',
+  },
+  consumable: {
+    icon: '🧪',
+    label: 'Consumível',
+    badgeClass: 'bg-amber-950/70 text-amber-300 border-amber-700/60',
+  },
+  transfer: {
+    icon: '🤝',
+    label: 'Troca / Entrega',
+    badgeClass: 'bg-cyan-950/70 text-cyan-300 border-cyan-700/60',
+  },
+  vital: {
+    icon: '❤️',
+    label: 'Vital',
+    badgeClass: 'bg-red-950/70 text-red-300 border-red-700/60',
+  },
+  condition: {
+    icon: '🩸',
+    label: 'Condição / Cena',
+    badgeClass: 'bg-rose-950/70 text-rose-300 border-rose-700/60',
+  },
+  interlude: {
+    icon: '🌙',
+    label: 'Interlúdio',
+    badgeClass: 'bg-indigo-950/70 text-indigo-300 border-indigo-700/60',
+  },
+  progression: {
+    icon: '📈',
+    label: 'Evolução',
+    badgeClass: 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60',
+  },
+  system: {
+    icon: '🛡️',
+    label: 'Mesa',
+    badgeClass: 'bg-zinc-900 text-zinc-300 border-zinc-700',
+  },
+};
+
+const ACTIVITY_TONE_CLASSES: Record<NonNullable<SessionActivityLogEntry['tone']>, string> = {
+  neutral: 'bg-zinc-950 border-zinc-800',
+  info: 'bg-blue-950/20 border-blue-800/50',
+  success: 'bg-emerald-950/20 border-emerald-800/50',
+  warning: 'bg-amber-950/20 border-amber-800/50',
+  danger: 'bg-red-950/25 border-red-800/60',
+  purple: 'bg-purple-950/25 border-purple-800/60',
+};
+
+function mergeActivityLogs(
+  primary: SessionActivityLogEntry[],
+  secondary: SessionActivityLogEntry[]
+): SessionActivityLogEntry[] {
+  const byId = new Map<string, SessionActivityLogEntry>();
+  for (const item of [...primary, ...secondary]) {
+    if (item && item.id && !byId.has(item.id)) {
+      byId.set(item.id, item);
+    }
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 250);
+}
+
 export function DMScreen({
   campaignId,
   rollHistory,
+  liveActivityLog = [],
   onClearRolls,
+  onClearActivityLog,
+  onLogActivity,
   onInspectCharacter,
   onRollDice,
   onBroadcastPermissions,
@@ -122,7 +209,13 @@ export function DMScreen({
   const inFlightCharVitalSavesRef = useRef<Record<string, number>>({});
   const charMutationVersionRef = useRef<Record<string, number>>({});
 
-  const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes' | 'monitor'>('table');
+  const [activeDMTab, setActiveDMTab] = useState<'table' | 'bestiary' | 'loot' | 'notes' | 'monitor' | 'activity'>('table');
+  const [sessionActivityLog, setSessionActivityLog] = useState<SessionActivityLogEntry[]>([]);
+  const [rightPanelFeedTab, setRightPanelFeedTab] = useState<'activity' | 'rolls'>('activity');
+  const [quickActivityFilter, setQuickActivityFilter] = useState<'all' | 'vital' | 'ability' | 'items'>('all');
+  const [fullLogCategoryFilter, setFullLogCategoryFilter] = useState<'all' | SessionActivityCategory>('all');
+  const [fullLogCharFilter, setFullLogCharFilter] = useState<string>('ALL');
+  const [fullLogSearch, setFullLogSearch] = useState<string>('');
   const [conditionPickerCharId, setConditionPickerCharId] = useState<string | null>(null);
   const [initFeedback, setInitFeedback] = useState('');
   const [sceneEndToast, setSceneEndToast] = useState('');
@@ -229,6 +322,14 @@ export function DMScreen({
         setDmNotes(dbNotes);
         setPostIts(dbPostIts);
 
+        const dbActivity: SessionActivityLogEntry[] = Array.isArray(dbCombat.activityLog)
+          ? dbCombat.activityLog
+          : JSON.parse(localStorage.getItem(`totalrpg_activity_${campaignId}`) || '[]');
+        const campaignLive = liveActivityLog.filter((e) => e.campaignId === campaignId);
+        const mergedActivity = mergeActivityLogs(campaignLive, dbActivity);
+        setSessionActivityLog(mergedActivity);
+        localStorage.setItem(`totalrpg_activity_${campaignId}`, JSON.stringify(mergedActivity));
+
         isHydratedRef.current = true;
       }
 
@@ -257,7 +358,24 @@ export function DMScreen({
     if (lastUpdatedCharSignal) loadScreenData(true);
   }, [lastUpdatedCharSignal]);
 
-useEffect(() => {
+  useEffect(() => {
+    if (!isHydratedRef.current || !liveActivityLog || liveActivityLog.length === 0) return;
+    const campaignLive = liveActivityLog.filter((e) => e.campaignId === campaignId);
+    if (campaignLive.length === 0) return;
+    setSessionActivityLog((prev) => {
+      const merged = mergeActivityLogs(campaignLive, prev);
+      if (
+        merged.length === prev.length &&
+        merged.every((item, idx) => item.id === prev[idx]?.id)
+      ) {
+        return prev;
+      }
+      localStorage.setItem(`totalrpg_activity_${campaignId}`, JSON.stringify(merged));
+      return merged;
+    });
+  }, [liveActivityLog, campaignId]);
+
+  useEffect(() => {
     if (!isHydratedRef.current) return;
 
     // Transmite tudo imediatamente para o 2º Monitor no 1º clique!
@@ -271,7 +389,13 @@ useEffect(() => {
     const timer = setTimeout(() => {
       updateCampaignDMData(campaignId, {
         dmNotes,
-        combatState: { combatants, currentTurnIndex, roundNumber, director: monitorDirector },
+        combatState: {
+          combatants,
+          currentTurnIndex,
+          roundNumber,
+          director: monitorDirector,
+          activityLog: sessionActivityLog.slice(0, 200),
+        },
         threats,
         campaignItems,
         merchants,
@@ -290,6 +414,7 @@ useEffect(() => {
     campaignItems,
     merchants,
     postIts,
+    sessionActivityLog,
     campaignId,
   ]);
 
@@ -447,6 +572,17 @@ async function handleDeliverItemToCharacter(
     if (!fromMerchant) {
       onNotifyItemGiven(targetChar.id, item, attack);
     }
+    onLogActivity?.({
+      characterId: targetChar.id,
+      characterName: targetChar.name,
+      actorLabel: fromMerchant ? '🏪 Mercador' : '👑 Mestre',
+      category: 'transfer',
+      summary: `${fromMerchant ? 'Adquiriu no Mercador' : 'Recebeu do Mestre'}: ${
+        item.quantity || 1
+      }x ${item.name}`,
+      costText: `+${item.quantity || 1}x`,
+      tone: 'success',
+    });
     loadScreenData(true);
   }
 
@@ -649,6 +785,13 @@ async function handleDeliverItemToCharacter(
         )
       );
       onBroadcastSceneEnd?.();
+      onLogActivity?.({
+        characterName: '👑 Mestre',
+        category: 'condition',
+        summary:
+          'Encerrou a cena atual para todos os personagens (efeitos de cena e PV/PE temporários limpos)',
+        tone: 'purple',
+      });
     } catch (err: any) {
       alert(err.message);
     }
@@ -706,6 +849,15 @@ async function handleDeliverItemToCharacter(
           )
         )
       );
+      onLogActivity?.({
+        characterName: '👑 Mestre',
+        category: 'interlude',
+        summary:
+          dmInterludeMode === 'all'
+            ? `Liberou Cena de Interlúdio para todos (Descanso ${dmInterludeGlobalComfort}x)`
+            : 'Liberou Cena de Interlúdio individual por personagem',
+        tone: 'info',
+      });
     } catch (err: any) {
       alert(err.message);
     }
@@ -737,6 +889,12 @@ async function handleDeliverItemToCharacter(
           )
         )
       );
+      onLogActivity?.({
+        characterName: '👑 Mestre',
+        category: 'interlude',
+        summary: 'Recolheu Interlúdios pendentes para todos os personagens',
+        tone: 'warning',
+      });
     } catch (err: any) {
       alert(err.message);
     }
@@ -823,6 +981,76 @@ async function handleDeliverItemToCharacter(
       isSecretRoll
     );
   }
+
+  function handleClearAllActivityLog() {
+    setSessionActivityLog([]);
+    localStorage.removeItem(`totalrpg_activity_${campaignId}`);
+    onClearActivityLog?.();
+  }
+
+  function renderActivityCard(entry: SessionActivityLogEntry, compact = false) {
+    const meta = ACTIVITY_CATEGORY_META[entry.category] || ACTIVITY_CATEGORY_META.system;
+    const toneClass = ACTIVITY_TONE_CLASSES[entry.tone || 'neutral'];
+    return (
+      <div
+        key={entry.id}
+        className={`p-3 rounded-xl border flex flex-col gap-1 transition ${toneClass}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${meta.badgeClass}`}
+            >
+              {meta.icon} {compact ? '' : meta.label}
+            </span>
+            <span className="font-bold text-amber-400 text-xs truncate">
+              {entry.characterName}
+            </span>
+            {entry.actorLabel && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-300">
+                {entry.actorLabel}
+              </span>
+            )}
+            <span className="text-[10px] text-zinc-500 font-mono">{entry.timestamp}</span>
+          </div>
+
+          {entry.costText && (
+            <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-white shrink-0">
+              {entry.costText}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs font-semibold text-zinc-100 leading-snug">{entry.summary}</p>
+
+        {entry.details && (
+          <p className="text-[11px] text-zinc-400 leading-snug">{entry.details}</p>
+        )}
+      </div>
+    );
+  }
+
+  const quickFilteredActivityLog = sessionActivityLog.filter((e) => {
+    if (quickActivityFilter === 'all') return true;
+    if (quickActivityFilter === 'vital') return e.category === 'vital' || e.category === 'condition';
+    if (quickActivityFilter === 'ability') return e.category === 'ability' || e.category === 'interlude';
+    return (
+      e.category === 'inventory' || e.category === 'consumable' || e.category === 'transfer'
+    );
+  });
+
+  const fullFilteredActivityLog = sessionActivityLog.filter((e) => {
+    if (fullLogCategoryFilter !== 'all' && e.category !== fullLogCategoryFilter) return false;
+    if (fullLogCharFilter !== 'ALL' && e.characterId !== fullLogCharFilter && e.characterName !== fullLogCharFilter) {
+      return false;
+    }
+    if (fullLogSearch.trim()) {
+      const q = fullLogSearch.toLowerCase();
+      const hay = `${e.characterName} ${e.summary} ${e.details || ''} ${e.costText || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -1075,6 +1303,18 @@ async function handleDeliverItemToCharacter(
             }`}
           >
             🖥️ Diretor do 2º Monitor (TV)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveDMTab('activity')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+              activeDMTab === 'activity'
+                ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/40'
+                : 'bg-zinc-950 text-cyan-300 hover:text-white border border-cyan-800/60'
+            }`}
+          >
+            📋 Log da Mesa ({sessionActivityLog.length})
           </button>
         </div>
       </div>
@@ -1628,6 +1868,131 @@ async function handleDeliverItemToCharacter(
               onChangeDirector={setMonitorDirector}
             />
           )}
+
+          {activeDMTab === 'activity' && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 shadow-lg">
+              <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
+                <div>
+                  <h3 className="text-base font-extrabold uppercase tracking-wider text-cyan-400">
+                    📋 Log Geral de Atividades da Mesa
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Histórico completo de habilidades, rituais, trocas, equipamentos, consumíveis e variações vitais em tempo real.
+                  </p>
+                </div>
+
+                {sessionActivityLog.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllActivityLog}
+                    className="px-3 py-1.5 bg-zinc-950 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-800 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    🗑️ Limpar Log da Sessão
+                  </button>
+                )}
+              </div>
+
+              {/* Resumo rápido de contadores */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
+                  <span className="block text-[10px] uppercase text-zinc-500 font-bold">Total de Eventos</span>
+                  <span className="text-lg font-mono font-extrabold text-white">{sessionActivityLog.length}</span>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
+                  <span className="block text-[10px] uppercase text-zinc-500 font-bold">❤️ Vitais / Condições</span>
+                  <span className="text-lg font-mono font-extrabold text-red-400">
+                    {sessionActivityLog.filter((e) => e.category === 'vital' || e.category === 'condition').length}
+                  </span>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
+                  <span className="block text-[10px] uppercase text-zinc-500 font-bold">✨ Poderes / Rituais</span>
+                  <span className="text-lg font-mono font-extrabold text-purple-400">
+                    {sessionActivityLog.filter((e) => e.category === 'ability' || e.category === 'interlude').length}
+                  </span>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
+                  <span className="block text-[10px] uppercase text-zinc-500 font-bold">🎒 Itens & Trocas</span>
+                  <span className="text-lg font-mono font-extrabold text-amber-400">
+                    {
+                      sessionActivityLog.filter(
+                        (e) =>
+                          e.category === 'inventory' ||
+                          e.category === 'consumable' ||
+                          e.category === 'transfer'
+                      ).length
+                    }
+                  </span>
+                </div>
+              </div>
+
+              {/* Barra de busca, filtro de personagem e categorias */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={fullLogSearch}
+                  onChange={(e) => setFullLogSearch(e.target.value)}
+                  placeholder="🔎 Buscar no log por item, ritual, poder, dano..."
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+                <select
+                  value={fullLogCharFilter}
+                  onChange={(e) => setFullLogCharFilter(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 font-semibold"
+                >
+                  <option value="ALL">Todos os Personagens</option>
+                  {campaign.characters.map((ch) => (
+                    <option key={ch.id} value={ch.id}>
+                      {ch.name}
+                    </option>
+                  ))}
+                  <option value="👑 Mestre">👑 Mestre</option>
+                  <option value="👑 Mesa">👑 Mesa</option>
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setFullLogCategoryFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                    fullLogCategoryFilter === 'all'
+                      ? 'bg-cyan-600 text-white border-cyan-400'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                  }`}
+                >
+                  Tudo ({sessionActivityLog.length})
+                </button>
+                {(Object.keys(ACTIVITY_CATEGORY_META) as SessionActivityCategory[]).map((cat) => {
+                  const meta = ACTIVITY_CATEGORY_META[cat];
+                  const count = sessionActivityLog.filter((e) => e.category === cat).length;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setFullLogCategoryFilter(cat)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        fullLogCategoryFilter === cat
+                          ? 'bg-cyan-600 text-white border-cyan-400'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {meta.icon} {meta.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="max-h-[580px] overflow-y-auto flex flex-col gap-2 pr-1">
+                {fullFilteredActivityLog.length === 0 ? (
+                  <p className="text-xs text-zinc-500 text-center py-10">
+                    Nenhuma atividade registrada com os filtros selecionados.
+                  </p>
+                ) : (
+                  fullFilteredActivityLog.map((entry) => renderActivityCard(entry, false))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* COLUNA DIREITA FIXA: DADOS DO MESTRE + LOG */}
@@ -1742,60 +2107,140 @@ async function handleDeliverItemToCharacter(
             </form>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col h-[420px]">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-200">
-                📜 Rolagens da Sessão ({rollHistory.length})
-              </h3>
-              {rollHistory.length > 0 && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col h-[500px]">
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={onClearRolls}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                  onClick={() => setRightPanelFeedTab('activity')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border transition cursor-pointer ${
+                    rightPanelFeedTab === 'activity'
+                      ? 'bg-cyan-600 text-white border-cyan-400'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                  }`}
                 >
-                  Limpar
+                  📋 Atividades ({sessionActivityLog.length})
                 </button>
-              )}
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelFeedTab('rolls')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border transition cursor-pointer ${
+                    rightPanelFeedTab === 'rolls'
+                      ? 'bg-amber-600 text-white border-amber-400'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                  }`}
+                >
+                  🎲 Rolagens ({rollHistory.length})
+                </button>
+              </div>
 
-            <div className="flex-1 overflow-y-auto flex flex-col gap-2.5 pr-1">
-              {rollHistory.length === 0 ? (
-                <p className="text-xs text-zinc-500 text-center my-auto px-4">
-                  Nenhuma rolagem feita na sessão ainda.
-                </p>
-              ) : (
-                rollHistory.map((roll) => (
-                  <div
-                    key={roll.id}
-                    className={`p-3 rounded-xl border flex justify-between items-center gap-2 ${
-                      roll.isSecret
-                        ? 'bg-purple-950/20 border-purple-800/60'
-                        : 'bg-zinc-950 border-zinc-800'
-                    }`}
+              <div className="flex items-center gap-2">
+                {rightPanelFeedTab === 'activity' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setActiveDMTab('activity')}
+                      className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
+                    >
+                      Expandir
+                    </button>
+                    {sessionActivityLog.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllActivityLog}
+                        className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </>
+                )}
+                {rightPanelFeedTab === 'rolls' && rollHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={onClearRolls}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-amber-400 text-xs">{roll.characterName}</span>
-                        {roll.isSecret && (
-                          <span className="text-[9px] font-mono uppercase bg-purple-950 text-purple-300 border border-purple-700 px-1.5 py-0.5 rounded">
-                            👁️ Secreta
-                          </span>
-                        )}
-                        <span className="text-[10px] text-zinc-500">{roll.timestamp}</span>
-                      </div>
-                      <p className="text-xs font-semibold text-zinc-200 mt-0.5">{roll.label}</p>
-                      <p className="text-[11px] font-mono text-zinc-500 mt-0.5">
-                        {roll.formula} → [{roll.rolls.join(', ')}]
-                      </p>
-                    </div>
-
-                    <div className="text-2xl font-extrabold font-mono text-white bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-700">
-                      {roll.total}
-                    </div>
-                  </div>
-                ))
-              )}
+                    Limpar
+                  </button>
+                )}
+              </div>
             </div>
+
+            {rightPanelFeedTab === 'activity' ? (
+              <>
+                <div className="flex flex-wrap gap-1 mb-2.5">
+                  {[
+                    { id: 'all' as const, label: 'Tudo' },
+                    { id: 'vital' as const, label: '❤️ Vitais' },
+                    { id: 'ability' as const, label: '✨ Poderes/Rituais' },
+                    { id: 'items' as const, label: '🎒 Itens & Trocas' },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setQuickActivityFilter(f.id)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer ${
+                        quickActivityFilter === f.id
+                          ? 'bg-cyan-950 text-cyan-200 border-cyan-500/70'
+                          : 'bg-zinc-950 text-zinc-500 border-zinc-800 hover:text-zinc-300'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
+                  {quickFilteredActivityLog.length === 0 ? (
+                    <p className="text-xs text-zinc-500 text-center my-auto px-4">
+                      Nenhuma atividade registrada nesta sessão ainda. Equipar itens, usar poderes/rituais, consumir suprimentos e alterar barras vitais aparecerão aqui em tempo real.
+                    </p>
+                  ) : (
+                    quickFilteredActivityLog.map((entry) => renderActivityCard(entry, true))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 overflow-y-auto flex flex-col gap-2.5 pr-1">
+                {rollHistory.length === 0 ? (
+                  <p className="text-xs text-zinc-500 text-center my-auto px-4">
+                    Nenhuma rolagem feita na sessão ainda.
+                  </p>
+                ) : (
+                  rollHistory.map((roll) => (
+                    <div
+                      key={roll.id}
+                      className={`p-3 rounded-xl border flex justify-between items-center gap-2 ${
+                        roll.isSecret
+                          ? 'bg-purple-950/20 border-purple-800/60'
+                          : 'bg-zinc-950 border-zinc-800'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-amber-400 text-xs">{roll.characterName}</span>
+                          {roll.isSecret && (
+                            <span className="text-[9px] font-mono uppercase bg-purple-950 text-purple-300 border border-purple-700 px-1.5 py-0.5 rounded">
+                              👁️ Secreta
+                            </span>
+                          )}
+                          <span className="text-[10px] text-zinc-500">{roll.timestamp}</span>
+                        </div>
+                        <p className="text-xs font-semibold text-zinc-200 mt-0.5">{roll.label}</p>
+                        <p className="text-[11px] font-mono text-zinc-500 mt-0.5">
+                          {roll.formula} → [{roll.rolls.join(', ')}]
+                        </p>
+                      </div>
+
+                      <div className="text-2xl font-extrabold font-mono text-white bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-700">
+                        {roll.total}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

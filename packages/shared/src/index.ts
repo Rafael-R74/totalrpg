@@ -214,6 +214,33 @@ export interface DiceRollResult {
   batchShotNumber?: number;
   batchIsCrit?: boolean;
 }
+
+export type SessionActivityCategory =
+  | 'ability'
+  | 'inventory'
+  | 'consumable'
+  | 'transfer'
+  | 'vital'
+  | 'condition'
+  | 'interlude'
+  | 'progression'
+  | 'system';
+
+export interface SessionActivityLogEntry {
+  id: string;
+  campaignId: string;
+  timestamp: string;
+  createdAt: number;
+  category: SessionActivityCategory;
+  characterId?: string;
+  characterName: string;
+  actorLabel?: string;
+  summary: string;
+  details?: string;
+  costText?: string;
+  tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'purple';
+}
+
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
   'vital:updated': (data: VitalBar) => void;
@@ -234,6 +261,7 @@ export interface ServerToClientEvents {
     attack?: PreparedAttack;
   }) => void;
   'scene:ended': (payload: { campaignId: string; timestamp: number }) => void;
+  'activity:logged': (entry: SessionActivityLogEntry) => void;
   'monitor:updated': (payload: {
     director: MonitorDirectorState;
     combatState: {
@@ -301,6 +329,14 @@ export interface ClientToServerEvents {
     dieIndex?: number;
   }) => void;
   'scene:end': (payload: { campaignId: string }) => void;
+  'activity:log': (
+    payload: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt'> & {
+      id?: string;
+      timestamp?: string;
+      createdAt?: number;
+    }
+  ) => void;
+  'activity:clear': (payload: { campaignId: string }) => void;
   'monitor:sync': (payload: {
     campaignId: string;
     director: MonitorDirectorState;

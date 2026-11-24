@@ -3,6 +3,12 @@ import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
 import { SceneEffect } from '@totalrpg/shared';
+import {
+  clearCampaignActivityLog,
+  getCampaignActivityLog,
+  recordCampaignActivity,
+  syncCampaignActivityLogFromClient,
+} from '../activityLogService';
 
 export const campaignsRouter = Router();
 
@@ -287,6 +293,15 @@ campaignsRouter.post('/invites/:inviteId/accept', async (req: AuthenticatedReque
       }),
     ]);
 
+    recordCampaignActivity(req.app.get('io'), {
+      campaignId: invite.campaignId,
+      characterId: character.id,
+      characterName: character.name,
+      category: 'system',
+      summary: 'Entrou na campanha aceitando o convite do Mestre',
+      tone: 'success',
+    });
+
     return res.json({ message: 'Você entrou na aventura com sucesso!' });
   } catch (error) {
     console.error('Erro ao aceitar convite:', error);
@@ -354,6 +369,15 @@ campaignsRouter.post('/join-code', async (req: AuthenticatedRequest, res) => {
     await prisma.campaignInvite.updateMany({
       where: { campaignId: campaign.id, userId: req.userId },
       data: { status: 'ACCEPTED' },
+    });
+
+    recordCampaignActivity(req.app.get('io'), {
+      campaignId: campaign.id,
+      characterId: character.id,
+      characterName: character.name,
+      category: 'system',
+      summary: 'Entrou na campanha usando o código de convite',
+      tone: 'success',
     });
 
     return res.json({ message: `Personagem vinculado à campanha ${campaign.name}!` });
@@ -428,7 +452,23 @@ campaignsRouter.get('/:campaignId/dm-screen', async (req: AuthenticatedRequest, 
       return res.status(403).json({ error: 'Acesso restrito ao Mestre desta aventura.' });
     }
 
-    return res.json(campaign);
+    const rawCombat = (
+      campaign.combatState && typeof campaign.combatState === 'object'
+        ? campaign.combatState
+        : {}
+    ) as Record<string, any>;
+    const mergedLog = getCampaignActivityLog(
+      campaignId,
+      Array.isArray(rawCombat.activityLog) ? rawCombat.activityLog : []
+    );
+
+    return res.json({
+      ...campaign,
+      combatState: {
+        ...rawCombat,
+        activityLog: mergedLog,
+      },
+    });
   } catch (error) {
     console.error('Erro ao carregar Escudo do Mestre:', error);
     return res.status(500).json({ error: 'Erro ao carregar dados do Escudo do Mestre.' });
@@ -498,6 +538,15 @@ campaignsRouter.put('/:campaignId/dm-data', async (req: AuthenticatedRequest, re
     }
 
     const { dmNotes, combatState, threats, campaignItems, merchants, postIts } = req.body;
+
+    if (combatState && typeof combatState === 'object' && 'activityLog' in combatState) {
+      const logs = (combatState as Record<string, unknown>).activityLog;
+      if (Array.isArray(logs) && logs.length === 0) {
+        clearCampaignActivityLog(campaignId);
+      } else {
+        syncCampaignActivityLogFromClient(campaignId, logs);
+      }
+    }
 
     const updated = await prisma.campaign.update({
       where: { id: campaignId },
@@ -731,6 +780,16 @@ campaignsRouter.post('/:campaignId/transfer-item', async (req: AuthenticatedRequ
       }),
     ]);
 
+    recordCampaignActivity(req.app.get('io'), {
+      campaignId,
+      characterId: senderChar.id,
+      characterName: senderChar.name,
+      category: 'transfer',
+      summary: `Passou ${transferQty}x ${itemToTransfer.name} para ${receiverChar.name}`,
+      costText: `${transferQty}x`,
+      tone: 'info',
+    });
+
     return res.json({
       message: `${transferQty}x ${itemToTransfer.name} entregue para ${receiverChar.name}!`,
       updatedSender,
@@ -760,6 +819,7 @@ campaignsRouter.post('/:campaignId/apply-scene-effect', async (req: Authenticate
       },
       select: {
         id: true,
+        name: true,
         sheetData: true,
       },
     });
@@ -801,6 +861,25 @@ campaignsRouter.post('/:campaignId/apply-scene-effect', async (req: Authenticate
     if (io) {
       for (const charId of updatedIds) {
         io.to(campaignId).emit('character:updated', { characterId: charId });
+      }
+      const namesList = characters.map((c) => c.name).join(', ');
+      if (removeEffectId) {
+        recordCampaignActivity(io, {
+          campaignId,
+          characterName: '👑 Mesa',
+          category: 'condition',
+          summary: `Encerrou efeito em cena (${removeEffectId}) de: ${namesList}`,
+          tone: 'neutral',
+        });
+      } else if (effect?.name) {
+        recordCampaignActivity(io, {
+          campaignId,
+          characterName: '👑 Mesa',
+          category: 'ability',
+          summary: `Aplicou efeito de cena "${effect.name}" em: ${namesList}`,
+          details: effect.description,
+          tone: 'purple',
+        });
       }
     }
 
@@ -844,6 +923,16 @@ campaignsRouter.put('/:campaignId/remove-character/:characterId', async (req: Au
     await prisma.character.update({
       where: { id: characterId },
       data: { campaignId: null },
+    });
+
+    recordCampaignActivity(req.app.get('io'), {
+      campaignId,
+      characterId: character.id,
+      characterName: character.name,
+      actorLabel: isDM ? '👑 Mestre' : undefined,
+      category: 'system',
+      summary: 'Personagem removido/desvinculado da campanha (devolvido ao Cofre)',
+      tone: 'warning',
     });
 
     return res.json({ message: 'Personagem devolvido ao Cofre com sucesso.' });

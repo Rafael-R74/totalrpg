@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
 import { createDefaultOrdemSheet, createDefaultT20Sheet, VitalBar } from '@totalrpg/shared';
+import { diffAndLogCharacterUpdate } from '../activityLogService';
 
 export const charactersRouter = Router();
 
@@ -170,6 +171,16 @@ charactersRouter.put('/:id', async (req: AuthenticatedRequest, res) => {
         attacks: (attacks ?? existingChar.attacks) as Prisma.InputJsonValue,
       },
     });
+
+    if (existingChar.campaignId) {
+      diffAndLogCharacterUpdate({
+        io: req.app.get('io'),
+        campaignId: existingChar.campaignId,
+        existingChar,
+        updatedChar: updated,
+        actorIsDM: Boolean(isDM && !isOwner),
+      });
+    }
 
     return res.json(updated);
   } catch (error) {

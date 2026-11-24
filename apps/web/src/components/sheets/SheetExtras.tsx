@@ -44,6 +44,8 @@ import {
   CharacterPersonalProfile,
   checkOrdemWeaponProficiency,
   checkOrdemProtectionProficiency,
+  SessionActivityCategory,
+  SessionActivityLogEntry,
 } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 import { ItemCustomizationModal } from './ItemCustomizationModal';
@@ -114,6 +116,13 @@ interface SheetExtrasProps {
   onRollVislumbresPe?: () => void;
   hasActiveInitiativeOrder?: boolean;
   turnResetSignal?: number;
+  onLogActivity?: (entry: {
+    category: SessionActivityCategory;
+    summary: string;
+    details?: string;
+    costText?: string;
+    tone?: SessionActivityLogEntry['tone'];
+  }) => void;
 }
 
 function parseDiceFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -260,6 +269,7 @@ export function SheetExtras({
   onRollVislumbresPe,
   hasActiveInitiativeOrder,
   turnResetSignal,
+  onLogActivity,
 }: SheetExtrasProps) {
   const [activeSubTab, setActiveSubTab] = useState<
     'combat' | 'powers' | 'spells' | 'inventory' | 'personal'
@@ -651,7 +661,24 @@ export function SheetExtras({
   const [arcabuzDieByAttackId, setArcabuzDieByAttackId] = useState<Record<string, number>>({});
   const [customizingItemId, setCustomizingItemId] = useState<string | null>(null);
   const [inventoryRealmFilter, setInventoryRealmFilter] = useState<'ALL' | 'normal' | 'paranormal'>('ALL');
-  const [inventoryFeedback, setInventoryFeedback] = useState<string>('');
+  const [inventoryFeedback, setRawInventoryFeedback] = useState<string>('');
+  const setInventoryFeedback = (msg: string) => {
+    setRawInventoryFeedback(msg);
+    if (msg && !msg.startsWith('Erro')) {
+      const costMatch = msg.match(/(-\d+\s*(?:PE|PM|un\.))/i);
+      const isConsumable =
+        msg.includes('-1 un.') ||
+        msg.includes('consumid') ||
+        msg.includes('Cargas') ||
+        msg.includes('Usos');
+      onLogActivity?.({
+        category: isConsumable ? 'consumable' : 'ability',
+        summary: msg,
+        costText: costMatch ? costMatch[1] : isConsumable ? '-1 un.' : undefined,
+        tone: isConsumable ? 'warning' : 'info',
+      });
+    }
+  };
   const [secAmplo, setSecAmplo] = useState<boolean>(false);
   const [secDestruidor, setSecDestruidor] = useState<boolean>(false);
   const [secLetal, setSecLetal] = useState<0 | 1 | 2>(0);
@@ -871,7 +898,19 @@ export function SheetExtras({
   const [compendiumCircleFilter, setCompendiumCircleFilter] = useState<number | 'ALL'>('ALL');
   const [compendiumItemRealmTab, setCompendiumItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
   const [compendiumNormalSubtypeFilter, setCompendiumNormalSubtypeFilter] = useState<string>('ALL');
-  const [abilityUseFeedback, setAbilityUseFeedback] = useState<string>('');
+  const [abilityUseFeedback, setRawAbilityUseFeedback] = useState<string>('');
+  const setAbilityUseFeedback = (msg: string) => {
+    setRawAbilityUseFeedback(msg);
+    if (msg && !msg.startsWith('Erro')) {
+      const costMatch = msg.match(/(-\d+\s*(?:PE|PM))/i);
+      onLogActivity?.({
+        category: 'ability',
+        summary: msg,
+        costText: costMatch ? costMatch[1].toUpperCase() : undefined,
+        tone: 'info',
+      });
+    }
+  };
 
   const [atkName, setAtkName] = useState('');
   const [atkDice, setAtkDice] = useState(1);
@@ -1167,6 +1206,12 @@ export function SheetExtras({
     if (ab.damageFormula) {
       const parsed = parseDiceFormula(ab.damageFormula);
       onRoll(`${ab.name} (Efeito)`, parsed.count, parsed.sides, parsed.modifier, true);
+      onLogActivity?.({
+        category: 'ability',
+        summary: `✨ Usou ${ab.name} (${ab.damageFormula})`,
+        costText: ab.cost > 0 ? `-${ab.cost} ${resourceLabel}` : undefined,
+        tone: 'info',
+      });
     } else {
       // Poderes sem fórmula de dano (ex.: Ampliar Ritual, Ataque Especial, Perito) apenas descontam PE e ativam bônus se houver
       if (ab.modifiers && ab.modifiers.length > 0 && ab.isActive === false) {

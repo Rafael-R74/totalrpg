@@ -13,6 +13,10 @@ import { charactersRouter } from './routes/characters';
 import { compendiumRouter } from './routes/compendium'; 
 import { contentPackRouter } from './routes/contentPack';
 import { loadLocalContentPacks } from './contentPackService';
+import {
+  clearCampaignActivityLog,
+  recordCampaignActivity,
+} from './activityLogService';
 import path from 'path';
 import uploadsRouter from './routes/uploads';
 
@@ -94,6 +98,19 @@ io.on('connection', (socket) => {
       merchants,
       postIts,
     });
+  });
+
+  // Log geral de atividades da sessão em tempo real
+  socket.on('activity:log', (payload) => {
+    if (payload?.campaignId) {
+      recordCampaignActivity(io, payload);
+    }
+  });
+
+  socket.on('activity:clear', ({ campaignId }) => {
+    if (campaignId) {
+      clearCampaignActivityLog(campaignId);
+    }
   });
 
   // Motor de rolagem de dados (Com isolamento de autor e gatilho automático de Iniciativa)
@@ -251,6 +268,27 @@ io.on('connection', (socket) => {
           initiative: total,
         });
       }
+
+      // Registra automaticamente rolagens que envolvam uso explícito de habilidade/poder com gasto de PE/PM ou manobra especial
+      if (!isSecret && campaignId) {
+        const costMatch = label.match(/(-\d+\s*(?:PE|PM))/i);
+        const isSpecialAbilityRoll =
+          /(?:Ataque Especial|Técnica Secreta|Ataque Furtivo|Mãos Rápidas|Perito|Eclético|Segurar o Gatilho|Força Opressora|Paramédico|Anular Ritual|Identificação Paranormal|Improvisar Componentes|Motor de Busca|Impostor|Nerd)/i.test(
+            label
+          );
+        if (costMatch || isSpecialAbilityRoll) {
+          recordCampaignActivity(io, {
+            campaignId,
+            characterId,
+            characterName,
+            category: 'ability',
+            summary: `Usou habilidade em rolagem: ${label}`,
+            details: `Resultado: ${total} (${result.formula} → [${rolls.join(', ')}])`,
+            costText: costMatch ? costMatch[1].toUpperCase() : undefined,
+            tone: 'info',
+          });
+        }
+      }
     }
   );
 
@@ -298,6 +336,17 @@ io.on('connection', (socket) => {
       socket.emit('dice:rolled', updatedResult);
     } else {
       io.to(campaignId).emit('dice:rolled', updatedResult);
+      if (campaignId) {
+        recordCampaignActivity(io, {
+          campaignId,
+          characterId: rollResult.characterId,
+          characterName: rollResult.characterName,
+          category: 'ability',
+          summary: `Usou 🍀 Afortunado para rerrolar um dado 1 (${rollResult.label})`,
+          costText: `1 → ${newRollVal}`,
+          tone: 'info',
+        });
+      }
     }
   });
 

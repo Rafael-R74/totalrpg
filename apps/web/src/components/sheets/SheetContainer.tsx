@@ -39,6 +39,8 @@ import {
   DiceRollResult,
   isOrdemRitualAlreadyOwned,
   createKnownRitualsKeySet,
+  SessionActivityCategory,
+  SessionActivityLogEntry,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -84,6 +86,11 @@ interface SheetContainerProps {
   onRegisterSpendResource?: (fn: (amount: number) => boolean) => void;
   onCharacterSaved?: (characterId: string, campaignId?: string | null) => void;
   onNotifyItemGiven?: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
+  onLogActivity?: (
+    entry: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt' | 'campaignId'> & {
+      campaignId?: string;
+    }
+  ) => void;
   externalPermissions?: SheetPermissions | null;
   externalReloadSignal?: { characterId: string; timestamp: number } | null;
   initiativeRequestSignal?: number;
@@ -102,6 +109,7 @@ export function SheetContainer({
   onRegisterSpendResource,
   onCharacterSaved,
   onNotifyItemGiven,
+  onLogActivity,
   externalPermissions,
   externalReloadSignal,
   initiativeRequestSignal,
@@ -142,6 +150,25 @@ export function SheetContainer({
   const isEditModeRef = useRef<boolean>(isEditMode);
   isEditModeRef.current = isEditMode;
   const latestSpendResourceRef = useRef<(amount: number) => boolean>(() => false);
+  const latestOnLogActivityRef = useRef(onLogActivity);
+  latestOnLogActivityRef.current = onLogActivity;
+
+  function logSheetActivity(entry: {
+    category: SessionActivityCategory;
+    summary: string;
+    details?: string;
+    costText?: string;
+    tone?: SessionActivityLogEntry['tone'];
+  }) {
+    const base = latestCharacterRef.current;
+    if (!base?.campaignId) return;
+    latestOnLogActivityRef.current?.({
+      ...entry,
+      campaignId: base.campaignId,
+      characterId: base.id,
+      characterName: base.name,
+    });
+  }
 
   useEffect(() => {
     if (onRegisterSpendResource) {
@@ -645,6 +672,12 @@ export function SheetContainer({
       showHoverToast(
         `👁️ O Preço da Maldição (${detail.element}): -${detail.amount} SAN descontados.`
       );
+      logSheetActivity({
+        category: 'vital',
+        summary: `👁️ O Preço da Maldição (${detail.element}): perdeu ${detail.amount} SAN`,
+        costText: `-${detail.amount} SAN`,
+        tone: 'purple',
+      });
     }
 
     function handleTempHpEvent(e: Event) {
@@ -1679,6 +1712,20 @@ export function SheetContainer({
       damageFormulaToRoll: effectType === 'damage' ? effectFormula : undefined,
       healingFormulaToRoll: effectType === 'healing' ? effectFormula : undefined,
     });
+
+    logSheetActivity({
+      category: 'ability',
+      summary: `Conjurou 🔮 ${ritual.name} [${form.label}]`,
+      costText: usePoderDoFlagelo ? `-${pvCostFlagelo} PV` : `-${form.totalCost} PE`,
+      details: isMedoRitual
+        ? `Invocando o Medo: -${sanLost} SAN e -${permSanLost} SAN Máx Permanente`
+        : passed
+        ? `O Custo do Paranormal: Sucesso (${ocultismoTotal} vs DT ${dt})`
+        : `O Custo do Paranormal: Falha (${ocultismoTotal} vs DT ${dt}) → -${sanLost} SAN${
+            permSanLost > 0 ? ' e -1 SAN Máx Permanente' : ''
+          }`,
+      tone: 'purple',
+    });
   }
 
   function checkTurnPeLimitAllowed(amount: number, powerLabel?: string): boolean {
@@ -1855,11 +1902,22 @@ export function SheetContainer({
         false,
         rolls
       );
+      logSheetActivity({
+        category: 'ability',
+        summary: `Usou Vislumbres do Passado (Intelecto DT 10 → ${kept}${passed ? ' • Sucesso!' : ' • Falha'})`,
+        tone: passed ? 'success' : 'neutral',
+      });
       return;
     }
 
     if (originId === 'ti') {
       if (!handleSpendResource(2)) return;
+      logSheetActivity({
+        category: 'ability',
+        summary: 'Usou Motor de Busca (Poder de T.I.) em Tecnologia',
+        costText: '-2 PE',
+        tone: 'info',
+      });
       const skill = (rawSheet.skills || []).find((s: any) => s.id === 'tecnologia');
       const dice = intAttr + bonuses.skillDiceAll + (bonuses.skillDice['tecnologia'] || 0);
       const mod =
@@ -1912,6 +1970,12 @@ export function SheetContainer({
         20,
         mod
       );
+      logSheetActivity({
+        category: 'ability',
+        summary: 'Usou Impostor (Poder de Trambiqueiro) em Enganação',
+        costText: '-2 PE',
+        tone: 'info',
+      });
       return;
     }
 
@@ -1932,6 +1996,12 @@ export function SheetContainer({
       ) {
         return;
       }
+      logSheetActivity({
+        category: 'ability',
+        summary: `Ativou Sentido Tático (+${intAttr} Defesa e Resistências na cena)`,
+        costText: '-2 PE',
+        tone: 'info',
+      });
       setFeedbackMsg(
         `🧠 Sentido Tático ativado (-2 PE)! +${intAttr} na Defesa e Resistências nesta cena.`
       );
@@ -2321,6 +2391,12 @@ export function SheetContainer({
 
     setIsInterludeModalOpen(false);
     if (nextChar) handleSaveSheet(nextChar);
+    logSheetActivity({
+      category: 'interlude',
+      summary: `Concluiu Cena de Interlúdio (Descanso ${interludeComfort}x)`,
+      details: summaryParts.join(' • ') || undefined,
+      tone: 'info',
+    });
     if (summaryParts.length > 0) {
       showHoverToast(`🌙 Interlúdio aplicado: ${summaryParts.join(' • ')}`);
     }
@@ -5548,6 +5624,7 @@ export function SheetContainer({
         onLoseSanity={handleLoseSanity}
         onAddSceneEffect={handleAddSceneEffect}
         onCastOrdemRitual={handleCastOrdemRitual}
+        onLogActivity={logSheetActivity}
         onUpdateSceneEffects={(newEffects) => {
           const base = latestCharacterRef.current;
           if (!base) return;

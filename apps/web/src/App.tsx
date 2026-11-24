@@ -23,6 +23,7 @@ import {
   ServerToClientEvents,
   ClientToServerEvents,
   applyContentPack,
+  SessionActivityLogEntry,
 } from '@totalrpg/shared';
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
@@ -44,6 +45,7 @@ export default function App() {
   } | null>(null);
 
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
+  const [activityLog, setActivityLog] = useState<SessionActivityLogEntry[]>([]);
   const [activeRollModal, setActiveRollModal] = useState<DiceRollResult | null>(null);
   const [activeBatchRolls, setActiveBatchRolls] = useState<DiceRollResult[]>([]);
 
@@ -246,6 +248,12 @@ export default function App() {
       }
     });
 
+    socket.on('activity:logged', (entry) => {
+      setActivityLog((prev) =>
+        prev.some((e) => e.id === entry.id) ? prev : [entry, ...prev].slice(0, 250)
+      );
+    });
+
     return () => {
       socket.off('connect', handleJoin);
       socket.off('dice:rolled');
@@ -258,6 +266,7 @@ export default function App() {
       socket.off('item:received');
       socket.off('scene:ended');
       socket.off('monitor:updated');
+      socket.off('activity:logged');
     };
   }, [currentUser, activeRoomId, currentCampaignSession, openedCharacter]);
 
@@ -267,6 +276,22 @@ export default function App() {
     setCurrentUser(null);
     setCurrentCampaignSession(null);
     setOpenedCharacter(null);
+  }
+
+  function emitActivityLog(
+    entry: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt' | 'campaignId'> & {
+      campaignId?: string;
+    }
+  ) {
+    const targetCampId =
+      entry.campaignId ||
+      currentCampaignSession?.campaignId ||
+      openedCharacter?.campaignId;
+    if (!targetCampId) return;
+    socket.emit('activity:log', {
+      ...entry,
+      campaignId: targetCampId,
+    });
   }
 
   function triggerRoll(
@@ -742,13 +767,22 @@ export default function App() {
               });
             }
           }}
+          onLogActivity={emitActivityLog}
         />
       ) : currentCampaignSession ? (
         /* VISÃO 2: Escudo do Mestre Completo */
         <DMScreen
           campaignId={currentCampaignSession.campaignId}
           rollHistory={rollHistory}
+          liveActivityLog={activityLog}
           onClearRolls={() => setRollHistory([])}
+          onClearActivityLog={() => {
+            setActivityLog([]);
+            socket.emit('activity:clear', {
+              campaignId: currentCampaignSession.campaignId,
+            });
+          }}
+          onLogActivity={emitActivityLog}
           onInspectCharacter={(charId) =>
             setOpenedCharacter({
               characterId: charId,
