@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
 import { loginUser, registerUser, AuthResponse } from '../services/api';
+import { BrandMark, D20Mark } from './BrandMark';
+import { Icon } from './ui/Icon';
 
 interface AuthScreenProps {
+  initialMode?: 'login' | 'register';
+  onBackToLanding?: () => void;
   onLoginSuccess: (authData: AuthResponse) => void;
 }
 
-export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
-  const [isRegistering, setIsRegistering] = useState(false);
+export function AuthScreen({
+  initialMode = 'login',
+  onBackToLanding,
+  onLoginSuccess,
+}: AuthScreenProps) {
+  const [isRegistering, setIsRegistering] = useState(initialMode === 'register');
 
   const [username, setUsername] = useState('');
   const [emailOrUsername, setEmailOrUsername] = useState('');
@@ -17,18 +25,14 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   const [errorMessage, setErrorMessage] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); 
+    e.preventDefault();
     setErrorMessage('');
     setIsLoading(true);
 
     try {
-      let data: AuthResponse;
-
-      if (isRegistering) {
-        data = await registerUser(username, email, password);
-      } else {
-        data = await loginUser(emailOrUsername, password);
-      }
+      const data = isRegistering
+        ? await registerUser(username.trim(), email.trim(), password)
+        : await loginUser(emailOrUsername.trim(), password);
 
       localStorage.setItem('totalrpg_token', data.token);
       localStorage.setItem('totalrpg_user', JSON.stringify(data.user));
@@ -42,107 +46,116 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
-        {/* Cabeçalho */}
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-extrabold text-amber-500 tracking-wider">🎲 TotalRPG</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            {isRegistering ? 'Crie sua conta para mestrar ou jogar' : 'Entre para acessar suas mesas e personagens'}
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b border-zinc-800/80">
+        <div className="trpg-wrap h-16 flex items-center justify-between gap-4">
+          <BrandMark size="md" />
+          {onBackToLanding && (
+            <button type="button" onClick={onBackToLanding} className="trpg-btn-quiet">
+              <Icon name="arrow-left" size={16} /> Página inicial
+            </button>
+          )}
+        </div>
+      </header>
+
+      <main className="flex-1 grid place-items-center px-4 py-12">
+        <div className="w-full max-w-sm">
+          <D20Mark className="w-10 h-10 mb-6" />
+          <h1 className="text-4xl leading-tight">{isRegistering ? 'Criar conta' : 'Entrar'}</h1>
+          <p className="text-zinc-400 mt-2">
+            {isRegistering
+              ? 'Para montar personagens e abrir suas mesas.'
+              : 'Suas fichas, mesas e escudo do mestre continuam de onde você parou.'}
           </p>
-        </div>
 
-        {/* Login/Cadastro */}
-        <div className="flex bg-zinc-950 p-1 rounded-xl mb-6 border border-zinc-800">
-          <button
-            type="button"
-            onClick={() => { setIsRegistering(false); setErrorMessage(''); }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition cursor-pointer ${
-              !isRegistering ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            Entrar
-          </button>
-          <button
-            type="button"
-            onClick={() => { setIsRegistering(true); setErrorMessage(''); }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition cursor-pointer ${
-              isRegistering ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            Criar Conta
-          </button>
-        </div>
-
-        {/* Mensagem de Erro */}
-        {errorMessage && (
-          <div className="bg-red-950/60 border border-red-800 text-red-200 text-sm px-4 py-3 rounded-lg mb-4">
-            ⚠️ {errorMessage}
-          </div>
-        )}
-
-        {/* Formulário */}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {isRegistering ? (
-            <>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">Nome de Usuário</label>
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Ex: mestre_dos_magos"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500 transition"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">E-mail</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seu@email.com"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500 transition"
-                />
-              </div>
-            </>
-          ) : (
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1">Usuário ou E-mail</label>
-              <input
-                type="text"
-                required
-                value={emailOrUsername}
-                onChange={(e) => setEmailOrUsername(e.target.value)}
-                placeholder="Seu usuário ou e-mail"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500 transition"
-              />
-            </div>
+          {errorMessage && (
+            <p role="alert" className="mt-6 rounded-lg border border-red-800/70 bg-red-950/40 px-3.5 py-2.5 text-sm text-red-200 flex gap-2">
+              <Icon name="warning" size={16} className="mt-0.5 shrink-0" /> {errorMessage}
+            </p>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1">Senha</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500 transition"
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+            {isRegistering ? (
+              <>
+                <div>
+                  <label htmlFor="auth-username" className="trpg-label">
+                    Nome de usuário
+                  </label>
+                  <input
+                    id="auth-username"
+                    type="text"
+                    required
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="trpg-input"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="auth-email" className="trpg-label">
+                    E-mail
+                  </label>
+                  <input
+                    id="auth-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="trpg-input"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label htmlFor="auth-identifier" className="trpg-label">
+                  Usuário ou e-mail
+                </label>
+                <input
+                  id="auth-identifier"
+                  type="text"
+                  required
+                  autoComplete="username"
+                  value={emailOrUsername}
+                  onChange={(e) => setEmailOrUsername(e.target.value)}
+                  className="trpg-input"
+                />
+              </div>
+            )}
+            <div>
+              <label htmlFor="auth-password" className="trpg-label">
+                Senha
+              </label>
+              <input
+                id="auth-password"
+                type="password"
+                required
+                autoComplete={isRegistering ? 'new-password' : 'current-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="trpg-input"
+              />
+            </div>
+            <button type="submit" disabled={isLoading} className="trpg-btn-primary trpg-btn-lg w-full mt-2">
+              {isLoading ? 'Entrando…' : isRegistering ? 'Criar conta' : 'Entrar'}
+            </button>
+          </form>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-2 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold rounded-lg transition cursor-pointer shadow-lg shadow-amber-900/30"
-          >
-            {isLoading ? 'Aguarde...' : isRegistering ? 'Cadastrar e Entrar' : 'Entrar no Sistema'}
-          </button>
-        </form>
-      </div>
+          <p className="mt-6 text-sm text-zinc-400">
+            {isRegistering ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setErrorMessage('');
+              }}
+              className="font-semibold text-amber-400 hover:text-amber-300 underline-offset-4 hover:underline"
+            >
+              {isRegistering ? 'Entrar' : 'Criar conta'}
+            </button>
+          </p>
+        </div>
+      </main>
     </div>
   );
 }

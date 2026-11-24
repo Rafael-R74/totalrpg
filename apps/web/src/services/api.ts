@@ -102,6 +102,26 @@ export async function loginUser(emailOrUsername: string, password: string): Prom
   return data;
 }
 
+export async function fetchUserPreferences(): Promise<{ preferences: any | null }> {
+  const token = localStorage.getItem('totalrpg_token');
+  if (!token) return { preferences: null };
+  const response = await fetch(`${API_URL}/auth/preferences`, {
+    headers: getAuthHeader(),
+  });
+  if (!response.ok) return { preferences: null };
+  return response.json();
+}
+
+export async function saveUserPreferences(preferences: unknown): Promise<void> {
+  const token = localStorage.getItem('totalrpg_token');
+  if (!token) return;
+  await fetch(`${API_URL}/auth/preferences`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ preferences }),
+  });
+}
+
 // Campanhas (DM)
 export async function fetchDMCampaigns(): Promise<CampaignData[]> {
   const response = await fetch(`${API_URL}/campaigns/dm`, {

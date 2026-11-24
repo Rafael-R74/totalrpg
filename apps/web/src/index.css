@@ -1,1 +1,1192 @@
 @import "tailwindcss";
+
+/* ============================================================================
+   TOTALRPG — DESIGN SYSTEM "GRAFITE & OSSO"  (ver DESIGN.md na raiz)
+   Tokens --trpg-* → paletas e direções de arte trocam neutros, acento,
+   tipografia e geometria. Famílias Tailwind são remapeadas para que as
+   ~35 mil linhas de JSX existentes herdem o sistema sem reescrita.
+   ============================================================================ */
+
+:root {
+  --trpg-gutter: clamp(1rem, 4vw, 3rem);
+  --trpg-max-w: 82rem;
+
+  --trpg-font-display: 'Gloock', 'Newsreader', Georgia, serif;
+  --trpg-font-body: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --trpg-display-weight: 400;
+  --trpg-display-stretch: 100%;
+  --trpg-tracking-display: -0.01em;
+
+  --trpg-r-xs: 3px;
+  --trpg-r-sm: 4px;
+  --trpg-r-md: 6px;
+  --trpg-r-lg: 8px;
+  --trpg-r-xl: 10px;
+  --trpg-r-2xl: 14px;
+
+  --trpg-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --trpg-ease-out-back: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --trpg-dur-press: 120ms;
+  --trpg-dur-hover: 200ms;
+  --trpg-dur-dialog: 320ms;
+
+  --trpg-shadow-float: 0 28px 64px -18px rgb(0 0 0 / 0.62), 0 2px 6px rgb(0 0 0 / 0.25);
+
+  /* Cores de significado fixas (independentes da paleta) */
+  --trpg-pv: oklch(0.63 0.17 27);
+  --trpg-san: oklch(0.66 0.12 258);
+  --trpg-pe: oklch(0.74 0.13 62);
+  --trpg-temp: oklch(0.72 0.09 188);
+  --trpg-heal: oklch(0.7 0.12 155);
+  --trpg-gold: oklch(0.79 0.13 86);
+  /* Elementos do Outro Lado: cores fixas e inconfundíveis */
+  --trpg-el-sangue: #e0302f;
+  --trpg-el-morte: #0a0a0b;
+  --trpg-el-conhecimento: #f2c230;
+  --trpg-el-energia: #9b4dff;
+  --trpg-el-medo: #f4f2ee;
+}
+
+/* ----------------------------------------------------------------------------
+   PALETAS (neutros + acento). Cores de significado não mudam entre paletas.
+   ---------------------------------------------------------------------------- */
+
+/* 1. Arquivo Escarlate — Ordem Paranormal (osso sobre grafite, sangue arterial) */
+:root,
+html[data-palette="ordo-crimson"] {
+  --trpg-bg: #14171c;
+  --trpg-surface: #1b1f26;
+  --trpg-elevated: #242a33;
+  --trpg-border-strong: #343c48;
+  --trpg-muted-dim: #5a6270;
+  --trpg-muted-soft: #7d8592;
+  --trpg-muted: #a3a9b2;
+  --trpg-ink-soft: #cdc9c0;
+  --trpg-ink-mid: #e2ddd3;
+  --trpg-ink: #f1ece2;
+
+  --trpg-accent-surface: #2a1517;
+  --trpg-accent-deep: #45191b;
+  --trpg-accent-border: #6e2624;
+  --trpg-accent-muted: #94302c;
+  --trpg-accent-solid: #b8322f;
+  --trpg-accent: #d9423f;
+  --trpg-accent-bright: #e8625a;
+  --trpg-accent-soft: #f2918a;
+  --trpg-accent-tint: #f9c9c3;
+  --trpg-on-accent: #ffffff;
+
+  --trpg-secondary: #5b8fd9;
+  --trpg-glow: rgb(217 66 63 / 0.09);
+}
+
+/* 2. Coroa de Arton — Tormenta 20 (basalto quente, couro, ouro forjado) */
+html[data-palette="arton-gold"] {
+  --trpg-bg: #18140f;
+  --trpg-surface: #201b15;
+  --trpg-elevated: #2b241c;
+  --trpg-border-strong: #3e3428;
+  --trpg-muted-dim: #66574a;
+  --trpg-muted-soft: #8a7867;
+  --trpg-muted: #b1a08e;
+  --trpg-ink-soft: #d4c7b8;
+  --trpg-ink-mid: #e8dfd3;
+  --trpg-ink: #f6f0e6;
+
+  --trpg-accent-surface: #2e220e;
+  --trpg-accent-deep: #4a3613;
+  --trpg-accent-border: #70511c;
+  --trpg-accent-muted: #976f26;
+  --trpg-accent-solid: #a8791f;
+  --trpg-accent: #d19e3e;
+  --trpg-accent-bright: #e0b45c;
+  --trpg-accent-soft: #eccb85;
+  --trpg-accent-tint: #f6e4bc;
+  --trpg-on-accent: #1a1209;
+
+  --trpg-secondary: #b83b3b;
+  --trpg-glow: rgb(209 158 62 / 0.1);
+}
+
+/* 3. Areia & Especiaria — Duna (calcário, pedra imperial, ocre solar) */
+html[data-palette="arrakis-ochre"] {
+  --trpg-bg: #171511;
+  --trpg-surface: #1e1c17;
+  --trpg-elevated: #29261f;
+  --trpg-border-strong: #3b362c;
+  --trpg-muted-dim: #5e574a;
+  --trpg-muted-soft: #827968;
+  --trpg-muted: #aaa190;
+  --trpg-ink-soft: #cec6b7;
+  --trpg-ink-mid: #e5dfd3;
+  --trpg-ink: #f3efe7;
+
+  --trpg-accent-surface: #2c1c0c;
+  --trpg-accent-deep: #482d11;
+  --trpg-accent-border: #71471a;
+  --trpg-accent-muted: #9a6023;
+  --trpg-accent-solid: #a9661f;
+  --trpg-accent: #d4893a;
+  --trpg-accent-bright: #e2a15b;
+  --trpg-accent-soft: #eec08a;
+  --trpg-accent-tint: #f7dec0;
+  --trpg-on-accent: #1a1006;
+
+  --trpg-secondary: #2b8ca3;
+  --trpg-glow: rgb(212 137 58 / 0.09);
+}
+
+/* 4. Âmbar Noir — investigação clássica (ardósia e âmbar queimado) */
+html[data-palette="lodo-amber"] {
+  --trpg-bg: #151719;
+  --trpg-surface: #1c1f22;
+  --trpg-elevated: #262a2e;
+  --trpg-border-strong: #363c42;
+  --trpg-muted-dim: #58606a;
+  --trpg-muted-soft: #7a838d;
+  --trpg-muted: #a2a9b1;
+  --trpg-ink-soft: #c9cdd2;
+  --trpg-ink-mid: #e1e4e7;
+  --trpg-ink: #f2f3f5;
+
+  --trpg-accent-surface: #2d1a0a;
+  --trpg-accent-deep: #4a2a0f;
+  --trpg-accent-border: #754217;
+  --trpg-accent-muted: #9e591e;
+  --trpg-accent-solid: #b0611d;
+  --trpg-accent: #da8132;
+  --trpg-accent-bright: #e69a55;
+  --trpg-accent-soft: #f0b985;
+  --trpg-accent-tint: #f8dac0;
+  --trpg-on-accent: #1a0e05;
+
+  --trpg-secondary: #3b8ea5;
+  --trpg-glow: rgb(218 129 50 / 0.08);
+}
+
+/* 5. Verdete Abissal — mistério oceânico (abismo e verdete oxidado) */
+html[data-palette="abyssal-verdigris"] {
+  --trpg-bg: #10191b;
+  --trpg-surface: #162225;
+  --trpg-elevated: #1e2e32;
+  --trpg-border-strong: #2a4046;
+  --trpg-muted-dim: #46636d;
+  --trpg-muted-soft: #678793;
+  --trpg-muted: #91adb7;
+  --trpg-ink-soft: #bccfd6;
+  --trpg-ink-mid: #d9e6ea;
+  --trpg-ink: #edf4f6;
+
+  --trpg-accent-surface: #0b2a23;
+  --trpg-accent-deep: #11443a;
+  --trpg-accent-border: #196657;
+  --trpg-accent-muted: #218873;
+  --trpg-accent-solid: #1f8f78;
+  --trpg-accent: #34ba9f;
+  --trpg-accent-bright: #55ccb4;
+  --trpg-accent-soft: #85decb;
+  --trpg-accent-tint: #bceee3;
+  --trpg-on-accent: #04130f;
+
+  --trpg-secondary: #c98a3b;
+  --trpg-glow: rgb(52 186 159 / 0.08);
+}
+
+/* 6. Manuscrito Noturno — sépia escuro, papel antigo, lacre de cobre */
+html[data-palette="sepia-noir"] {
+  --trpg-bg: #1a1612;
+  --trpg-surface: #221d18;
+  --trpg-elevated: #2e2720;
+  --trpg-border-strong: #42372d;
+  --trpg-muted-dim: #685848;
+  --trpg-muted-soft: #8c7864;
+  --trpg-muted: #b5a18e;
+  --trpg-ink-soft: #d6c8b8;
+  --trpg-ink-mid: #eae0d4;
+  --trpg-ink: #f7f0e7;
+
+  --trpg-accent-surface: #2e160e;
+  --trpg-accent-deep: #4b2317;
+  --trpg-accent-border: #753724;
+  --trpg-accent-muted: #9e4a31;
+  --trpg-accent-solid: #b2512f;
+  --trpg-accent: #d46d4e;
+  --trpg-accent-bright: #e2896e;
+  --trpg-accent-soft: #eea995;
+  --trpg-accent-tint: #f7d2c7;
+  --trpg-on-accent: #ffffff;
+
+  --trpg-secondary: #498c84;
+  --trpg-glow: rgb(212 109 78 / 0.09);
+}
+
+/* ----------------------------------------------------------------------------
+   DIREÇÕES DE ARTE (tipografia de display + escala de raio)
+   ---------------------------------------------------------------------------- */
+
+/* A. Arquivo — Ordem Paranormal: serifa afiada de livro de horror */
+html[data-art-direction="dossier"] {
+  --trpg-font-display: 'Gloock', Georgia, serif;
+  --trpg-display-weight: 400;
+  --trpg-display-stretch: 100%;
+  --trpg-tracking-display: -0.01em;
+  --trpg-r-xs: 3px;
+  --trpg-r-sm: 4px;
+  --trpg-r-md: 6px;
+  --trpg-r-lg: 8px;
+  --trpg-r-xl: 10px;
+  --trpg-r-2xl: 14px;
+}
+
+/* B. Códice — Tormenta 20: capitulares romanas, cantos mais suaves */
+html[data-art-direction="grimoire"] {
+  --trpg-font-display: 'Cinzel', Georgia, serif;
+  --trpg-display-weight: 600;
+  --trpg-display-stretch: 100%;
+  --trpg-tracking-display: 0.01em;
+  --trpg-r-xs: 4px;
+  --trpg-r-sm: 6px;
+  --trpg-r-md: 8px;
+  --trpg-r-lg: 11px;
+  --trpg-r-xl: 14px;
+  --trpg-r-2xl: 18px;
+}
+
+/* C. Monólito — Duna: grotesca expandida e leve, ângulos retos */
+html[data-art-direction="monolith"] {
+  --trpg-font-display: 'Archivo', system-ui, sans-serif;
+  --trpg-display-weight: 300;
+  --trpg-display-stretch: 125%;
+  --trpg-tracking-display: 0.005em;
+  --trpg-r-xs: 0px;
+  --trpg-r-sm: 1px;
+  --trpg-r-md: 2px;
+  --trpg-r-lg: 2px;
+  --trpg-r-xl: 3px;
+  --trpg-r-2xl: 4px;
+}
+
+/* D. Estúdio — leitura longa: serifa de texto e curvas generosas */
+html[data-art-direction="editorial"] {
+  --trpg-font-display: 'Newsreader', Georgia, serif;
+  --trpg-display-weight: 500;
+  --trpg-display-stretch: 100%;
+  --trpg-tracking-display: -0.015em;
+  --trpg-r-xs: 4px;
+  --trpg-r-sm: 7px;
+  --trpg-r-md: 9px;
+  --trpg-r-lg: 12px;
+  --trpg-r-xl: 16px;
+  --trpg-r-2xl: 20px;
+}
+
+/* ----------------------------------------------------------------------------
+   PONTE COM O TAILWIND v4
+   ---------------------------------------------------------------------------- */
+@theme inline {
+  --font-sans: var(--trpg-font-body);
+  --font-mono: var(--trpg-font-body);
+  --font-display: var(--trpg-font-display);
+
+  --font-weight-extrabold: 700;
+  --font-weight-black: 750;
+
+  --radius-sm: var(--trpg-r-xs);
+  --radius-md: var(--trpg-r-sm);
+  --radius-lg: var(--trpg-r-md);
+  --radius-xl: var(--trpg-r-lg);
+  --radius-2xl: var(--trpg-r-xl);
+  --radius-3xl: var(--trpg-r-2xl);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.18);
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  --shadow-md: 0 2px 6px rgb(0 0 0 / 0.22);
+  --shadow-lg: 0 6px 16px -6px rgb(0 0 0 / 0.35);
+  --shadow-xl: 0 12px 28px -10px rgb(0 0 0 / 0.45);
+  --shadow-2xl: var(--trpg-shadow-float);
+
+  --animate-pulse: trpg-soft-pulse 2.4s ease-in-out infinite;
+
+  --color-black: #07080a;
+  --color-white: var(--trpg-ink);
+
+  --color-zinc-950: var(--trpg-bg);
+  --color-zinc-900: var(--trpg-surface);
+  --color-zinc-800: var(--trpg-elevated);
+  --color-zinc-700: var(--trpg-border-strong);
+  --color-zinc-600: var(--trpg-muted-dim);
+  --color-zinc-500: var(--trpg-muted-soft);
+  --color-zinc-400: var(--trpg-muted);
+  --color-zinc-300: var(--trpg-ink-soft);
+  --color-zinc-200: var(--trpg-ink-mid);
+  --color-zinc-100: var(--trpg-ink);
+  --color-zinc-50: var(--trpg-ink);
+
+  --color-slate-950: var(--trpg-bg);
+  --color-slate-900: var(--trpg-surface);
+  --color-slate-800: var(--trpg-elevated);
+  --color-slate-700: var(--trpg-border-strong);
+  --color-slate-600: var(--trpg-muted-dim);
+  --color-slate-500: var(--trpg-muted-soft);
+  --color-slate-400: var(--trpg-muted);
+  --color-slate-300: var(--trpg-ink-soft);
+  --color-slate-200: var(--trpg-ink-mid);
+  --color-slate-100: var(--trpg-ink);
+
+  --color-amber-950: var(--trpg-accent-surface);
+  --color-amber-900: var(--trpg-accent-deep);
+  --color-amber-800: var(--trpg-accent-border);
+  --color-amber-700: var(--trpg-accent-muted);
+  --color-amber-600: var(--trpg-accent-solid);
+  --color-amber-500: var(--trpg-accent);
+  --color-amber-400: var(--trpg-accent-bright);
+  --color-amber-300: var(--trpg-accent-soft);
+  --color-amber-200: var(--trpg-accent-tint);
+  --color-amber-100: var(--trpg-accent-tint);
+
+  /* Famílias de significado (mesmos degraus de luminosidade/croma) */
+  --color-red-50: oklch(0.97 0.019 25);
+  --color-red-100: oklch(0.935 0.037 25);
+  --color-red-200: oklch(0.885 0.068 25);
+  --color-red-300: oklch(0.82 0.105 25);
+  --color-red-400: oklch(0.745 0.137 25);
+  --color-red-500: oklch(0.67 0.155 25);
+  --color-red-600: oklch(0.585 0.152 25);
+  --color-red-700: oklch(0.5 0.131 25);
+  --color-red-800: oklch(0.41 0.100 25);
+  --color-red-900: oklch(0.325 0.068 25);
+  --color-red-950: oklch(0.235 0.047 25);
+  --color-rose-50: oklch(0.97 0.017 12);
+  --color-rose-100: oklch(0.935 0.033 12);
+  --color-rose-200: oklch(0.885 0.062 12);
+  --color-rose-300: oklch(0.82 0.095 12);
+  --color-rose-400: oklch(0.745 0.123 12);
+  --color-rose-500: oklch(0.67 0.141 12);
+  --color-rose-600: oklch(0.585 0.138 12);
+  --color-rose-700: oklch(0.5 0.119 12);
+  --color-rose-800: oklch(0.41 0.090 12);
+  --color-rose-900: oklch(0.325 0.062 12);
+  --color-rose-950: oklch(0.235 0.043 12);
+  --color-pink-50: oklch(0.97 0.015 355);
+  --color-pink-100: oklch(0.935 0.030 355);
+  --color-pink-200: oklch(0.885 0.055 355);
+  --color-pink-300: oklch(0.82 0.085 355);
+  --color-pink-400: oklch(0.745 0.111 355);
+  --color-pink-500: oklch(0.67 0.126 355);
+  --color-pink-600: oklch(0.585 0.123 355);
+  --color-pink-700: oklch(0.5 0.106 355);
+  --color-pink-800: oklch(0.41 0.081 355);
+  --color-pink-900: oklch(0.325 0.055 355);
+  --color-pink-950: oklch(0.235 0.038 355);
+  --color-orange-50: oklch(0.97 0.017 58);
+  --color-orange-100: oklch(0.935 0.033 58);
+  --color-orange-200: oklch(0.885 0.062 58);
+  --color-orange-300: oklch(0.82 0.095 58);
+  --color-orange-400: oklch(0.745 0.123 58);
+  --color-orange-500: oklch(0.67 0.141 58);
+  --color-orange-600: oklch(0.585 0.138 58);
+  --color-orange-700: oklch(0.5 0.119 58);
+  --color-orange-800: oklch(0.41 0.090 58);
+  --color-orange-900: oklch(0.325 0.062 58);
+  --color-orange-950: oklch(0.235 0.043 58);
+  --color-yellow-50: oklch(0.97 0.014 86);
+  --color-yellow-100: oklch(0.935 0.028 86);
+  --color-yellow-200: oklch(0.885 0.052 86);
+  --color-yellow-300: oklch(0.82 0.080 86);
+  --color-yellow-400: oklch(0.745 0.104 86);
+  --color-yellow-500: oklch(0.67 0.118 86);
+  --color-yellow-600: oklch(0.585 0.116 86);
+  --color-yellow-700: oklch(0.5 0.100 86);
+  --color-yellow-800: oklch(0.41 0.076 86);
+  --color-yellow-900: oklch(0.325 0.052 86);
+  --color-yellow-950: oklch(0.235 0.036 86);
+  --color-lime-50: oklch(0.97 0.013 125);
+  --color-lime-100: oklch(0.935 0.026 125);
+  --color-lime-200: oklch(0.885 0.049 125);
+  --color-lime-300: oklch(0.82 0.075 125);
+  --color-lime-400: oklch(0.745 0.098 125);
+  --color-lime-500: oklch(0.67 0.111 125);
+  --color-lime-600: oklch(0.585 0.109 125);
+  --color-lime-700: oklch(0.5 0.094 125);
+  --color-lime-800: oklch(0.41 0.071 125);
+  --color-lime-900: oklch(0.325 0.049 125);
+  --color-lime-950: oklch(0.235 0.034 125);
+  --color-green-50: oklch(0.97 0.014 150);
+  --color-green-100: oklch(0.935 0.028 150);
+  --color-green-200: oklch(0.885 0.052 150);
+  --color-green-300: oklch(0.82 0.080 150);
+  --color-green-400: oklch(0.745 0.104 150);
+  --color-green-500: oklch(0.67 0.118 150);
+  --color-green-600: oklch(0.585 0.116 150);
+  --color-green-700: oklch(0.5 0.100 150);
+  --color-green-800: oklch(0.41 0.076 150);
+  --color-green-900: oklch(0.325 0.052 150);
+  --color-green-950: oklch(0.235 0.036 150);
+  --color-emerald-50: oklch(0.97 0.014 158);
+  --color-emerald-100: oklch(0.935 0.028 158);
+  --color-emerald-200: oklch(0.885 0.052 158);
+  --color-emerald-300: oklch(0.82 0.080 158);
+  --color-emerald-400: oklch(0.745 0.104 158);
+  --color-emerald-500: oklch(0.67 0.118 158);
+  --color-emerald-600: oklch(0.585 0.116 158);
+  --color-emerald-700: oklch(0.5 0.100 158);
+  --color-emerald-800: oklch(0.41 0.076 158);
+  --color-emerald-900: oklch(0.325 0.052 158);
+  --color-emerald-950: oklch(0.235 0.036 158);
+  --color-teal-50: oklch(0.97 0.013 185);
+  --color-teal-100: oklch(0.935 0.025 185);
+  --color-teal-200: oklch(0.885 0.045 185);
+  --color-teal-300: oklch(0.82 0.070 185);
+  --color-teal-400: oklch(0.745 0.091 185);
+  --color-teal-500: oklch(0.67 0.104 185);
+  --color-teal-600: oklch(0.585 0.101 185);
+  --color-teal-700: oklch(0.5 0.087 185);
+  --color-teal-800: oklch(0.41 0.066 185);
+  --color-teal-900: oklch(0.325 0.045 185);
+  --color-teal-950: oklch(0.235 0.032 185);
+  --color-cyan-50: oklch(0.97 0.013 200);
+  --color-cyan-100: oklch(0.935 0.025 200);
+  --color-cyan-200: oklch(0.885 0.045 200);
+  --color-cyan-300: oklch(0.82 0.070 200);
+  --color-cyan-400: oklch(0.745 0.091 200);
+  --color-cyan-500: oklch(0.67 0.104 200);
+  --color-cyan-600: oklch(0.585 0.101 200);
+  --color-cyan-700: oklch(0.5 0.087 200);
+  --color-cyan-800: oklch(0.41 0.066 200);
+  --color-cyan-900: oklch(0.325 0.045 200);
+  --color-cyan-950: oklch(0.235 0.032 200);
+  --color-sky-50: oklch(0.97 0.013 235);
+  --color-sky-100: oklch(0.935 0.026 235);
+  --color-sky-200: oklch(0.885 0.049 235);
+  --color-sky-300: oklch(0.82 0.075 235);
+  --color-sky-400: oklch(0.745 0.098 235);
+  --color-sky-500: oklch(0.67 0.111 235);
+  --color-sky-600: oklch(0.585 0.109 235);
+  --color-sky-700: oklch(0.5 0.094 235);
+  --color-sky-800: oklch(0.41 0.071 235);
+  --color-sky-900: oklch(0.325 0.049 235);
+  --color-sky-950: oklch(0.235 0.034 235);
+  --color-blue-50: oklch(0.97 0.015 258);
+  --color-blue-100: oklch(0.935 0.030 258);
+  --color-blue-200: oklch(0.885 0.055 258);
+  --color-blue-300: oklch(0.82 0.085 258);
+  --color-blue-400: oklch(0.745 0.111 258);
+  --color-blue-500: oklch(0.67 0.126 258);
+  --color-blue-600: oklch(0.585 0.123 258);
+  --color-blue-700: oklch(0.5 0.106 258);
+  --color-blue-800: oklch(0.41 0.081 258);
+  --color-blue-900: oklch(0.325 0.055 258);
+  --color-blue-950: oklch(0.235 0.038 258);
+  --color-indigo-50: oklch(0.97 0.015 278);
+  --color-indigo-100: oklch(0.935 0.030 278);
+  --color-indigo-200: oklch(0.885 0.055 278);
+  --color-indigo-300: oklch(0.82 0.085 278);
+  --color-indigo-400: oklch(0.745 0.111 278);
+  --color-indigo-500: oklch(0.67 0.126 278);
+  --color-indigo-600: oklch(0.585 0.123 278);
+  --color-indigo-700: oklch(0.5 0.106 278);
+  --color-indigo-800: oklch(0.41 0.081 278);
+  --color-indigo-900: oklch(0.325 0.055 278);
+  --color-indigo-950: oklch(0.235 0.038 278);
+  --color-violet-50: oklch(0.97 0.016 295);
+  --color-violet-100: oklch(0.935 0.032 295);
+  --color-violet-200: oklch(0.885 0.059 295);
+  --color-violet-300: oklch(0.82 0.090 295);
+  --color-violet-400: oklch(0.745 0.117 295);
+  --color-violet-500: oklch(0.67 0.133 295);
+  --color-violet-600: oklch(0.585 0.131 295);
+  --color-violet-700: oklch(0.5 0.113 295);
+  --color-violet-800: oklch(0.41 0.086 295);
+  --color-violet-900: oklch(0.325 0.059 295);
+  --color-violet-950: oklch(0.235 0.041 295);
+  --color-purple-50: oklch(0.97 0.016 303);
+  --color-purple-100: oklch(0.935 0.032 303);
+  --color-purple-200: oklch(0.885 0.059 303);
+  --color-purple-300: oklch(0.82 0.090 303);
+  --color-purple-400: oklch(0.745 0.117 303);
+  --color-purple-500: oklch(0.67 0.133 303);
+  --color-purple-600: oklch(0.585 0.131 303);
+  --color-purple-700: oklch(0.5 0.113 303);
+  --color-purple-800: oklch(0.41 0.086 303);
+  --color-purple-900: oklch(0.325 0.059 303);
+  --color-purple-950: oklch(0.235 0.041 303);
+  --color-fuchsia-50: oklch(0.97 0.015 325);
+  --color-fuchsia-100: oklch(0.935 0.030 325);
+  --color-fuchsia-200: oklch(0.885 0.055 325);
+  --color-fuchsia-300: oklch(0.82 0.085 325);
+  --color-fuchsia-400: oklch(0.745 0.111 325);
+  --color-fuchsia-500: oklch(0.67 0.126 325);
+  --color-fuchsia-600: oklch(0.585 0.123 325);
+  --color-fuchsia-700: oklch(0.5 0.106 325);
+  --color-fuchsia-800: oklch(0.41 0.081 325);
+  --color-fuchsia-900: oklch(0.325 0.055 325);
+  --color-fuchsia-950: oklch(0.235 0.038 325);
+}
+
+@keyframes trpg-soft-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+
+/* ----------------------------------------------------------------------------
+   BASE
+   ---------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+html,
+body {
+  margin: 0;
+  background-color: var(--trpg-bg);
+  color: var(--trpg-ink-mid);
+  font-family: var(--trpg-font-body);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+@media (min-width: 1024px) {
+  html,
+  body {
+    font-size: 16px;
+  }
+}
+
+html[data-density="compact"],
+html[data-density="compact"] body {
+  font-size: 14px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--trpg-accent) 38%, transparent);
+  color: var(--trpg-ink);
+}
+
+/* Atmosfera: uma única luz de lamparina sobre a mesa. Nada de grades. */
+html[data-atmosphere="subtle"] body {
+  background-image: radial-gradient(
+    ellipse 70% 42% at 50% -8%,
+    var(--trpg-glow),
+    transparent 70%
+  );
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+h1,
+h2,
+.trpg-display {
+  font-family: var(--trpg-font-display);
+  font-weight: var(--trpg-display-weight);
+  font-stretch: var(--trpg-display-stretch);
+  letter-spacing: var(--trpg-tracking-display);
+  color: var(--trpg-ink);
+  text-wrap: balance;
+}
+
+h3,
+h4 {
+  font-family: var(--trpg-font-body);
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+/* Números da ficha: grotesca semicondensada com algarismos tabulares
+   (substitui o antigo monoespaçado em toda a base de código). */
+.font-mono,
+code,
+pre,
+kbd,
+input[type="number"] {
+  font-family: var(--trpg-font-body);
+  font-stretch: 88%;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0;
+}
+
+.trpg-num {
+  font-stretch: 88%;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.trpg-code {
+  font-family: var(--trpg-font-body);
+  font-stretch: 112%;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rótulos em caixa-alta espaçada saem do sistema: frases em caixa normal. */
+.uppercase {
+  text-transform: none;
+}
+.tracking-wider,
+.tracking-widest,
+.tracking-wide {
+  letter-spacing: 0.005em;
+}
+.trpg-keep-upper {
+  text-transform: uppercase;
+}
+
+/* Foco visível em tudo */
+:focus-visible {
+  outline: 2px solid var(--trpg-accent);
+  outline-offset: 2px;
+  border-radius: var(--trpg-r-sm);
+}
+
+button,
+[role="button"],
+a,
+select,
+summary,
+label[for] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+[role="button"],
+summary {
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--trpg-muted-dim);
+}
+
+/* Toques em telas sensíveis: alvos mínimos de 40px em controles pequenos */
+@media (pointer: coarse) {
+  .trpg-btn-primary,
+  .trpg-btn-secondary,
+  .trpg-btn-quiet,
+  .trpg-btn-danger,
+  .trpg-icon-btn {
+    min-height: 44px;
+  }
+  .trpg-icon-btn {
+    min-width: 44px;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   COMPONENTES
+   ---------------------------------------------------------------------------- */
+.trpg-wrap {
+  width: min(calc(100% - 2 * var(--trpg-gutter)), var(--trpg-max-w));
+  margin-inline: auto;
+}
+
+.trpg-card {
+  background-color: var(--trpg-surface);
+  border: 1px solid color-mix(in oklab, var(--trpg-border-strong) 70%, var(--trpg-surface));
+  border-radius: var(--trpg-r-xl);
+  position: relative;
+}
+
+.trpg-card-interactive {
+  transition: border-color var(--trpg-dur-hover) var(--trpg-ease),
+    background-color var(--trpg-dur-hover) var(--trpg-ease);
+}
+
+.trpg-card-interactive:hover {
+  border-color: var(--trpg-border-strong);
+  background-color: color-mix(in oklab, var(--trpg-surface) 70%, var(--trpg-elevated));
+}
+
+/* Assinatura por direção de arte, só em painéis de topo (cabeçalhos de ficha/escudo) */
+html[data-art-direction="dossier"] .trpg-card-signature {
+  border-top: 2px solid var(--trpg-accent-solid);
+}
+html[data-art-direction="grimoire"] .trpg-card-signature {
+  border-top: 2px solid color-mix(in oklab, var(--trpg-accent) 70%, var(--trpg-surface));
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--trpg-accent) 18%, transparent);
+}
+html[data-art-direction="monolith"] .trpg-card-signature {
+  border-left: 3px solid var(--trpg-accent);
+}
+html[data-art-direction="editorial"] .trpg-card-signature {
+  border-top: 1px solid var(--trpg-accent-border);
+}
+
+/* Botões */
+.trpg-btn-primary,
+.trpg-btn-secondary,
+.trpg-btn-quiet,
+.trpg-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding-inline: 1rem;
+  border-radius: var(--trpg-r-md);
+  font-family: var(--trpg-font-body);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: background-color var(--trpg-dur-hover) var(--trpg-ease),
+    border-color var(--trpg-dur-hover) var(--trpg-ease),
+    color var(--trpg-dur-hover) var(--trpg-ease),
+    transform var(--trpg-dur-press) var(--trpg-ease);
+}
+
+.trpg-btn-primary {
+  background-color: var(--trpg-accent-solid);
+  color: var(--trpg-on-accent);
+  border-color: color-mix(in oklab, var(--trpg-accent-bright) 35%, var(--trpg-accent-solid));
+}
+.trpg-btn-primary:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--trpg-accent-solid) 70%, var(--trpg-accent));
+}
+
+.trpg-btn-secondary {
+  background-color: var(--trpg-elevated);
+  color: var(--trpg-ink);
+  border-color: var(--trpg-border-strong);
+}
+.trpg-btn-secondary:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--trpg-elevated) 60%, var(--trpg-border-strong));
+  border-color: var(--trpg-muted-dim);
+}
+
+.trpg-btn-quiet {
+  background-color: transparent;
+  color: var(--trpg-ink-soft);
+  padding-inline: 0.75rem;
+}
+.trpg-btn-quiet:hover:not(:disabled) {
+  background-color: var(--trpg-elevated);
+  color: var(--trpg-ink);
+}
+
+.trpg-btn-danger {
+  background-color: transparent;
+  color: var(--color-red-300);
+  border-color: color-mix(in oklab, var(--color-red-500) 45%, transparent);
+}
+.trpg-btn-danger:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--color-red-900) 70%, transparent);
+  color: var(--color-red-200);
+}
+
+.trpg-btn-primary:active:not(:disabled),
+.trpg-btn-secondary:active:not(:disabled),
+.trpg-btn-quiet:active:not(:disabled),
+.trpg-btn-danger:active:not(:disabled),
+.trpg-icon-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.trpg-btn-primary:disabled,
+.trpg-btn-secondary:disabled,
+.trpg-btn-quiet:disabled,
+.trpg-btn-danger:disabled,
+.trpg-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.trpg-btn-sm {
+  min-height: 2rem;
+  padding-inline: 0.75rem;
+  font-size: 0.8125rem;
+  gap: 0.375rem;
+}
+.trpg-btn-lg {
+  min-height: 3rem;
+  padding-inline: 1.375rem;
+  font-size: 1rem;
+}
+
+.trpg-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--trpg-r-md);
+  color: var(--trpg-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background-color var(--trpg-dur-hover) var(--trpg-ease),
+    color var(--trpg-dur-hover) var(--trpg-ease),
+    transform var(--trpg-dur-press) var(--trpg-ease);
+}
+.trpg-icon-btn:hover:not(:disabled) {
+  background-color: var(--trpg-elevated);
+  color: var(--trpg-ink);
+}
+
+/* Campos */
+.trpg-input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--trpg-r-md);
+  background-color: var(--trpg-bg);
+  border: 1px solid var(--trpg-border-strong);
+  color: var(--trpg-ink);
+  font-size: 0.9375rem;
+  transition: border-color var(--trpg-dur-hover) var(--trpg-ease),
+    box-shadow var(--trpg-dur-hover) var(--trpg-ease);
+}
+.trpg-input:hover {
+  border-color: var(--trpg-muted-dim);
+}
+.trpg-input:focus {
+  outline: none;
+  border-color: var(--trpg-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--trpg-accent) 22%, transparent);
+}
+.trpg-input[aria-invalid="true"] {
+  border-color: var(--color-red-500);
+}
+
+.trpg-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--trpg-ink-soft);
+  margin-bottom: 0.375rem;
+}
+
+/* Abas sublinhadas (rolam no celular) */
+.trpg-tabs {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--trpg-elevated);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+.trpg-tabs::-webkit-scrollbar {
+  display: none;
+}
+@media (min-width: 768px) {
+  .trpg-tabs {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+.trpg-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  padding: 0.75rem 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--trpg-muted);
+  border: 0;
+  background: none;
+  transition: color var(--trpg-dur-hover) var(--trpg-ease);
+}
+.trpg-tab:hover {
+  color: var(--trpg-ink);
+}
+.trpg-tab[aria-selected="true"] {
+  color: var(--trpg-ink);
+  font-weight: 600;
+}
+.trpg-tab[aria-selected="true"]::after {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--trpg-accent);
+}
+.trpg-tab-count {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--trpg-muted-soft);
+  background: var(--trpg-elevated);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+
+/* Selos */
+.trpg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--trpg-r-xs);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  background: var(--trpg-elevated);
+  color: var(--trpg-ink-soft);
+}
+
+/* Diálogo: cartão central no desktop, folha inferior no celular */
+.trpg-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(5 6 8 / 0.72);
+  animation: trpg-fade-in var(--trpg-dur-dialog) var(--trpg-ease) both;
+}
+.trpg-dialog {
+  width: 100%;
+  max-height: calc(100dvh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--trpg-surface);
+  border: 1px solid var(--trpg-border-strong);
+  border-radius: var(--trpg-r-2xl) var(--trpg-r-2xl) 0 0;
+  box-shadow: var(--trpg-shadow-float);
+  animation: trpg-sheet-up var(--trpg-dur-dialog) var(--trpg-ease) both;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (min-width: 640px) {
+  .trpg-dialog-backdrop {
+    align-items: center;
+    padding: 1.5rem;
+  }
+  .trpg-dialog {
+    border-radius: var(--trpg-r-2xl);
+    max-height: calc(100dvh - 3rem);
+    animation-name: trpg-dialog-in;
+  }
+}
+
+@keyframes trpg-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes trpg-sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes trpg-dialog-in {
+  from { transform: translateY(8px) scale(0.985); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* Medidor de vitais com marcação a cada 5 pontos */
+.trpg-meter {
+  position: relative;
+  height: 0.625rem;
+  border-radius: 999px;
+  background: var(--trpg-bg);
+  box-shadow: inset 0 0 0 1px var(--trpg-elevated);
+  overflow: hidden;
+}
+.trpg-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  transition: width 360ms var(--trpg-ease);
+}
+.trpg-meter-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(var(--tick, 10%) - 1px),
+    rgb(0 0 0 / 0.38) calc(var(--tick, 10%) - 1px),
+    rgb(0 0 0 / 0.38) var(--tick, 10%)
+  );
+}
+
+/* Entrada única da hero */
+@keyframes trpgHeroEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.trpg-hero-enter {
+  animation: trpgHeroEnter 520ms var(--trpg-ease) both;
+}
+.trpg-pulse-line {
+  animation: trpg-soft-pulse 2.8s ease-in-out infinite;
+}
+
+/* Movimento reduzido: SO ou preferência do usuário */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* Barra de rolagem discreta */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--trpg-border-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--trpg-border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--trpg-muted-dim);
+}
+
+/* ----------------------------------------------------------------------------
+   DADOS — modificadores que batem no dado, anel de impacto, pouso do total
+   ---------------------------------------------------------------------------- */
+.trpg-slam-chip {
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--trpg-r-md);
+  background: var(--trpg-accent-solid);
+  color: var(--trpg-on-accent);
+  font-size: 1.625rem;
+  line-height: 1.1;
+  box-shadow: 0 10px 24px -8px rgb(0 0 0 / 0.6);
+  animation: trpg-slam var(--trpg-slam, 300ms) cubic-bezier(0.55, 0, 0.9, 0.4) both;
+}
+@keyframes trpg-slam {
+  0% { transform: translate(calc(-50% + 190px), calc(-50% - 90px)) scale(1.35) rotate(-10deg); opacity: 0; }
+  18% { opacity: 1; }
+  88% { transform: translate(-50%, -50%) scale(0.7) rotate(0deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+}
+.trpg-impact-ring {
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  border: 3px solid var(--color-yellow-300);
+  animation: trpg-ring 520ms var(--trpg-ease) both;
+}
+@keyframes trpg-ring {
+  from { transform: translate(-50%, -50%) scale(0.35); opacity: 0.95; }
+  to { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
+}
+.trpg-total-land {
+  animation: trpg-land 360ms var(--trpg-ease-out-back) both;
+}
+@keyframes trpg-land {
+  from { transform: scale(1.22); }
+  to { transform: scale(1); }
+}
+.trpg-die-in {
+  display: inline-block;
+  animation: trpg-die-in 460ms var(--trpg-ease-out-back) both;
+}
+@keyframes trpg-die-in {
+  from { transform: rotate(-120deg) scale(0.3); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   ELEMENTOS (Ordem Paranormal) — selos e botões de escolha
+   Sangue vermelho, Morte preto, Conhecimento amarelo, Energia roxo, Medo branco.
+   ---------------------------------------------------------------------------- */
+.trpg-el {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--trpg-r-xs);
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+.trpg-el-md {
+  padding: 0.2rem 0.65rem;
+  font-size: 0.8125rem;
+}
+.trpg-el-sangue {
+  background: #5c0d10;
+  color: #ffd9d6;
+  border-color: var(--trpg-el-sangue);
+}
+.trpg-el-morte {
+  background: var(--trpg-el-morte);
+  color: #e7e3dc;
+  border-color: #6b6762;
+}
+.trpg-el-conhecimento {
+  background: var(--trpg-el-conhecimento);
+  color: #241a00;
+  border-color: #ffd85c;
+}
+.trpg-el-energia {
+  background: #3d1478;
+  color: #eadbff;
+  border-color: var(--trpg-el-energia);
+}
+.trpg-el-medo {
+  background: var(--trpg-el-medo);
+  color: #121214;
+  border-color: #ffffff;
+}
+.trpg-el-neutral {
+  background: var(--trpg-elevated);
+  color: var(--trpg-ink-soft);
+  border-color: var(--trpg-border-strong);
+}
+
+/* Botões de escolha de elemento: contorno na cor do elemento; preenchido quando escolhido */
+.trpg-el-choice {
+  border: 1px solid var(--trpg-border-strong);
+  background: var(--trpg-bg);
+  color: var(--trpg-ink-soft);
+  transition: background-color var(--trpg-dur-hover) var(--trpg-ease), color var(--trpg-dur-hover) var(--trpg-ease),
+    border-color var(--trpg-dur-hover) var(--trpg-ease);
+}
+.trpg-el-choice-sangue { border-color: var(--trpg-el-sangue); color: #ff9a94; }
+.trpg-el-choice-morte { border-color: #6b6762; color: #d6d2cb; }
+.trpg-el-choice-conhecimento { border-color: var(--trpg-el-conhecimento); color: var(--trpg-el-conhecimento); }
+.trpg-el-choice-energia { border-color: var(--trpg-el-energia); color: #c9a3ff; }
+.trpg-el-choice-medo { border-color: var(--trpg-el-medo); color: var(--trpg-el-medo); }
+.trpg-el-choice-sangue:hover, .trpg-el-choice-sangue.is-selected { background: #5c0d10; color: #ffd9d6; }
+.trpg-el-choice-morte:hover, .trpg-el-choice-morte.is-selected { background: var(--trpg-el-morte); color: #f1ede6; border-color: #a29d96; }
+.trpg-el-choice-conhecimento:hover { background: color-mix(in oklab, var(--trpg-el-conhecimento) 22%, var(--trpg-bg)); }
+.trpg-el-choice-conhecimento.is-selected { background: var(--trpg-el-conhecimento); color: #241a00; }
+.trpg-el-choice-energia:hover, .trpg-el-choice-energia.is-selected { background: #3d1478; color: #eadbff; }
+.trpg-el-choice-medo:hover { background: color-mix(in oklab, var(--trpg-el-medo) 14%, var(--trpg-bg)); }
+.trpg-el-choice-medo.is-selected { background: var(--trpg-el-medo); color: #121214; }
+.trpg-el-choice.is-selected { box-shadow: 0 0 0 2px color-mix(in oklab, currentColor 30%, transparent); }
