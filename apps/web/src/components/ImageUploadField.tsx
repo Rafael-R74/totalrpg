@@ -58,7 +58,7 @@ export function ImageUploadField({
             alt="Preview"
             className={`${
               compact ? 'w-12 h-12' : 'w-16 h-16'
-            } rounded-xl object-cover border-2 border-amber-500/70 shadow-md shrink-0 bg-zinc-950`}
+            } rounded-xl object-cover border border-zinc-700 shadow-md shrink-0 bg-zinc-950`}
           />
         )}
 
@@ -70,7 +70,7 @@ export function ImageUploadField({
             compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
           } bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-amber-500/60 text-zinc-200 rounded-lg font-bold transition cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap`}
         >
-          <span>{isUploading ? '⏳ Enviando...' : value ? '🖼️ Trocar Imagem' : '📁 Enviar Imagem'}</span>
+          <span>{isUploading ? 'Enviando...' : value ? 'Trocar Imagem' : 'Enviar Imagem'}</span>
         </button>
 
         {value && (

@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { DiceRollResult } from '@totalrpg/shared';
+import { Dialog } from './ui/Dialog';
+import { Icon, stripEmoji } from './ui/Icon';
+import { DiceStage } from './dice/DiceStage';
+import { DieFace2D } from './dice/DieFace2D';
 
 interface DiceRollModalProps {
   roll: DiceRollResult | null;
@@ -22,11 +26,7 @@ interface DiceRollModalProps {
   onTriggerSegurarGatilhoDamageBatch?: (selectedAttackRolls: DiceRollResult[]) => void;
 }
 
-function clampBatchAeConfig(
-  rawAtk: number,
-  rawDmg: number,
-  maxBonus: number
-): { atk: number; dmg: number } {
+function clampBatchAeConfig(rawAtk: number, rawDmg: number, maxBonus: number): { atk: number; dmg: number } {
   let atk = Math.max(0, Math.floor(rawAtk / 5) * 5);
   let dmg = Math.max(0, Math.floor(rawDmg / 5) * 5);
   if (atk + dmg > maxBonus) {
@@ -42,6 +42,45 @@ function clampBatchAeConfig(
   return { atk, dmg };
 }
 
+const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+
+/** Linha de aviso/efeito pós-rolagem (mesmo formato para todos os casos) */
+function Notice({
+  tone,
+  icon,
+  title,
+  children,
+}: {
+  tone: 'paranormal' | 'danger' | 'success' | 'warning' | 'info';
+  icon: string;
+  title?: string;
+  children?: React.ReactNode;
+}) {
+  const toneClass = {
+    paranormal: 'border-purple-800/70 bg-purple-950/40 text-purple-100',
+    danger: 'border-red-800/70 bg-red-950/40 text-red-100',
+    success: 'border-emerald-800/70 bg-emerald-950/40 text-emerald-100',
+    warning: 'border-orange-800/70 bg-orange-950/35 text-orange-100',
+    info: 'border-zinc-700 bg-zinc-950/50 text-zinc-200',
+  }[tone];
+  const iconClass = {
+    paranormal: 'text-purple-300',
+    danger: 'text-red-300',
+    success: 'text-emerald-300',
+    warning: 'text-orange-300',
+    info: 'text-zinc-400',
+  }[tone];
+  return (
+    <div className={`rounded-lg border px-3.5 py-3 text-sm flex gap-3 ${toneClass}`}>
+      <Icon name={icon} size={18} className={`mt-0.5 ${iconClass}`} />
+      <div className="min-w-0 flex-1 flex flex-col gap-2">
+        {title && <p className="font-semibold leading-snug">{title}</p>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function DiceRollModal({
   roll,
   batchRolls,
@@ -55,8 +94,7 @@ export function DiceRollModal({
   onTriggerSegurarGatilhoShot,
   onTriggerSegurarGatilhoDamageBatch,
 }: DiceRollModalProps) {
-  const [isAnimating, setIsAnimating] = useState(true);
-  const [fakeNumber, setFakeNumber] = useState(20);
+  const [settledKey, setSettledKey] = useState('');
   const [curseSanAppliedForRollId, setCurseSanAppliedForRollId] = useState<string>('');
   const [sanguinariaRolledForRollId, setSanguinariaRolledForRollId] = useState<string>('');
 
@@ -96,26 +134,6 @@ export function DiceRollModal({
       (roll.attackDamagePayload?.segurarGatilhoPayload?.enabled ||
         (batchRolls && batchRolls.length > 0 && batchRolls.some((r) => Boolean(r.batchId))))
   );
-
-  // Animação para rolagens unitárias comuns (não lote)
-  useEffect(() => {
-    if (!roll || isSegurarGatilhoBatch) return;
-    setIsAnimating(true);
-
-    const interval = setInterval(() => {
-      setFakeNumber(Math.floor(Math.random() * 20) + 1);
-    }, 60);
-
-    const timer = setTimeout(() => {
-      clearInterval(interval);
-      setIsAnimating(false);
-    }, 750);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timer);
-    };
-  }, [roll, isSegurarGatilhoBatch]);
 
   // Controle de estado e animação por card quando estiver em Modo Sequência de Disparos (Lote)
   const currentBatchKey = roll?.batchId || '';
@@ -182,9 +200,7 @@ export function DiceRollModal({
     const attackRolls = allBatch.filter((r) => r.batchRole !== 'segurar_gatilho_damage');
     const damageRolls = allBatch.filter((r) => r.batchRole === 'segurar_gatilho_damage');
     const latestAttack = attackRolls[attackRolls.length - 1] || roll;
-    const sg =
-      latestAttack.attackDamagePayload?.segurarGatilhoPayload ||
-      roll.attackDamagePayload?.segurarGatilhoPayload;
+    const sg = latestAttack.attackDamagePayload?.segurarGatilhoPayload || roll.attackDamagePayload?.segurarGatilhoPayload;
 
     const currentStep = sg ? sg.nextExtraShotStep : 1;
     const sgPeCost = currentStep * 2;
@@ -206,496 +222,340 @@ export function DiceRollModal({
       setSgErrorMsg('');
       try {
         if (valid.atk + valid.dmg > 0) {
-          localStorage.setItem(
-            'totalrpg_last_ae_config',
-            JSON.stringify({ atk: valid.atk, dmg: valid.dmg })
-          );
+          localStorage.setItem('totalrpg_last_ae_config', JSON.stringify({ atk: valid.atk, dmg: valid.dmg }));
         }
       } catch {
         // ignora erro de localStorage
       }
     }
 
+    const gridCols = (n: number) =>
+      n === 1 ? 'grid-cols-1 max-w-sm mx-auto w-full' : n === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
+
     return (
-      <div
-        onClick={onClose}
-        className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto"
-      >
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="bg-zinc-900 border-2 border-orange-500/80 rounded-3xl max-w-5xl w-full p-6 shadow-2xl flex flex-col gap-5 my-auto"
-        >
-          {/* Cabeçalho da Sequência de Disparos */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-orange-400 font-extrabold">
-                🔥 Segurar o Gatilho • {roll.characterName}
-              </span>
-              <h3 className="text-xl font-extrabold text-white mt-0.5">
-                {sg?.weaponName || roll.attackDamagePayload?.weaponName || roll.label}
-              </h3>
-              <p className="text-xs text-zinc-400">
-                {isDamagePhase
-                  ? `Resultados de dano dos ${damageRolls.length} disparo(s) que acertaram`
-                  : 'Dispare quantas vezes desejar, marque os ataques que acertaram e role todos os danos juntos.'}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono bg-zinc-950 border border-zinc-800 px-3 py-1 rounded-xl text-zinc-300 font-bold">
-                🎯 {attackRolls.length} Disparo(s)
-              </span>
-              {isDamagePhase && (
-                <span className="text-xs font-mono bg-red-950/80 border border-red-700 px-3 py-1 rounded-xl text-red-200 font-extrabold">
-                  💥 Total: {totalBatchDamage}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* FASE 1: CARDS DE DISPAROS DE ATAQUE */}
-          {!isDamagePhase ? (
+      <Dialog
+        open
+        onClose={onClose}
+        size="xl"
+        title={sg?.weaponName || roll.attackDamagePayload?.weaponName || stripEmoji(roll.label)}
+        description={
+          isDamagePhase
+            ? `${roll.characterName}: dano dos ${damageRolls.length} disparos que acertaram.`
+            : `${roll.characterName} segura o gatilho. Marque os disparos que acertaram e role o dano de todos de uma vez.`
+        }
+        headerAside={
+          <span className="trpg-badge trpg-num shrink-0 mt-1">
+            <Icon name="crosshair" size={13} /> {attackRolls.length} {attackRolls.length === 1 ? 'disparo' : 'disparos'}
+          </span>
+        }
+        footer={
+          !isDamagePhase ? (
             <>
-              <div
-                className={`grid gap-3 ${
-                  attackRolls.length === 1
-                    ? 'grid-cols-1 max-w-md mx-auto w-full'
-                    : attackRolls.length === 2
-                    ? 'grid-cols-1 sm:grid-cols-2'
-                    : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
-                }`}
-              >
-                {attackRolls.map((atkRoll, idx) => {
-                  const isSpinning = Boolean(spinningIds[atkRoll.id]);
-                  const isZeroPenalty = atkRoll.formula.includes('2d20 (menor)');
-                  const highest = Math.max(...atkRoll.rolls);
-                  const keptNatural = isZeroPenalty ? Math.min(...atkRoll.rolls) : highest;
-                  const p = atkRoll.attackDamagePayload;
-                  const isCrit = Boolean(p && keptNatural >= p.critThreatMin);
-                  const isSelected = selectedHitIds[atkRoll.id] !== false;
-                  const shotNum = atkRoll.batchShotNumber || idx + 1;
+              <button type="button" onClick={onClose} className="trpg-btn-quiet">
+                Fechar
+              </button>
+              {onTriggerSegurarGatilhoDamageBatch && (
+                <button
+                  type="button"
+                  disabled={selectedAttackRolls.length === 0}
+                  onClick={() => onTriggerSegurarGatilhoDamageBatch(selectedAttackRolls)}
+                  className="trpg-btn-primary"
+                >
+                  <Icon name="burst" size={17} /> Rolar dano de {selectedAttackRolls.length}{' '}
+                  {selectedAttackRolls.length === 1 ? 'acerto' : 'acertos'}
+                </button>
+              )}
+            </>
+          ) : (
+            <button type="button" onClick={onClose} className="trpg-btn-secondary">
+              Fechar
+            </button>
+          )
+        }
+      >
+        {!isDamagePhase ? (
+          <div className="flex flex-col gap-5">
+            <div className={`grid gap-3 ${gridCols(attackRolls.length)}`}>
+              {attackRolls.map((atkRoll, idx) => {
+                const isSpinning = Boolean(spinningIds[atkRoll.id]);
+                const isZeroPenalty = atkRoll.formula.includes('2d20 (menor)');
+                const highest = Math.max(...atkRoll.rolls);
+                const keptNatural = isZeroPenalty ? Math.min(...atkRoll.rolls) : highest;
+                const p = atkRoll.attackDamagePayload;
+                const isCrit = Boolean(p && keptNatural >= p.critThreatMin);
+                const isSelected = selectedHitIds[atkRoll.id] !== false;
+                const shotNum = atkRoll.batchShotNumber || idx + 1;
+                let keptShown = false;
 
-                  return (
-                    <div
-                      key={atkRoll.id}
-                      className={`p-4 rounded-2xl border-2 flex flex-col justify-between gap-3 transition-all ${
-                        isSpinning
-                          ? 'bg-zinc-950 border-amber-400 animate-pulse'
-                          : isSelected
-                          ? isCrit
-                            ? 'bg-red-950/30 border-red-500 shadow-lg shadow-red-950/40'
-                            : 'bg-zinc-950 border-amber-500/80 shadow-lg shadow-amber-950/30'
-                          : 'bg-zinc-950/60 border-zinc-800 opacity-60'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="text-[11px] font-mono uppercase font-extrabold text-amber-400">
-                            #{shotNum}º Disparo
-                          </span>
-                          <p className="text-[11px] text-zinc-400 leading-snug mt-0.5 line-clamp-2">
-                            {atkRoll.label}
-                          </p>
-                          <span className="text-[10px] font-mono text-zinc-500">
-                            {atkRoll.formula}
-                          </span>
-                        </div>
-                        {!isSpinning && isCrit && (
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-red-600 text-white shadow shrink-0 animate-pulse">
-                            💥 Crítico!
-                          </span>
-                        )}
+                return (
+                  <div
+                    key={atkRoll.id}
+                    className={`rounded-xl border p-4 flex flex-col gap-3 transition-colors ${
+                      isSelected
+                        ? isCrit
+                          ? 'border-yellow-600/80 bg-yellow-950/25'
+                          : 'border-zinc-600 bg-zinc-950/50'
+                        : 'border-zinc-800 bg-zinc-950/30 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-sm font-semibold text-zinc-100">{shotNum}º disparo</span>
+                        <p className="text-xs text-zinc-500 trpg-num">{atkRoll.formula}</p>
                       </div>
-
-                      {isSpinning ? (
-                        <div className="py-6 flex flex-col items-center gap-2">
-                          <span className="text-4xl animate-bounce">🎲</span>
-                          <span className="text-xs font-mono text-amber-400 font-bold">
-                            Atirando...
-                          </span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center justify-center gap-4 py-1">
-                            <div
-                              className={`w-20 h-20 rounded-2xl bg-zinc-900 border-2 flex flex-col items-center justify-center ${
-                                isCrit ? 'border-red-500' : 'border-amber-500'
-                              }`}
-                            >
-                              <span className="text-[9px] uppercase text-zinc-500 font-bold">
-                                Acerto
-                              </span>
-                              <span className="text-3xl font-mono font-extrabold text-white">
-                                {atkRoll.total}
-                              </span>
-                            </div>
-
-                            <div className="flex flex-wrap gap-1.5 justify-center max-w-[140px]">
-                              {atkRoll.rolls.map((val, dIdx) => {
-                                const atkSides = atkRoll.sides || 20;
-                                const canReroll =
-                                  val === 1 &&
-                                  Boolean(atkRoll.hasAfortunado) &&
-                                  (atkSides !== 20 || Boolean(atkRoll.hasAfortunadoAffinity)) &&
-                                  !atkRoll.rerolledAfortunado &&
-                                  Boolean(onRerollOne);
-                                const isKept =
-                                  atkRoll.system === 'ordem-paranormal' &&
-                                  val === (isZeroPenalty ? keptNatural : highest) &&
-                                  atkRoll.rolls.length > 1;
-                                return (
-                                  <button
-                                    key={dIdx}
-                                    type="button"
-                                    disabled={!canReroll}
-                                    onClick={() => canReroll && onRerollOne?.(atkRoll, dIdx)}
-                                    title={
-                                      canReroll
-                                        ? 'Clique para rerrolar dado 1 (Afortunado)'
-                                        : undefined
-                                    }
-                                    className={`w-8 h-8 rounded-lg font-mono font-bold text-xs flex items-center justify-center border ${
-                                      val === 20
-                                        ? 'bg-amber-600/30 border-amber-400 text-amber-200'
-                                        : val === 1
-                                        ? canReroll
-                                          ? 'bg-red-950 border-red-500 text-red-200 cursor-pointer ring-2 ring-red-500/40'
-                                          : 'bg-red-950/60 border-red-700 text-red-400'
-                                        : isKept
-                                        ? 'bg-zinc-800 border-amber-500/60 text-white'
-                                        : 'bg-zinc-900 border-zinc-800 text-zinc-400'
-                                    }`}
-                                  >
-                                    {val}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setSelectedHitIds((prev) => ({
-                                ...prev,
-                                [atkRoll.id]: !isSelected,
-                              }))
-                            }
-                            className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
-                              isSelected
-                                ? 'bg-emerald-600/25 hover:bg-emerald-600/40 border-emerald-500 text-emerald-200'
-                                : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-zinc-400'
-                            }`}
-                          >
-                            {isSelected
-                              ? '✅ Acertou (Vai rolar dano)'
-                              : '❌ Errou (Ignorar dano)'}
-                          </button>
-                        </>
+                      {!isSpinning && isCrit && (
+                        <span className="trpg-badge bg-yellow-900/70! text-yellow-200!">
+                          <Icon name="burst" size={12} /> Crítico
+                        </span>
                       )}
                     </div>
-                  );
-                })}
-              </div>
 
-              {/* Painel de Segurar o Gatilho — Disparo Extra */}
-              {sg && onTriggerSegurarGatilhoShot && (
-                <div className="bg-zinc-950 border border-orange-700/60 rounded-2xl p-4 flex flex-col gap-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase tracking-wider text-orange-400">
-                        🔥 Segurar o Gatilho — Disparo Extra ({attackRolls.length + 1}º Tiro)
-                      </span>
-                      <span className="text-[11px] font-mono bg-orange-950/80 border border-orange-700/60 text-orange-200 px-2 py-0.5 rounded font-bold">
-                        Gatilho: {sgPeCost} PE
-                      </span>
-                    </div>
-
-                    {sg.hasAtaqueEspecial && (
-                      <label className="flex items-center gap-2 text-xs font-bold text-red-300 cursor-pointer bg-red-950/40 border border-red-800/60 px-3 py-1 rounded-lg">
-                        <input
-                          type="checkbox"
-                          checked={useAeOnNextShot}
-                          onChange={(e) => {
-                            setUseAeOnNextShot(e.target.checked);
-                            setSgErrorMsg('');
-                          }}
-                          className="accent-red-500 w-3.5 h-3.5"
-                        />
-                        ⚡ Combinar com Ataque Especial neste disparo
-                      </label>
-                    )}
-                  </div>
-
-                  {sg.hasAtaqueEspecial && useAeOnNextShot && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                      <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-amber-300">🎯 +Acerto</span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={clampedAe.atk <= 0}
-                            onClick={() => updateBatchAe(Math.max(0, clampedAe.atk - 5), clampedAe.dmg)}
-                            className="px-2 py-0.5 bg-zinc-950 hover:bg-zinc-800 disabled:opacity-35 text-zinc-200 border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
-                          >
-                            -5
-                          </button>
-                          <span className="text-xs font-mono font-extrabold text-white min-w-[3rem] text-center">
-                            +{clampedAe.atk * sg.aeMult}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={aeTotalInvested + 5 > maxBonus}
-                            onClick={() => updateBatchAe(clampedAe.atk + 5, clampedAe.dmg)}
-                            className="px-2 py-0.5 bg-zinc-950 hover:bg-amber-700 disabled:opacity-35 text-amber-300 border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
-                          >
-                            +5
-                          </button>
-                        </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-center w-20 shrink-0">
+                        <span
+                          className={`block trpg-display text-5xl leading-none ${
+                            isSpinning ? 'text-zinc-600' : isCrit ? 'text-yellow-300' : 'text-zinc-100'
+                          }`}
+                        >
+                          {isSpinning ? '·' : atkRoll.total}
+                        </span>
+                        <span className="text-xs text-zinc-500">acerto</span>
                       </div>
-
-                      <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-red-300">🩸 +Dano</span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={clampedAe.dmg <= 0}
-                            onClick={() => updateBatchAe(clampedAe.atk, Math.max(0, clampedAe.dmg - 5))}
-                            className="px-2 py-0.5 bg-zinc-950 hover:bg-zinc-800 disabled:opacity-35 text-zinc-200 border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
-                          >
-                            -5
-                          </button>
-                          <span className="text-xs font-mono font-extrabold text-white min-w-[3rem] text-center">
-                            +{clampedAe.dmg * sg.aeMult}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={aeTotalInvested + 5 > maxBonus}
-                            onClick={() => updateBatchAe(clampedAe.atk, clampedAe.dmg + 5)}
-                            className="px-2 py-0.5 bg-zinc-950 hover:bg-red-700 disabled:opacity-35 text-red-300 border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
-                          >
-                            +5
-                          </button>
-                        </div>
+                      <div className="flex flex-wrap gap-1">
+                        {atkRoll.rolls.map((val, dIdx) => {
+                          const atkSides = atkRoll.sides || 20;
+                          const canReroll =
+                            val === 1 &&
+                            Boolean(atkRoll.hasAfortunado) &&
+                            (atkSides !== 20 || Boolean(atkRoll.hasAfortunadoAffinity)) &&
+                            !atkRoll.rerolledAfortunado &&
+                            Boolean(onRerollOne);
+                          const isKept = atkRoll.system === 'ordem-paranormal' && !keptShown && val === keptNatural;
+                          if (isKept) keptShown = true;
+                          return (
+                            <button
+                              key={dIdx}
+                              type="button"
+                              disabled={!canReroll}
+                              onClick={() => canReroll && onRerollOne?.(atkRoll, dIdx)}
+                              title={canReroll ? 'Rerrolar este 1 (Afortunado)' : undefined}
+                              aria-label={canReroll ? 'Rerrolar o 1 (Afortunado)' : `Dado ${val}`}
+                              className={`${isSpinning ? 'trpg-die-in' : ''} rounded-md ${canReroll ? 'ring-2 ring-emerald-500/60' : ''}`}
+                              style={{ animationDelay: `${dIdx * 40}ms` }}
+                            >
+                              <DieFace2D
+                                sides={atkSides}
+                                value={isSpinning ? '' : val}
+                                size={34}
+                                tone={isSpinning ? 'muted' : isKept ? (val === 1 ? 'danger' : 'gold') : 'base'}
+                              />
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                  )}
-
-                  {sgErrorMsg && (
-                    <div className="text-xs font-bold text-red-300 bg-red-950/70 border border-red-700 px-3 py-1.5 rounded-lg">
-                      {sgErrorMsg}
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] font-mono text-zinc-400">
-                      Próximo disparo: {sg.baseAttackDice <= 0 ? '2d20(menor)' : `${sg.baseAttackDice}d20`}
-                      {(() => {
-                        const bonus =
-                          sg.baseAttackBonus + (useAeOnNextShot ? clampedAe.atk * sg.aeMult : 0);
-                        return bonus >= 0 ? `+${bonus}` : bonus;
-                      })()}{' '}
-                      (Custo total: {totalShotPe} PE • Limite: {sg.peTurnLimit} PE/turno)
-                    </span>
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (useAeOnNextShot && aeTotalInvested <= 0) {
-                          setSgErrorMsg(
-                            'Escolha ao menos +5 em Acerto ou Dano para combinar o Ataque Especial, ou desmarque a opção.'
-                          );
-                          return;
-                        }
-                        if (totalShotPe > sg.peTurnLimit) {
-                          setSgErrorMsg(
-                            `⚠️ Custo total (${totalShotPe} PE) excede seu limite de ${sg.peTurnLimit} PE/turno!`
-                          );
-                          return;
-                        }
-                        const appliedAtk = useAeOnNextShot ? clampedAe.atk * sg.aeMult : 0;
-                        const appliedDmg = useAeOnNextShot ? clampedAe.dmg * sg.aeMult : 0;
-                        const ok = onTriggerSegurarGatilhoShot(
-                          latestAttack,
-                          attackRolls.length + 1,
-                          totalShotPe,
-                          appliedAtk,
-                          appliedDmg,
-                          currentStep + 1
-                        );
-                        if (!ok) {
-                          setSgErrorMsg('⚠️ Pontos de Esforço (PE) insuficientes para este disparo!');
-                        } else {
-                          setSgErrorMsg('');
-                        }
-                      }}
-                      className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-orange-950/50"
-                    >
-                      🔥 Segurar o Gatilho: Atacar Novamente (-{totalShotPe} PE)
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Botões Finais da Fase 1 */}
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                {onTriggerSegurarGatilhoDamageBatch && (
-                  <button
-                    type="button"
-                    disabled={selectedAttackRolls.length === 0}
-                    onClick={() => onTriggerSegurarGatilhoDamageBatch(selectedAttackRolls)}
-                    className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-lg shadow-red-950/50"
-                  >
-                    💥 Finalizar e Rolar Dano dos Acertos ({selectedAttackRolls.length})
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-5 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  Fechar
-                </button>
-              </div>
-            </>
-          ) : (
-            /* FASE 2: CARDS DE DANO EM LOTE + DANO TOTAL SOMADO */
-            <>
-              <div
-                className={`grid gap-3 ${
-                  damageRolls.length === 1
-                    ? 'grid-cols-1 max-w-md mx-auto w-full'
-                    : damageRolls.length === 2
-                    ? 'grid-cols-1 sm:grid-cols-2'
-                    : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
-                }`}
-              >
-                {damageRolls.map((dmgRoll, idx) => {
-                  const isSpinning = Boolean(spinningIds[dmgRoll.id]);
-                  const isCrit = Boolean(dmgRoll.batchIsCrit);
-                  const shotNum = dmgRoll.batchShotNumber || idx + 1;
-
-                  return (
-                    <div
-                      key={dmgRoll.id}
-                      className={`p-4 rounded-2xl border-2 flex flex-col justify-between gap-3 ${
-                        isSpinning
-                          ? 'bg-zinc-950 border-red-400 animate-pulse'
-                          : isCrit
-                          ? 'bg-red-950/35 border-red-500 shadow-lg shadow-red-950/40'
-                          : 'bg-zinc-950 border-amber-500/70 shadow-lg'
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedHitIds((prev) => ({ ...prev, [atkRoll.id]: !isSelected }))}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
+                        isSelected
+                          ? 'border-emerald-700 bg-emerald-950/50 text-emerald-200'
+                          : 'border-zinc-700 text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="text-[11px] font-mono uppercase font-extrabold text-amber-400">
-                            #{shotNum}º Disparo
-                          </span>
-                          <p className="text-[11px] text-zinc-300 font-semibold mt-0.5">
-                            {dmgRoll.formula}
-                          </p>
-                        </div>
-                        <span
-                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg shrink-0 ${
-                            isCrit
-                              ? 'bg-red-600 text-white'
-                              : 'bg-zinc-800 text-zinc-200 border border-zinc-700'
-                          }`}
-                        >
-                          {isCrit ? '💥 Crítico' : '🩸 Normal'}
-                        </span>
-                      </div>
+                      <Icon name={isSelected ? 'check-circle' : 'x-circle'} size={16} />
+                      {isSelected ? 'Acertou' : 'Errou'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
 
-                      {isSpinning ? (
-                        <div className="py-5 flex flex-col items-center gap-2">
-                          <span className="text-4xl animate-bounce">🎲</span>
-                          <span className="text-xs font-mono text-red-300 font-bold">
-                            Calculando dano...
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-3 py-1">
-                          <div
-                            className={`w-20 h-20 rounded-2xl bg-zinc-900 border-2 flex flex-col items-center justify-center shrink-0 ${
-                              isCrit ? 'border-red-500' : 'border-amber-500'
-                            }`}
+            {sg && onTriggerSegurarGatilhoShot && (
+              <div className="rounded-xl border border-orange-800/70 bg-orange-950/20 p-4 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-orange-100 flex items-center gap-2">
+                    <Icon name="flame" size={16} className="text-orange-300" /> Disparo extra ({attackRolls.length + 1}º)
+                    <span className="trpg-badge bg-orange-950! text-orange-200! trpg-num">{sgPeCost} PE</span>
+                  </span>
+                  {sg.hasAtaqueEspecial && (
+                    <label className="flex items-center gap-2 text-sm text-zinc-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useAeOnNextShot}
+                        onChange={(e) => {
+                          setUseAeOnNextShot(e.target.checked);
+                          setSgErrorMsg('');
+                        }}
+                        className="accent-orange-500 w-4 h-4"
+                      />
+                      Combinar com Ataque Especial
+                    </label>
+                  )}
+                </div>
+
+                {sg.hasAtaqueEspecial && useAeOnNextShot && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(
+                      [
+                        { key: 'atk', label: 'Acerto', value: clampedAe.atk },
+                        { key: 'dmg', label: 'Dano', value: clampedAe.dmg },
+                      ] as const
+                    ).map((row) => (
+                      <div
+                        key={row.key}
+                        className="rounded-lg bg-zinc-950/60 border border-zinc-800 px-3 py-2 flex items-center justify-between gap-2"
+                      >
+                        <span className="text-sm text-zinc-300">{row.label}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={row.value <= 0}
+                            onClick={() =>
+                              row.key === 'atk'
+                                ? updateBatchAe(Math.max(0, clampedAe.atk - 5), clampedAe.dmg)
+                                : updateBatchAe(clampedAe.atk, Math.max(0, clampedAe.dmg - 5))
+                            }
+                            className="trpg-icon-btn w-8! h-8!"
+                            aria-label={`Diminuir ${row.label}`}
                           >
-                            <span className="text-[9px] uppercase text-zinc-500 font-bold">
-                              Dano
-                            </span>
-                            <span className="text-3xl font-mono font-extrabold text-white">
-                              {dmgRoll.total}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5 justify-end">
-                            {dmgRoll.rolls.map((val, dIdx) => {
-                              const dmgSides = dmgRoll.sides || 6;
-                              const canReroll =
-                                val === 1 &&
-                                Boolean(dmgRoll.hasAfortunado) &&
-                                (dmgSides !== 20 || Boolean(dmgRoll.hasAfortunadoAffinity)) &&
-                                !dmgRoll.rerolledAfortunado &&
-                                Boolean(onRerollOne);
-                              return (
-                                <button
-                                  key={dIdx}
-                                  type="button"
-                                  disabled={!canReroll}
-                                  onClick={() => canReroll && onRerollOne?.(dmgRoll, dIdx)}
-                                  title={
-                                    canReroll
-                                      ? 'Clique para rerrolar dado 1 (Afortunado)'
-                                      : undefined
-                                  }
-                                  className={`w-8 h-8 rounded-lg font-mono font-bold text-xs flex items-center justify-center border ${
-                                    val === 1 && canReroll
-                                      ? 'bg-red-950 border-red-500 text-red-200 cursor-pointer ring-2 ring-red-500/40'
-                                      : 'bg-zinc-900 border-zinc-700 text-zinc-200'
-                                  }`}
-                                >
-                                  {val}
-                                </button>
-                              );
-                            })}
-                          </div>
+                            <Icon name="minus" size={15} />
+                          </button>
+                          <span className="trpg-num font-semibold text-zinc-100 min-w-[3rem] text-center">
+                            {signed(row.value * sg.aeMult)}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={aeTotalInvested + 5 > maxBonus}
+                            onClick={() =>
+                              row.key === 'atk'
+                                ? updateBatchAe(clampedAe.atk + 5, clampedAe.dmg)
+                                : updateBatchAe(clampedAe.atk, clampedAe.dmg + 5)
+                            }
+                            className="trpg-icon-btn w-8! h-8!"
+                            aria-label={`Aumentar ${row.label}`}
+                          >
+                            <Icon name="plus" size={15} />
+                          </button>
                         </div>
-                      )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {sgErrorMsg && (
+                  <p role="alert" className="text-sm text-red-300 flex items-center gap-2">
+                    <Icon name="warning" size={15} /> {stripEmoji(sgErrorMsg)}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-xs text-zinc-400 trpg-num">
+                    {sg.baseAttackDice <= 0 ? '2d20 (menor)' : `${sg.baseAttackDice}d20`}
+                    {signed(sg.baseAttackBonus + (useAeOnNextShot ? clampedAe.atk * sg.aeMult : 0))} — custa {totalShotPe} PE,
+                    limite {sg.peTurnLimit} PE por turno
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (useAeOnNextShot && aeTotalInvested <= 0) {
+                        setSgErrorMsg('Escolha ao menos +5 em acerto ou dano, ou desmarque o Ataque Especial.');
+                        return;
+                      }
+                      if (totalShotPe > sg.peTurnLimit) {
+                        setSgErrorMsg(`O disparo custa ${totalShotPe} PE e seu limite é ${sg.peTurnLimit} PE por turno.`);
+                        return;
+                      }
+                      const appliedAtk = useAeOnNextShot ? clampedAe.atk * sg.aeMult : 0;
+                      const appliedDmg = useAeOnNextShot ? clampedAe.dmg * sg.aeMult : 0;
+                      const ok = onTriggerSegurarGatilhoShot(
+                        latestAttack,
+                        attackRolls.length + 1,
+                        totalShotPe,
+                        appliedAtk,
+                        appliedDmg,
+                        currentStep + 1
+                      );
+                      setSgErrorMsg(ok ? '' : 'PE insuficiente para este disparo.');
+                    }}
+                    className="trpg-btn-secondary border-orange-700! text-orange-100!"
+                  >
+                    <Icon name="flame" size={16} /> Atirar de novo (−{totalShotPe} PE)
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className={`grid gap-3 ${gridCols(damageRolls.length)}`}>
+              {damageRolls.map((dmgRoll, idx) => {
+                const isSpinning = Boolean(spinningIds[dmgRoll.id]);
+                const isCrit = Boolean(dmgRoll.batchIsCrit);
+                const shotNum = dmgRoll.batchShotNumber || idx + 1;
+                return (
+                  <div
+                    key={dmgRoll.id}
+                    className={`rounded-xl border p-4 flex items-center gap-4 ${
+                      isCrit ? 'border-yellow-600/80 bg-yellow-950/25' : 'border-zinc-700 bg-zinc-950/50'
+                    }`}
+                  >
+                    <div className="text-center w-20 shrink-0">
+                      <span className={`block trpg-display text-5xl leading-none ${isSpinning ? 'text-zinc-600' : 'text-zinc-100'}`}>
+                        {isSpinning ? '·' : dmgRoll.total}
+                      </span>
+                      <span className="text-xs text-zinc-500">dano</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+                        {shotNum}º disparo
+                        {isCrit && <span className="trpg-badge bg-yellow-900/70! text-yellow-200!">Crítico</span>}
+                      </p>
+                      <p className="text-xs text-zinc-500 trpg-num mb-2">{dmgRoll.formula}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {dmgRoll.rolls.map((val, dIdx) => {
+                          const dmgSides = dmgRoll.sides || 6;
+                          const canReroll =
+                            val === 1 &&
+                            Boolean(dmgRoll.hasAfortunado) &&
+                            (dmgSides !== 20 || Boolean(dmgRoll.hasAfortunadoAffinity)) &&
+                            !dmgRoll.rerolledAfortunado &&
+                            Boolean(onRerollOne);
+                          return (
+                            <button
+                              key={dIdx}
+                              type="button"
+                              disabled={!canReroll}
+                              onClick={() => canReroll && onRerollOne?.(dmgRoll, dIdx)}
+                              title={canReroll ? 'Rerrolar este 1 (Afortunado)' : undefined}
+                              className={`${isSpinning ? 'trpg-die-in' : ''} rounded-md ${canReroll ? 'ring-2 ring-emerald-500/60' : ''}`}
+                              style={{ animationDelay: `${dIdx * 40}ms` }}
+                            >
+                              <DieFace2D sides={dmgSides} value={isSpinning ? '' : val} size={30} tone={isSpinning ? 'muted' : 'base'} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-              {/* Banner Inferior: Dano Total Somado */}
-              <div className="bg-red-950/60 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
-                <div>
-                  <span className="text-[11px] font-mono uppercase tracking-widest text-red-300 font-bold block">
-                    Soma de Todos os Disparos ({damageRolls.length})
-                  </span>
-                  <span className="text-xs font-mono text-zinc-300">
-                    {damageRolls.map((d) => d.total).join(' + ')} = {totalBatchDamage}
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-red-200">
-                    💥 Dano Total Causado:
-                  </span>
-                  <span className="text-4xl font-mono font-black text-white">
-                    {totalBatchDamage}
-                  </span>
-                </div>
+            <div className="rounded-xl border border-red-800/70 bg-red-950/30 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-red-100">Dano total</p>
+                <p className="text-xs text-zinc-400 trpg-num">
+                  {damageRolls.map((d) => d.total).join(' + ')} = {totalBatchDamage}
+                </p>
               </div>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full py-3 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
-              >
-                Fechar
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+              <span className="trpg-display text-6xl leading-none text-zinc-100 trpg-num">{totalBatchDamage}</span>
+            </div>
+          </div>
+        )}
+      </Dialog>
     );
   }
 
@@ -708,374 +568,277 @@ export function DiceRollModal({
 
   const dmgPayload = roll.attackDamagePayload;
   const isCriticalHit = Boolean(dmgPayload && keptNaturalRoll >= dmgPayload.critThreatMin);
-  const dmgModStr =
-    dmgPayload && dmgPayload.damageModifier !== 0
-      ? dmgPayload.damageModifier > 0
-        ? `+${dmgPayload.damageModifier}`
-        : `${dmgPayload.damageModifier}`
-      : '';
+  const dmgModStr = dmgPayload && dmgPayload.damageModifier !== 0 ? signed(dmgPayload.damageModifier) : '';
+
+  const formulaSidesMatch = roll.formula.match(/d(\d+)/i);
+  const rollSides = roll.sides || (formulaSidesMatch ? Number(formulaSidesMatch[1]) : 20);
+  const afortunadoAllowedForRoll = Boolean(roll.hasAfortunado) && (rollSides !== 20 || Boolean(roll.hasAfortunadoAffinity));
+
+  const stageKey = `${roll.id}|${roll.rolls.join(',')}|${roll.total}`;
+  const settled = settledKey === stageKey;
+
+  const hasFollowUps =
+    (afortunadoAllowedForRoll && !roll.rerolledAfortunado && roll.rolls.includes(1) && Boolean(onRerollOne)) ||
+    Boolean(roll.rerolledAfortunado) ||
+    Boolean(roll.explodedRolls?.length) ||
+    Boolean(roll.extraDiceResults?.length) ||
+    Boolean(roll.cursePricePrompt) ||
+    Boolean(dmgPayload?.ritualisticaStoredName) ||
+    Boolean(roll.ritualEffectPayload) ||
+    Boolean(dmgPayload && onRollDamage) ||
+    Boolean(roll.forcaOpressoraPayload && onRollForcaOpressora);
 
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+    <Dialog
+      open
+      onClose={onClose}
+      size="sm"
+      title={stripEmoji(roll.label)}
+      description={
+        <>
+          {roll.characterName} rolou <span className="trpg-num text-zinc-300">{roll.formula}</span>
+          {roll.isSecret && <span className="ml-2 trpg-badge">Em segredo</span>}
+        </>
+      }
+      panelClassName={isCriticalHit && settled ? 'border-yellow-700/70!' : ''}
+      bodyClassName="pt-2!"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="bg-zinc-900 border-2 border-amber-500/80 rounded-2xl max-w-sm w-full p-6 shadow-2xl flex flex-col items-center text-center gap-4"
-      >
-        {/* Cabeçalho da Rolagem */}
-        <div>
-          <span className="text-[11px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-            {roll.characterName}
-          </span>
-          <h3 className="text-lg font-extrabold text-white mt-0.5">{roll.label}</h3>
-          <span className="text-xs font-mono text-zinc-500">Fórmula: {roll.formula}</span>
-        </div>
+      <DiceStage key={roll.id} roll={roll} onSettled={() => setSettledKey(stageKey)} />
 
-        {/* Área Central: Animação de Rolagem vs Resultado Revelado */}
-        {isAnimating ? (
-          <div className="py-8 flex flex-col items-center gap-3">
-            <div className="text-6xl animate-bounce">🎲</div>
-            <div className="text-4xl font-extrabold font-mono text-zinc-400 animate-pulse">
-              {fakeNumber}
-            </div>
-            <span className="text-xs text-amber-500 font-semibold tracking-wider uppercase animate-pulse">
-              Rolando dados...
-            </span>
-          </div>
-        ) : (
-          <div className="py-4 flex flex-col items-center gap-4 w-full">
-            {isCriticalHit && dmgPayload && (
-              <div className="w-full py-1.5 px-3 rounded-xl bg-red-950/90 border border-red-500 text-red-200 text-xs font-black uppercase tracking-wider animate-pulse">
-                💥 Acerto Crítico! (Dado natural {keptNaturalRoll} ≥ {dmgPayload.critThreatMin})
-              </div>
-            )}
-
-            {/* Total Final em Destaque */}
-            <div
-              className={`w-28 h-28 rounded-2xl bg-zinc-950 border-2 flex flex-col items-center justify-center shadow-lg ${
-                isCriticalHit
-                  ? 'border-red-500 shadow-red-900/40'
-                  : 'border-amber-500 shadow-amber-900/30'
-              }`}
+      {hasFollowUps && (
+        <div
+          className={`mt-5 flex flex-col gap-3 transition-opacity duration-300 ${
+            settled ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+          aria-hidden={!settled}
+        >
+          {/* Afortunado */}
+          {afortunadoAllowedForRoll && !roll.rerolledAfortunado && roll.rolls.includes(1) && onRerollOne && (
+            <button
+              type="button"
+              onClick={() => onRerollOne(roll, roll.rolls.indexOf(1))}
+              className="trpg-btn-secondary w-full border-emerald-800! text-emerald-100!"
             >
-              <span className="text-[10px] uppercase font-bold text-zinc-500">Total</span>
-              <span className="text-5xl font-extrabold font-mono text-white">{roll.total}</span>
-            </div>
-
-            {/* Dados Individuais Rolados */}
-            <div className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 flex flex-col gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-bold">
-                Dados Rolados ({roll.rolls.length})
+              <Icon name="clover" size={17} className="text-emerald-300" />
+              Rerrolar o 1 com Afortunado
+              <span className="text-xs font-normal text-zinc-400">
+                {roll.hasAfortunadoAffinity ? '1x por rolagem' : 'dados que não são d20'}
               </span>
-              {(() => {
-                const formulaSidesMatch = roll.formula.match(/d(\d+)/i);
-                const rollSides =
-                  roll.sides || (formulaSidesMatch ? Number(formulaSidesMatch[1]) : 20);
-                const afortunadoAllowedForRoll =
-                  Boolean(roll.hasAfortunado) &&
-                  (rollSides !== 20 || Boolean(roll.hasAfortunadoAffinity));
-                return (
-                  <>
-              <div className="flex flex-wrap justify-center gap-2">
-                {roll.rolls.map((val, idx) => {
-                  const isKeptInOrdem =
-                    roll.system === 'ordem-paranormal' && val === highestRoll && roll.rolls.length > 1;
-                  const canRerollThisDie =
-                    val === 1 &&
-                    afortunadoAllowedForRoll &&
-                    !roll.rerolledAfortunado &&
-                    !!onRerollOne;
-                  return (
-                    <button
-                      type="button"
-                      key={idx}
-                      disabled={!canRerollThisDie}
-                      onClick={() => {
-                        if (canRerollThisDie && onRerollOne) {
-                          onRerollOne(roll, idx);
-                        }
-                      }}
-                      title={canRerollThisDie ? 'Clique para rerrolar este dado 1 (Poder Afortunado)' : undefined}
-                      className={`w-9 h-9 rounded-lg font-mono font-bold text-sm flex items-center justify-center border transition ${
-                        val === 20
-                          ? 'bg-amber-600/30 border-amber-400 text-amber-300'
-                          : val === 1
-                          ? canRerollThisDie
-                            ? 'bg-red-950/80 border-red-500 text-red-300 hover:bg-emerald-900/60 hover:border-emerald-400 hover:text-emerald-200 cursor-pointer ring-2 ring-red-500/40'
-                            : 'bg-red-950/60 border-red-700 text-red-400'
-                          : isKeptInOrdem
-                          ? 'bg-zinc-800 border-amber-500/60 text-white'
-                          : 'bg-zinc-900 border-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  );
-                })}
-              </div>
+            </button>
+          )}
+          {roll.rerolledAfortunado && (
+            <p className="text-sm text-emerald-300 flex items-center gap-2">
+              <Icon name="clover" size={15} /> Um 1 foi rerrolado com Afortunado.
+            </p>
+          )}
 
-              {afortunadoAllowedForRoll &&
-                !roll.rerolledAfortunado &&
-                roll.rolls.includes(1) &&
-                onRerollOne && (
+          {/* Motosserra */}
+          {roll.explodedRolls && roll.explodedRolls.length > 0 && (
+            <Notice
+              tone="warning"
+              icon="hammer"
+              title={`Motosserra explodiu ${roll.explodedRolls.length}x: ${signed(roll.explodedRolls.reduce((a, b) => a + b, 0))}`}
+            >
+              <div className="flex flex-wrap gap-1">
+                {roll.explodedRolls.map((val, idx) => (
+                  <DieFace2D key={idx} sides={roll.sides || 6} value={val} size={28} />
+                ))}
+              </div>
+            </Notice>
+          )}
+
+          {/* Dados extras de maldições e munições */}
+          {roll.extraDiceResults && roll.extraDiceResults.length > 0 && (
+            <div className="rounded-lg border border-zinc-800 divide-y divide-zinc-800">
+              {roll.extraDiceResults.map((ex, idx) => (
+                <div key={idx} className="flex items-center justify-between gap-3 px-3.5 py-2 text-sm">
+                  <span className="text-purple-200 flex items-center gap-2 min-w-0">
+                    <Icon name="sigil" size={15} className="text-purple-300 shrink-0" />
+                    <span className="truncate">{stripEmoji(ex.label)}</span>
+                    <span className="text-zinc-500 trpg-num">{ex.formula}</span>
+                  </span>
+                  <span className="trpg-num text-zinc-100 shrink-0">
+                    [{ex.rolls.join(', ')}] {signed(ex.subtotal)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* O preço da maldição */}
+          {roll.cursePricePrompt && (
+            <Notice
+              tone="paranormal"
+              icon="conhecimento"
+              title={`O preço da maldição (${roll.cursePricePrompt.element}, ${roll.cursePricePrompt.curseCount} ${
+                roll.cursePricePrompt.curseCount > 1 ? 'maldições' : 'maldição'
+              })`}
+            >
+              <p className="text-zinc-300">
+                Teste de {roll.cursePricePrompt.attributeLabel}. Se falhou, você perde{' '}
+                <strong className="text-red-200">{roll.cursePricePrompt.sanLossOnFail} de sanidade</strong>.
+              </p>
+              {onApplyCurseSanLoss && (
                 <button
                   type="button"
-                  onClick={() => onRerollOne(roll, roll.rolls.indexOf(1))}
-                  className="mt-2 w-full py-2 px-3 bg-emerald-950/80 hover:bg-emerald-800 border border-emerald-500/60 text-emerald-200 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                  disabled={curseSanAppliedForRollId === roll.id}
+                  onClick={() => {
+                    onApplyCurseSanLoss(roll);
+                    setCurseSanAppliedForRollId(roll.id);
+                  }}
+                  className="trpg-btn-danger trpg-btn-sm self-start"
                 >
-                  {roll.hasAfortunadoAffinity
-                    ? '🍀 Rerrolar dado "1" (Afortunado + Afinidade — 1x por rolagem)'
-                    : '🍀 Rerrolar dado "1" (Poder Afortunado — dados ≠ d20)'}
+                  <Icon name={curseSanAppliedForRollId === roll.id ? 'check' : 'brain'} size={15} />
+                  {curseSanAppliedForRollId === roll.id
+                    ? `${roll.cursePricePrompt.sanLossOnFail} SAN perdidos`
+                    : `Falhei: perder ${roll.cursePricePrompt.sanLossOnFail} SAN`}
                 </button>
               )}
+            </Notice>
+          )}
 
-              {roll.rerolledAfortunado && (
-                <span className="mt-1 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                  🍀 Dado 1 rerrolado com Afortunado!
-                </span>
-              )}
+          {/* Arma ritualística */}
+          {dmgPayload?.ritualisticaStoredName && (
+            <Notice tone="paranormal" icon="sigil" title="Arma ritualística carregada">
+              <p className="text-zinc-300">
+                Se acertar, você pode descarregar <em>{dmgPayload.ritualisticaStoredName}</em> no alvo como ação livre.
+              </p>
+            </Notice>
+          )}
 
-              {/* Dados Explosivos (Motosserra: cada 6 no d6 gera +1d6 extra) */}
-              {roll.explodedRolls && roll.explodedRolls.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-zinc-800 flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-orange-400 font-extrabold">
-                    🪚 Explosões da Motosserra (+{roll.explodedRolls.length} dado{roll.explodedRolls.length > 1 ? 's' : ''} = +{roll.explodedRolls.reduce((a, b) => a + b, 0)})
-                  </span>
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    {roll.explodedRolls.map((val, idx) => (
-                      <span
-                        key={idx}
-                        className={`w-8 h-8 rounded-lg font-mono font-bold text-xs flex items-center justify-center border ${
-                          val === (roll.sides || 6)
-                            ? 'bg-orange-600/40 border-orange-400 text-orange-200'
-                            : 'bg-orange-950/60 border-orange-700 text-orange-300'
-                        }`}
-                      >
-                        +{val}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Dados Extras de Maldições / Munições (Lancinante, Erosiva, Explosiva, Antielemento) */}
-              {roll.extraDiceResults && roll.extraDiceResults.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-zinc-800 flex flex-col gap-1.5 text-left">
-                  {roll.extraDiceResults.map((ex, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-2 text-[11px] bg-zinc-900/90 border border-purple-800/50 rounded-lg px-2.5 py-1"
-                    >
-                      <span className="font-bold text-purple-300 truncate">
-                        👁️ {ex.label} ({ex.formula})
-                      </span>
-                      <span className="font-mono text-xs font-extrabold text-amber-300 shrink-0">
-                        [{ex.rolls.join(', ')}] = +{ex.subtotal}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-                  </>
-                );
-              })()}
-            </div>
-
-            {/* Alerta Interativo: O Preço da Maldição (Cap. 6, p. 145) */}
-            {roll.cursePricePrompt && (
-              <div className="w-full bg-purple-950/50 border border-purple-600/70 rounded-xl p-3 flex flex-col gap-2 text-left">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-purple-300">
-                    👁️ O Preço da Maldição ({roll.cursePricePrompt.element})
-                  </span>
-                  <span className="text-[10px] font-mono font-bold bg-purple-900/70 text-purple-200 px-2 py-0.5 rounded">
-                    {roll.cursePricePrompt.curseCount} maldiç{roll.cursePricePrompt.curseCount > 1 ? 'ões' : 'ão'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-zinc-300">
-                  Teste baseado em <strong>{roll.cursePricePrompt.attributeLabel}</strong>. Se você <strong>falhou</strong> neste teste, perde{' '}
-                  <strong className="text-red-300">{roll.cursePricePrompt.sanLossOnFail} de Sanidade</strong>.
-                </p>
-                {onApplyCurseSanLoss && (
-                  <button
-                    type="button"
-                    disabled={curseSanAppliedForRollId === roll.id}
-                    onClick={() => {
-                      onApplyCurseSanLoss(roll);
-                      setCurseSanAppliedForRollId(roll.id);
-                    }}
-                    className={`w-full py-2 px-3 rounded-lg text-xs font-extrabold border transition ${
-                      curseSanAppliedForRollId === roll.id
-                        ? 'bg-zinc-900 border-zinc-700 text-zinc-500 cursor-not-allowed'
-                        : 'bg-red-950/80 hover:bg-red-700 border-red-600 text-red-200 hover:text-white cursor-pointer'
-                    }`}
-                  >
-                    {curseSanAppliedForRollId === roll.id
-                      ? `✓ -${roll.cursePricePrompt.sanLossOnFail} SAN aplicados`
-                      : `🧠 Falhei no Teste (-${roll.cursePricePrompt.sanLossOnFail} SAN)`}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Lembrete de Arma Ritualística */}
-            {dmgPayload?.ritualisticaStoredName && (
-              <div className="w-full bg-purple-950/40 border border-purple-700/60 rounded-xl px-3 py-2 text-[11px] text-purple-200 font-semibold">
-                🔮 <strong>Ritualística:</strong> se acertar, você pode descarregar <em>{dmgPayload.ritualisticaStoredName}</em> como ação livre no alvo!
-              </div>
-            )}
-
-            {/* Resultado do Custo do Paranormal e Efeito de Ritual Vinculado */}
-            {roll.ritualEffectPayload && (() => {
+          {/* Custo do paranormal + efeito de ritual */}
+          {roll.ritualEffectPayload &&
+            (() => {
               const rp = roll.ritualEffectPayload!;
               const dt = rp.custoParanormalDt;
               const passed = roll.total >= dt;
               const failedBy5 = !passed && dt - roll.total >= 5;
               return (
-                <div
-                  className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold space-y-1 text-left ${
+                <Notice
+                  tone={passed ? 'success' : failedBy5 ? 'danger' : 'warning'}
+                  icon={passed ? 'check-circle' : failedBy5 ? 'skull' : 'warning'}
+                  title={
                     passed
-                      ? 'bg-emerald-950/80 border-emerald-500 text-emerald-200'
+                      ? `Passou no custo do paranormal (DT ${dt}). Nenhuma sanidade perdida.`
                       : failedBy5
-                      ? 'bg-red-950/90 border-red-500 text-red-200'
-                      : 'bg-amber-950/80 border-amber-500 text-amber-200'
-                  }`}
+                      ? `Falhou por 5 ou mais (DT ${dt}): perde ${rp.peSpent} SAN e 1 de SAN máxima.`
+                      : `Falhou no custo do paranormal (DT ${dt}): perde ${rp.peSpent} SAN.`
+                  }
                 >
-                  <div>
-                    {passed
-                      ? `✅ Sucesso no Custo do Paranormal (DT ${dt})! Sua mente resistiu (0 SAN perdida).`
-                      : failedBy5
-                      ? `💀 Falha por 5 ou mais (DT ${dt})! Perdeu ${rp.peSpent} SAN e -1 SAN Máxima Permanente!`
-                      : `⚠️ Falha no Custo do Paranormal (DT ${dt})! Perdeu ${rp.peSpent} de Sanidade.`}
-                  </div>
-                  {rp.appliedSceneSummary && (
-                    <div className="text-[11px] text-cyan-200 font-semibold">
-                      {rp.appliedSceneSummary}
-                    </div>
-                  )}
-                </div>
+                  {rp.appliedSceneSummary && <p className="text-zinc-300">{stripEmoji(rp.appliedSceneSummary)}</p>}
+                </Notice>
               );
             })()}
 
-            {/* Botão Direto de Rolagem de Efeito do Ritual após o Teste de Sanidade */}
-            {roll.ritualEffectPayload?.effectFormula && onRollRitualEffect && (() => {
+          {roll.ritualEffectPayload?.effectFormula &&
+            onRollRitualEffect &&
+            (() => {
               const rp = roll.ritualEffectPayload!;
               const et = rp.effectType || 'damage';
-              const btnStyle =
+              const meta =
                 et === 'healing'
-                  ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white shadow-emerald-900/40'
+                  ? { icon: 'heart-pulse', text: `Rolar cura (${rp.effectFormula})`, cls: 'border-emerald-700! text-emerald-100!' }
                   : et === 'temp_hp'
-                  ? 'bg-cyan-600 hover:bg-cyan-500 border-cyan-400 text-white shadow-cyan-900/40'
+                  ? { icon: 'shield', text: `Rolar PV temporários (${rp.effectFormula})`, cls: 'border-cyan-700! text-cyan-100!' }
                   : et === 'utility'
-                  ? 'bg-purple-600 hover:bg-purple-500 border-purple-400 text-white shadow-purple-900/40'
-                  : 'bg-amber-600 hover:bg-amber-500 border-amber-400 text-white shadow-amber-900/40';
-              const btnText =
-                et === 'healing'
-                  ? `💚 Rolar Cura do Ritual (${rp.effectFormula})`
-                  : et === 'temp_hp'
-                  ? `🛡️ Rolar Vida Temporária (${rp.effectFormula})`
-                  : et === 'utility'
-                  ? `🎲 ${rp.effectLabel || 'Rolar Efeito do Ritual'} (${rp.effectFormula})`
-                  : `💥 ${rp.effectLabel || 'Rolar Dano do Ritual'} (${rp.effectFormula})${
-                      rp.maximizeEffect ? ' [Máx.]' : ''
-                    }`;
+                  ? {
+                      icon: 'sigil',
+                      text: `${stripEmoji(rp.effectLabel || 'Rolar efeito')} (${rp.effectFormula})`,
+                      cls: 'border-purple-700! text-purple-100!',
+                    }
+                  : {
+                      icon: 'burst',
+                      text: `${stripEmoji(rp.effectLabel || 'Rolar dano do ritual')} (${rp.effectFormula})${
+                        rp.maximizeEffect ? ', maximizado' : ''
+                      }`,
+                      cls: '',
+                    };
               return (
                 <button
                   type="button"
                   onClick={() => onRollRitualEffect(roll)}
-                  className={`w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider border transition cursor-pointer shadow-lg flex items-center justify-center gap-2 ${btnStyle}`}
+                  className={`${et === 'damage' ? 'trpg-btn-primary' : `trpg-btn-secondary ${meta.cls}`} trpg-btn-lg w-full`}
                 >
-                  {btnText}
+                  <Icon name={meta.icon} size={18} /> {meta.text}
                 </button>
               );
             })()}
 
-            {/* Botão Direto de Rolagem de Dano / Dano Crítico após Rolagem de Acerto */}
-            {dmgPayload && onRollDamage && (
-              <button
-                type="button"
-                onClick={() => onRollDamage(roll, isCriticalHit)}
-                className={`w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider border transition cursor-pointer shadow-lg flex items-center justify-center gap-2 ${
-                  isCriticalHit
-                    ? 'bg-red-600 hover:bg-red-500 border-red-400 text-white shadow-red-900/50 animate-pulse'
-                    : 'bg-amber-600 hover:bg-amber-500 border-amber-400 text-white shadow-amber-900/40'
-                }`}
-              >
-                {isCriticalHit
-                  ? `💥 Rolar Dano Crítico (${dmgPayload.critDiceCount}d${dmgPayload.dieSides}${dmgModStr}) [x${dmgPayload.critMultiplier}]`
-                  : `🩸 Rolar Dano (${dmgPayload.normalDiceCount}d${dmgPayload.dieSides}${dmgModStr})`}
-              </button>
-            )}
+          {/* Dano / dano crítico */}
+          {dmgPayload && onRollDamage && (
+            <button
+              type="button"
+              onClick={() => onRollDamage(roll, isCriticalHit)}
+              className={`trpg-btn-primary trpg-btn-lg w-full ${
+                isCriticalHit ? 'bg-yellow-600! border-yellow-400! text-zinc-950!' : ''
+              }`}
+            >
+              <Icon name={isCriticalHit ? 'burst' : 'sangue'} size={18} />
+              {isCriticalHit
+                ? `Rolar dano crítico (${dmgPayload.critDiceCount}d${dmgPayload.dieSides}${dmgModStr}, x${dmgPayload.critMultiplier})`
+                : `Rolar dano (${dmgPayload.normalDiceCount}d${dmgPayload.dieSides}${dmgModStr})`}
+            </button>
+          )}
 
-            {/* Sanguinária em Crítico: 2d10 PV Temporários */}
-            {isCriticalHit && dmgPayload?.sanguinariaCritTempHp && onRollSanguinariaTempHp && (
-              <button
-                type="button"
-                disabled={sanguinariaRolledForRollId === roll.id}
-                onClick={() => {
-                  onRollSanguinariaTempHp(roll);
-                  setSanguinariaRolledForRollId(roll.id);
-                }}
-                className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold border transition ${
-                  sanguinariaRolledForRollId === roll.id
-                    ? 'bg-zinc-900 border-zinc-700 text-zinc-500 cursor-not-allowed'
-                    : 'bg-red-950/80 hover:bg-red-700 border-red-500 text-red-200 hover:text-white cursor-pointer'
-                }`}
-              >
-                {sanguinariaRolledForRollId === roll.id
-                  ? '✓ PV Temporários da Sanguinária rolados'
-                  : '🩸 Sanguinária (Crítico): Rolar 2d10 PV Temporários (Alvo fica Fraco)'}
-              </button>
-            )}
+          {/* Sanguinária */}
+          {isCriticalHit && dmgPayload?.sanguinariaCritTempHp && onRollSanguinariaTempHp && (
+            <button
+              type="button"
+              disabled={sanguinariaRolledForRollId === roll.id}
+              onClick={() => {
+                onRollSanguinariaTempHp(roll);
+                setSanguinariaRolledForRollId(roll.id);
+              }}
+              className="trpg-btn-danger w-full"
+            >
+              <Icon name={sanguinariaRolledForRollId === roll.id ? 'check' : 'sangue'} size={16} />
+              {sanguinariaRolledForRollId === roll.id
+                ? 'PV temporários da Sanguinária rolados'
+                : 'Sanguinária: rolar 2d10 PV temporários (alvo fica fraco)'}
+            </button>
+          )}
 
-            {/* Força Opressora (Guerreiro 65%): Empurrar ou Derrubar após rolar Dano */}
-            {roll.forcaOpressoraPayload && onRollForcaOpressora && (() => {
+          {/* Força Opressora */}
+          {roll.forcaOpressoraPayload &&
+            onRollForcaOpressora &&
+            (() => {
               const pushBonus = Math.floor(Math.max(0, roll.total) / 10) * 5;
               const fo = roll.forcaOpressoraPayload!;
               const totalEmpurrarBonus = fo.lutaBonus + pushBonus;
-              const diceText =
-                fo.lutaDiceCount <= 0 ? '2d20(menor)' : `${fo.lutaDiceCount}d20`;
+              const diceText = fo.lutaDiceCount <= 0 ? '2d20 (menor)' : `${fo.lutaDiceCount}d20`;
               return (
-                <div className="w-full bg-zinc-950 border border-amber-700/70 rounded-xl p-3 flex flex-col gap-2">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-amber-400">
-                    ⚔️ Força Opressora (Guerreiro 65% • -1 PE)
-                  </span>
+                <Notice tone="info" icon="swords" title="Força Opressora (−1 PE)">
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onRollForcaOpressora(roll, 'empurrar')}
-                      className="py-2.5 px-2 bg-amber-600/20 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-600/60 rounded-lg text-xs font-extrabold transition cursor-pointer"
-                      title={`Teste de Luta com +${pushBonus} (${roll.total} de dano) para Empurrar`}
+                      className="trpg-btn-secondary trpg-btn-sm"
+                      title={`Teste de Luta com +${pushBonus} pelo dano causado`}
                     >
-                      🫸 Empurrar ({diceText}
-                      {totalEmpurrarBonus >= 0 ? `+${totalEmpurrarBonus}` : totalEmpurrarBonus})
+                      Empurrar{' '}
+                      <span className="trpg-num text-zinc-400">
+                        {diceText}
+                        {signed(totalEmpurrarBonus)}
+                      </span>
                     </button>
                     <button
                       type="button"
                       onClick={() => onRollForcaOpressora(roll, 'derrubar')}
-                      className="py-2.5 px-2 bg-red-950/60 hover:bg-red-700 text-red-200 hover:text-white border border-red-700/60 rounded-lg text-xs font-extrabold transition cursor-pointer"
-                      title="Teste de Luta para Derrubar"
+                      className="trpg-btn-secondary trpg-btn-sm"
+                      title="Teste de Luta para derrubar"
                     >
-                      🦵 Derrubar ({diceText}
-                      {fo.lutaBonus >= 0 ? `+${fo.lutaBonus}` : fo.lutaBonus})
+                      Derrubar{' '}
+                      <span className="trpg-num text-zinc-400">
+                        {diceText}
+                        {signed(fo.lutaBonus)}
+                      </span>
                     </button>
                   </div>
-                </div>
+                </Notice>
               );
             })()}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-2.5 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
-        >
-          Fechar
-        </button>
-      </div>
-    </div>
+        </div>
+      )}
+    </Dialog>
   );
 }

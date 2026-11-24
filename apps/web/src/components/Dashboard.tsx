@@ -16,20 +16,34 @@ import {
   joinCampaignByCode,
   deleteCharacter,
   removeCharacterFromCampaign,
-  deleteCampaign
+  deleteCampaign,
 } from '../services/api';
 import { AdminPanel } from './AdminPanel';
-import { ImageUploadField } from './ImageUploadField';
 import { CharacterWizardModal } from './CharacterWizardModal';
+import { UserSettingsPanel } from './UserSettingsPanel';
+import { SYSTEM_META, SystemSigilBadge } from './BrandMark';
+import { Dialog } from './ui/Dialog';
+import { Icon, IconName } from './ui/Icon';
+import { Portrait } from './ui/Portrait';
+
+export type DashboardTabId = 'player' | 'characters' | 'dm' | 'admin' | 'settings';
 
 interface DashboardProps {
   currentUser: { id: string; username: string; email: string };
-  onEnterSession: (campaignId: string, role: 'dm' | 'player') => void;
-  onOpenCharacter: (characterId: string, campaignId?: string) => void;
+  requestedTab?: DashboardTabId | null;
+  onRequestedTabHandled?: () => void;
+  onEnterSession: (campaignId: string, role: 'dm' | 'player', system?: SystemId) => void;
+  onOpenCharacter: (characterId: string, campaignId?: string, system?: SystemId) => void;
 }
 
-export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState<'player' | 'characters' | 'dm' | 'admin'>('player');
+export function Dashboard({
+  currentUser,
+  requestedTab,
+  onRequestedTabHandled,
+  onEnterSession,
+  onOpenCharacter,
+}: DashboardProps) {
+  const [activeTab, setActiveTab] = useState<DashboardTabId>('player');
 
   const [dmCampaigns, setDmCampaigns] = useState<CampaignData[]>([]);
   const [playerCampaigns, setPlayerCampaigns] = useState<CampaignData[]>([]);
@@ -45,9 +59,6 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   const [newCampaignReqPatent, setNewCampaignReqPatent] = useState<string>('');
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
 
-  const [newCharName, setNewCharName] = useState('');
-  const [newCharSystem, setNewCharSystem] = useState<SystemId>('ordem-paranormal');
-  const [newCharPortrait, setNewCharPortrait] = useState('');
   const [isCreatingChar, setIsCreatingChar] = useState(false);
   const [wizardLockedSystem, setWizardLockedSystem] = useState<SystemId | undefined>(undefined);
   const [wizardLockedNex, setWizardLockedNex] = useState<number | null>(null);
@@ -65,6 +76,13 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [selectedCharIdForJoin, setSelectedCharIdForJoin] = useState('');
   const [quickCharName, setQuickCharName] = useState('');
+
+  useEffect(() => {
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+      onRequestedTabHandled?.();
+    }
+  }, [requestedTab, onRequestedTabHandled]);
 
   async function loadDashboardData() {
     setIsLoading(true);
@@ -93,7 +111,7 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
   }
 
   useEffect(() => {
-    if (activeTab !== 'admin') {
+    if (activeTab !== 'admin' && activeTab !== 'settings') {
       loadDashboardData();
     }
   }, [activeTab]);
@@ -122,19 +140,6 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     }
   }
 
-  async function handleCreateCharacter(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      await createCharacter(newCharName, newCharSystem, newCharPortrait || undefined);
-      setNewCharName('');
-      setNewCharPortrait('');
-      setIsCreatingChar(false);
-      loadDashboardData();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  }
-
   async function handleSendInvite(campaignId: string) {
     if (!targetUsername.trim()) return;
     try {
@@ -153,7 +158,6 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     }
   }
 
-  // Confirma a entrada via Convite Direto (usando ficha existente ou criando uma nova na hora)
   async function handleConfirmAcceptInvite(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedInviteToAccept) return;
@@ -161,7 +165,6 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     try {
       let charIdToUse = selectedCharIdForJoin;
 
-      // Se o jogador optou por criar um personagem rápido direto no modal
       if (!charIdToUse && quickCharName.trim()) {
         const created = await createCharacter(
           quickCharName.trim(),
@@ -194,7 +197,6 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     }
   }
 
-  // Confirma a entrada via Código
   async function handleConfirmJoinByCode(e: React.FormEvent) {
     e.preventDefault();
     if (!inviteCodeInput.trim() || !selectedCharIdForJoin) {
@@ -213,7 +215,6 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     }
   }
 
-  // Requisitos efetivos do convite selecionado
   const inviteRequiredNex = selectedInviteToAccept
     ? selectedInviteToAccept.requiredNex ?? selectedInviteToAccept.campaign.requiredNex ?? null
     : null;
@@ -242,7 +243,6 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
     return { ok: true };
   }
 
-  // Filtra personagens livres do cofre compatíveis com o convite selecionado
   const compatibleCharactersForInvite = selectedInviteToAccept
     ? characters.filter(
         (c) => !c.campaign && c.system === selectedInviteToAccept.campaign.system
@@ -254,9 +254,46 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
 
   const availableVaultCharacters = characters.filter((c) => !c.campaign);
 
+  const navItems: Array<{ id: DashboardTabId; label: string; icon: IconName; count?: number }> = [
+    { id: 'player', label: 'Minhas mesas', icon: 'd20', count: invites.length > 0 ? invites.length : undefined },
+    { id: 'characters', label: 'Personagens', icon: 'user' },
+    { id: 'dm', label: 'Mestrar', icon: 'shield' },
+    { id: 'admin', label: 'Compêndio', icon: 'library' },
+    { id: 'settings', label: 'Configurações', icon: 'settings' },
+  ];
+
+  const invitingCampaign = dmCampaigns.find((c) => c.id === invitingCampaignId) || null;
+
+  function SectionHeader({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
+    return (
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1 basis-[22rem]">
+          <h2 className="text-[1.75rem] sm:text-3xl leading-tight">{title}</h2>
+          <p className="text-sm text-zinc-400 mt-1 max-w-[60ch]">{description}</p>
+        </div>
+        {action}
+      </div>
+    );
+  }
+
+  function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
+    return (
+      <div className="rounded-xl border border-dashed border-zinc-700 px-6 py-12 flex flex-col items-center text-center gap-2">
+        <Icon name="d20" size={28} className="text-zinc-600 mb-1" />
+        <p className="text-base font-semibold text-zinc-100">{title}</p>
+        <p className="text-sm text-zinc-400 max-w-[46ch]">{body}</p>
+        {action && <div className="mt-3">{action}</div>}
+      </div>
+    );
+  }
+
+  function openWizard(system?: SystemId) {
+    setWizardLockedSystem(system);
+    setIsCreatingChar(true);
+  }
+
   return (
-    <div className="flex flex-col gap-6">
-      {/* ASSISTENTE GUIADO DE CRIAÇÃO DE PERSONAGEM */}
+    <div className="flex flex-col gap-7">
       {isCreatingChar && (
         <CharacterWizardModal
           lockedSystem={wizardLockedSystem}
@@ -280,82 +317,74 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
         />
       )}
 
-      {/* MODAL 1: ACEITAR CONVITE E VINCULAR FICHA */}
-      {selectedInviteToAccept && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <form
-            onSubmit={handleConfirmAcceptInvite}
-            className="bg-zinc-900 border border-amber-500/60 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
-                  Convite de {selectedInviteToAccept.campaign.dm.username}
-                </span>
-                <h3 className="text-lg font-extrabold text-white">
-                  Entrar em: {selectedInviteToAccept.campaign.name}
-                </h3>
-                <span className="text-xs text-zinc-400">
-                  Sistema exigido: <strong>{selectedInviteToAccept.campaign.system.toUpperCase()}</strong>
-                </span>
-                {(typeof inviteRequiredNex === 'number' || inviteRequiredPatent) && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {typeof inviteRequiredNex === 'number' && (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-600/70">
-                        ⚡ NEX Exigido: {inviteRequiredNex}%
-                      </span>
-                    )}
-                    {inviteRequiredPatent && (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-200 border border-emerald-600/70">
-                        🎖️ Patente Exigida: {inviteRequiredPatent}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedInviteToAccept(null)}
-                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 cursor-pointer"
-              >
-                ✕
-              </button>
+      {/* Aceitar convite */}
+      <Dialog
+        open={Boolean(selectedInviteToAccept)}
+        onClose={() => setSelectedInviteToAccept(null)}
+        size="sm"
+        title={selectedInviteToAccept?.campaign.name}
+        description={
+          selectedInviteToAccept ? `Convite de @${selectedInviteToAccept.campaign.dm.username}` : undefined
+        }
+        footer={
+          <>
+            <button type="button" onClick={() => setSelectedInviteToAccept(null)} className="trpg-btn-quiet">
+              Cancelar
+            </button>
+            <button type="submit" form="accept-invite-form" className="trpg-btn-primary">
+              Entrar na mesa
+            </button>
+          </>
+        }
+      >
+        {selectedInviteToAccept && (
+          <form id="accept-invite-form" onSubmit={handleConfirmAcceptInvite} className="flex flex-col gap-5">
+            <div className="flex flex-wrap gap-2">
+              <SystemSigilBadge system={selectedInviteToAccept.campaign.system} />
+              {typeof inviteRequiredNex === 'number' && <span className="trpg-badge">NEX {inviteRequiredNex}%</span>}
+              {inviteRequiredPatent && <span className="trpg-badge">{inviteRequiredPatent}</span>}
             </div>
 
             {compatibleCharactersForInvite.length > 0 && (
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Opção A: Escolher um personagem livre do seu Cofre ({matchingCharactersForInvite.length} compatível(is))
+                <label htmlFor="invite-char-select" className="trpg-label">
+                  Levar um personagem do seu cofre
                 </label>
                 <select
+                  id="invite-char-select"
                   value={selectedCharIdForJoin}
                   onChange={(e) => {
                     setSelectedCharIdForJoin(e.target.value);
                     if (e.target.value) setQuickCharName('');
                   }}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                  className="trpg-input"
                 >
-                  <option value="">-- Selecionar ficha existente --</option>
+                  <option value="">Escolha um personagem</option>
                   {compatibleCharactersForInvite.map((c) => {
                     const check = checkInviteRequirements(c);
-                    const cNex = c.system === 'ordem-paranormal' ? ` • NEX ${c.sheetData?.nex ?? 5}%` : '';
-                    const cPat = c.system === 'ordem-paranormal' ? ` • ${c.sheetData?.patent || 'Recruta'}` : '';
+                    const extra =
+                      c.system === 'ordem-paranormal'
+                        ? ` — NEX ${c.sheetData?.nex ?? 5}%, ${c.sheetData?.patent || 'Recruta'}`
+                        : '';
                     return (
                       <option key={c.id} value={c.id} disabled={!check.ok}>
-                        {c.name} ({c.system}{cNex}{cPat}){!check.ok ? ` — [Bloqueado: ${check.reason}]` : ''}
+                        {c.name}
+                        {extra}
+                        {!check.ok ? ` (não atende: ${check.reason})` : ''}
                       </option>
                     );
                   })}
                 </select>
+                <p className="text-xs text-zinc-500 mt-1.5">
+                  {matchingCharactersForInvite.length} de {compatibleCharactersForInvite.length} atendem aos requisitos da mesa.
+                </p>
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                {compatibleCharactersForInvite.length > 0
-                  ? 'Opção B: Ou criar um novo personagem agora'
-                  : 'Crie seu personagem para esta aventura:'}
-              </label>
+            <div className="flex flex-col gap-2">
+              <span className="trpg-label mb-0">
+                {compatibleCharactersForInvite.length > 0 ? 'Ou crie um personagem novo' : 'Crie seu personagem para esta mesa'}
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -364,256 +393,375 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                   setWizardLockedPatent(inviteRequiredPatent);
                   setIsCreatingChar(true);
                 }}
-                className="w-full py-2.5 mb-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/50 rounded-lg text-xs font-black text-amber-300 transition cursor-pointer"
+                className="trpg-btn-secondary w-full"
               >
-                ✨ Criar Personagem Completo no Assistente Guiado ({selectedInviteToAccept.campaign.system.toUpperCase()}
-                {typeof inviteRequiredNex === 'number' ? ` • NEX ${inviteRequiredNex}%` : ''}
-                {inviteRequiredPatent ? ` • ${inviteRequiredPatent}` : ''})
+                <Icon name="sparkles" size={16} /> Abrir assistente de criação
               </button>
               {typeof inviteRequiredNex !== 'number' && !inviteRequiredPatent && (
-                <input
-                  type="text"
-                  value={quickCharName}
-                  onChange={(e) => {
-                    setQuickCharName(e.target.value);
-                    if (e.target.value) setSelectedCharIdForJoin('');
-                  }}
-                  placeholder="Ou digite apenas o nome para criação rápida..."
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
-                />
+                <>
+                  <label htmlFor="quick-char-name" className="sr-only">
+                    Nome para ficha rápida
+                  </label>
+                  <input
+                    id="quick-char-name"
+                    type="text"
+                    value={quickCharName}
+                    onChange={(e) => {
+                      setQuickCharName(e.target.value);
+                      if (e.target.value) setSelectedCharIdForJoin('');
+                    }}
+                    placeholder="Ou só um nome, para uma ficha rápida"
+                    className="trpg-input"
+                  />
+                </>
               )}
             </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setSelectedInviteToAccept(null)}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Vincular Ficha e Entrar
-              </button>
-            </div>
           </form>
-        </div>
-      )}
+        )}
+      </Dialog>
 
-      {/* MODAL 2: ENTRAR POR CÓDIGO DE CONVITE */}
-      {isJoinByCodeModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <form
-            onSubmit={handleConfirmJoinByCode}
-            className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
-          >
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-extrabold text-amber-500">🔑 Entrar com Código de Mesa</h3>
-              <button
-                type="button"
-                onClick={() => setIsJoinByCodeModalOpen(false)}
-                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 cursor-pointer"
-              >
-                ✕
-              </button>
+      {/* Entrar por código */}
+      <Dialog
+        open={isJoinByCodeModalOpen}
+        onClose={() => setIsJoinByCodeModalOpen(false)}
+        size="sm"
+        title="Entrar com código"
+        description="O mestre encontra o código no card da campanha."
+        footer={
+          <>
+            <button type="button" onClick={() => setIsJoinByCodeModalOpen(false)} className="trpg-btn-quiet">
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="join-code-form"
+              disabled={availableVaultCharacters.length === 0}
+              className="trpg-btn-primary"
+            >
+              Entrar na mesa
+            </button>
+          </>
+        }
+      >
+        <form id="join-code-form" onSubmit={handleConfirmJoinByCode} className="flex flex-col gap-5">
+          <div>
+            <label htmlFor="join-invite-code" className="trpg-label">
+              Código da mesa
+            </label>
+            <input
+              id="join-invite-code"
+              type="text"
+              required
+              autoComplete="off"
+              value={inviteCodeInput}
+              onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+              placeholder="TR-8F2A"
+              className="trpg-input trpg-code text-lg"
+            />
+          </div>
+          <div>
+            <label htmlFor="join-vault-char" className="trpg-label">
+              Personagem
+            </label>
+            {availableVaultCharacters.length === 0 ? (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-sm text-zinc-300 flex flex-col gap-3">
+                Você não tem personagens livres no cofre.
+                <button type="button" onClick={() => openWizard()} className="trpg-btn-secondary trpg-btn-sm self-start">
+                  <Icon name="plus" size={15} /> Criar personagem
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <select
+                  id="join-vault-char"
+                  required
+                  value={selectedCharIdForJoin}
+                  onChange={(e) => setSelectedCharIdForJoin(e.target.value)}
+                  className="trpg-input"
+                >
+                  <option value="">Escolha quem vai para a mesa</option>
+                  {availableVaultCharacters.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {SYSTEM_META[c.system]?.label || c.system}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => openWizard()} className="trpg-btn-quiet trpg-btn-sm self-start">
+                  <Icon name="plus" size={15} /> Criar outro personagem
+                </button>
+              </div>
+            )}
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Nova campanha */}
+      <Dialog
+        open={isCreatingCampaign}
+        onClose={() => setIsCreatingCampaign(false)}
+        size="md"
+        title="Nova campanha"
+        description="Você recebe um código para os jogadores entrarem."
+        footer={
+          <>
+            <button type="button" onClick={() => setIsCreatingCampaign(false)} className="trpg-btn-quiet">
+              Cancelar
+            </button>
+            <button type="submit" form="new-campaign-form" className="trpg-btn-primary">
+              Criar campanha
+            </button>
+          </>
+        }
+      >
+        <form id="new-campaign-form" onSubmit={handleCreateCampaign} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label htmlFor="new-camp-name" className="trpg-label">
+              Nome
+            </label>
+            <input
+              id="new-camp-name"
+              type="text"
+              required
+              value={newCampaignName}
+              onChange={(e) => setNewCampaignName(e.target.value)}
+              placeholder="Caso Subsolo"
+              className="trpg-input"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <span className="trpg-label">Sistema</span>
+            <div role="radiogroup" aria-label="Sistema" className="grid grid-cols-3 gap-2">
+              {(['ordem-paranormal', 'tormenta20', 'duna'] as SystemId[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  role="radio"
+                  aria-checked={newCampaignSystem === s}
+                  onClick={() => setNewCampaignSystem(s)}
+                  className={`rounded-lg border px-3 py-2.5 text-sm font-medium text-left transition-colors ${
+                    newCampaignSystem === s
+                      ? 'border-amber-500 bg-amber-950/40 text-zinc-100'
+                      : 'border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                  }`}
+                >
+                  {SYSTEM_META[s].label}
+                </button>
+              ))}
             </div>
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="new-camp-desc" className="trpg-label">
+              Resumo <span className="font-normal text-zinc-500">(opcional)</span>
+            </label>
+            <input
+              id="new-camp-desc"
+              type="text"
+              value={newCampaignDesc}
+              onChange={(e) => setNewCampaignDesc(e.target.value)}
+              placeholder="Ambientação, tom da mesa"
+              className="trpg-input"
+            />
+          </div>
+          {newCampaignSystem === 'ordem-paranormal' && (
+            <>
+              <div>
+                <label htmlFor="new-camp-nex" className="trpg-label">
+                  NEX exigido
+                </label>
+                <select
+                  id="new-camp-nex"
+                  value={newCampaignReqNex}
+                  onChange={(e) => setNewCampaignReqNex(e.target.value)}
+                  className="trpg-input"
+                >
+                  <option value="">Qualquer</option>
+                  {ORDEM_NEX_PROGRESSION.map((m) => (
+                    <option key={m.nex} value={String(m.nex)}>
+                      NEX {m.nex}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="new-camp-patent" className="trpg-label">
+                  Patente exigida
+                </label>
+                <select
+                  id="new-camp-patent"
+                  value={newCampaignReqPatent}
+                  onChange={(e) => setNewCampaignReqPatent(e.target.value)}
+                  className="trpg-input"
+                >
+                  <option value="">Qualquer</option>
+                  <option value="Mundano">Mundano</option>
+                  {ORDEM_PATENTS.map((p) => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+        </form>
+      </Dialog>
 
+      {/* Convidar jogador */}
+      <Dialog
+        open={Boolean(invitingCampaign)}
+        onClose={() => setInvitingCampaignId(null)}
+        size="sm"
+        title="Convidar jogador"
+        description={invitingCampaign ? `Para ${invitingCampaign.name}` : undefined}
+        footer={
+          <>
+            <button type="button" onClick={() => setInvitingCampaignId(null)} className="trpg-btn-quiet">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={!targetUsername.trim()}
+              onClick={() => invitingCampaign && handleSendInvite(invitingCampaign.id)}
+              className="trpg-btn-primary"
+            >
+              Enviar convite
+            </button>
+          </>
+        }
+      >
+        {invitingCampaign && (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg bg-zinc-950/60 border border-zinc-800 px-3.5 py-3 flex items-center justify-between gap-3">
+              <span className="text-sm text-zinc-400">Ou compartilhe o código</span>
+              <span className="trpg-code text-lg text-zinc-100">{invitingCampaign.inviteCode}</span>
+            </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Código da Aventura (Fornecido pelo Mestre)</label>
+              <label htmlFor="inv-user" className="trpg-label">
+                Nome de usuário
+              </label>
               <input
+                id="inv-user"
                 type="text"
-                required
-                value={inviteCodeInput}
-                onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
-                placeholder="Ex: TR-8F2A"
-                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono uppercase text-amber-400"
+                autoFocus
+                value={targetUsername}
+                onChange={(e) => setTargetUsername(e.target.value)}
+                placeholder="usuario_do_jogador"
+                className="trpg-input"
               />
             </div>
-
-            <div>
-              <label className="block text-xs text-zinc-400 mb-1">Personagem do seu Cofre</label>
-              {availableVaultCharacters.length === 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs text-red-400 bg-red-950/30 border border-red-800/50 p-2.5 rounded-lg">
-                    Você ainda não tem personagens livres no Cofre.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWizardLockedSystem(undefined);
-                      setIsCreatingChar(true);
-                    }}
-                    className="w-full py-2.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/50 rounded-lg text-xs font-black text-amber-300 transition cursor-pointer"
-                  >
-                    ✨ Criar Novo Personagem no Assistente Guiado
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <select
-                    required
-                    value={selectedCharIdForJoin}
-                    onChange={(e) => setSelectedCharIdForJoin(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
-                  >
-                    <option value="">-- Escolha qual ficha levar para a mesa --</option>
-                    {availableVaultCharacters.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.system.toUpperCase()})
+            {invitingCampaign.system === 'ordem-paranormal' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="inv-nex" className="trpg-label">
+                    NEX exigido
+                  </label>
+                  <select id="inv-nex" value={inviteReqNex} onChange={(e) => setInviteReqNex(e.target.value)} className="trpg-input">
+                    <option value="">Qualquer</option>
+                    {ORDEM_NEX_PROGRESSION.map((m) => (
+                      <option key={m.nex} value={String(m.nex)}>
+                        NEX {m.nex}%
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWizardLockedSystem(undefined);
-                      setIsCreatingChar(true);
-                    }}
-                    className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-bold text-amber-300 transition cursor-pointer"
-                  >
-                    + Ou criar novo personagem no Assistente Guiado
-                  </button>
                 </div>
-              )}
-            </div>
+                <div>
+                  <label htmlFor="inv-pat" className="trpg-label">
+                    Patente exigida
+                  </label>
+                  <select id="inv-pat" value={inviteReqPatent} onChange={(e) => setInviteReqPatent(e.target.value)} className="trpg-input">
+                    <option value="">Qualquer</option>
+                    <option value="Mundano">Mundano</option>
+                    {ORDEM_PATENTS.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Dialog>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsJoinByCodeModalOpen(false)}
-                className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={availableVaultCharacters.length === 0}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Entrar na Aventura
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Navegador de Abas Principal */}
-      <div className="flex flex-wrap border-b border-zinc-800 gap-4">
-        <button
-          onClick={() => setActiveTab('player')}
-          className={`pb-3 text-sm font-semibold transition cursor-pointer border-b-2 ${
-            activeTab === 'player'
-              ? 'border-amber-500 text-amber-500'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          🛡️ Aba do Jogador
-        </button>
-
-        <button
-          onClick={() => setActiveTab('characters')}
-          className={`pb-3 text-sm font-semibold transition cursor-pointer border-b-2 ${
-            activeTab === 'characters'
-              ? 'border-amber-500 text-amber-500'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          📜 Meus Personagens (Cofre)
-        </button>
-
-        <button
-          onClick={() => setActiveTab('dm')}
-          className={`pb-3 text-sm font-semibold transition cursor-pointer border-b-2 ${
-            activeTab === 'dm'
-              ? 'border-amber-500 text-amber-500'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          👑 Mestre (DM)
-        </button>
-
-        <button
-          onClick={() => setActiveTab('admin')}
-          className={`pb-3 text-sm font-semibold transition cursor-pointer border-b-2 ${
-            activeTab === 'admin'
-              ? 'border-amber-500 text-amber-500'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          ⚙️ Painel Admin (Compêndio)
-        </button>
+      {/* Abas do início */}
+      <div role="tablist" aria-label="Seções do início" className="trpg-tabs -mx-1">
+        {navItems.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className="trpg-tab"
+          >
+            <Icon name={tab.icon} size={16} className={activeTab === tab.id ? 'text-amber-500' : ''} />
+            {tab.label}
+            {typeof tab.count === 'number' && tab.count > 0 && (
+              <span className="trpg-tab-count bg-amber-600! text-white!" aria-label={`${tab.count} convites`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
-      {isLoading && <p className="text-sm text-zinc-500">Carregando dados da mesa...</p>}
+      <div aria-live="polite" className="sr-only">
+        {isLoading ? 'Carregando' : ''}
+      </div>
 
-      {/* ABA: JOGADOR */}
       {activeTab === 'player' && (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-8">
           {invites.length > 0 && (
-            <div className="bg-amber-950/20 border border-amber-800/60 p-4 rounded-xl">
-              <h3 className="text-amber-400 font-bold text-sm mb-2">✉️ Convites para Novas Aventuras:</h3>
-              <div className="flex flex-col gap-2">
-                {invites.map((inv) => (
-                  <div
-                    key={inv.id}
-                    className="bg-zinc-900 border border-zinc-800 p-3 rounded-lg flex justify-between items-center gap-2"
-                  >
-                    <div>
-                      <p className="font-semibold text-white">{inv.campaign.name}</p>
-                      <p className="text-xs text-zinc-400">
-                        Mestre: <span className="text-amber-400 font-medium">{inv.campaign.dm.username}</span> | Sistema:{' '}
-                        {inv.campaign.system.toUpperCase()}
-                      </p>
-                      {((inv.requiredNex ?? inv.campaign.requiredNex) !== null &&
-                        (inv.requiredNex ?? inv.campaign.requiredNex) !== undefined) ||
-                      (inv.requiredPatent ?? inv.campaign.requiredPatent) ? (
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {(inv.requiredNex ?? inv.campaign.requiredNex) !== null &&
-                            (inv.requiredNex ?? inv.campaign.requiredNex) !== undefined && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/70">
-                                ⚡ NEX Exigido: {inv.requiredNex ?? inv.campaign.requiredNex}%
-                              </span>
-                            )}
-                          {(inv.requiredPatent ?? inv.campaign.requiredPatent) && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/70">
-                              🎖️ Patente: {inv.requiredPatent ?? inv.campaign.requiredPatent}
-                            </span>
-                          )}
+            <section aria-labelledby="invites-title" className="rounded-xl border border-amber-800/70 bg-amber-950/25 p-4 sm:p-5">
+              <h3 id="invites-title" className="text-base font-semibold text-zinc-100 flex items-center gap-2">
+                <Icon name="megaphone" size={17} className="text-amber-400" />
+                {invites.length === 1 ? 'Você recebeu um convite' : `Você recebeu ${invites.length} convites`}
+              </h3>
+              <ul className="mt-3 flex flex-col divide-y divide-zinc-800/80">
+                {invites.map((inv) => {
+                  const nex = inv.requiredNex ?? inv.campaign.requiredNex;
+                  const patent = inv.requiredPatent ?? inv.campaign.requiredPatent;
+                  return (
+                    <li key={inv.id} className="py-3 first:pt-1 last:pb-0 flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="font-semibold text-zinc-100">{inv.campaign.name}</strong>
+                          <SystemSigilBadge system={inv.campaign.system} compact />
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCharIdForJoin('');
-                          setQuickCharName('');
-                          setSelectedInviteToAccept(inv);
-                        }}
-                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold cursor-pointer transition"
-                      >
-                        Aceitar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeclineInvite(inv.id)}
-                        className="px-3 py-1.5 bg-zinc-800 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-700 rounded-lg text-xs font-semibold cursor-pointer transition"
-                      >
-                        Recusar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                        <p className="text-sm text-zinc-400 mt-0.5">
+                          Mestre @{inv.campaign.dm.username}
+                          {nex !== null && nex !== undefined ? `, exige NEX ${nex}%` : ''}
+                          {patent ? `, patente ${patent}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => handleDeclineInvite(inv.id)} className="trpg-btn-quiet trpg-btn-sm">
+                          Recusar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCharIdForJoin('');
+                            setQuickCharName('');
+                            setSelectedInviteToAccept(inv);
+                          }}
+                          className="trpg-btn-primary trpg-btn-sm"
+                        >
+                          Aceitar
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
           )}
 
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-lg font-bold text-zinc-200">Minhas Aventuras Ativas</h2>
+          <SectionHeader
+            title="Minhas mesas"
+            description="As campanhas em que você joga. Abra a ficha para rolar, gastar recursos e ver o que o mestre compartilhar."
+            action={
               <button
                 type="button"
                 onClick={() => {
@@ -621,164 +769,108 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                   setSelectedCharIdForJoin('');
                   setIsJoinByCodeModalOpen(true);
                 }}
-                className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-zinc-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                className="trpg-btn-secondary"
               >
-                🔑 Entrar com Código
+                <Icon name="key" size={16} /> Entrar com código
               </button>
-            </div>
+            }
+          />
 
-            {playerCampaigns.length === 0 ? (
-              <div className="bg-zinc-900/50 border border-dashed border-zinc-800 p-8 rounded-xl text-center">
-                <p className="text-zinc-400 text-sm">Você ainda não está jogando em nenhuma aventura.</p>
-                <p className="text-zinc-500 text-xs mt-1">
-                  Use o botão &quot;🔑 Entrar com Código&quot; acima ou aceite um convite enviado pelo seu Mestre!
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {playerCampaigns.map((camp) => {
-                  const myCharInCampaign = camp.characters?.[0];
-
-                  return (
-                    <div
-                      key={camp.id}
-                      className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between gap-4"
+          {playerCampaigns.length === 0 ? (
+            <EmptyState
+              title="Você ainda não está em nenhuma mesa"
+              body="Peça o código ao seu mestre, ou espere o convite aparecer aqui."
+            />
+          ) : (
+            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {playerCampaigns.map((camp) => {
+                const myChar = camp.characters?.[0];
+                return (
+                  <li key={camp.id}>
+                    <button
+                      type="button"
+                      disabled={!myChar}
+                      onClick={() => myChar && onOpenCharacter(myChar.id, camp.id, camp.system)}
+                      className="trpg-card trpg-card-interactive w-full text-left p-4 flex items-center gap-4 disabled:opacity-60"
                     >
-                      <div>
-                        <div className="flex justify-between items-start">
-                          <h3 className="font-bold text-lg text-white">{camp.name}</h3>
-                          <span className="text-xs bg-zinc-800 text-amber-400 px-2.5 py-1 rounded-full uppercase font-mono">
-                            {camp.system}
-                          </span>
-                        </div>
-                        <p className="text-xs text-zinc-400 mt-1">Mestre: {camp.dm?.username}</p>
-                        {myCharInCampaign && (
-                          <div className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl mt-3">
-                            {myCharInCampaign.portraitUrl ? (
-                              <img
-                                src={myCharInCampaign.portraitUrl}
-                                alt={myCharInCampaign.name}
-                                className="w-16 h-16 rounded-xl object-cover border-2 border-emerald-500/70 shadow-md shrink-0"
-                              />
-                            ) : (
-                              <div className="w-16 h-16 rounded-xl bg-zinc-900 border-2 border-emerald-500/40 flex items-center justify-center text-lg font-extrabold text-emerald-400 shrink-0">
-                                {myCharInCampaign.name.substring(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <span className="text-[10px] font-mono uppercase text-zinc-500 block font-bold">
-                                Seu Personagem na Mesa
-                              </span>
-                              <p className="text-sm text-emerald-400 font-extrabold">
-                                🛡️ {myCharInCampaign.name}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex gap-2">
-                        {myCharInCampaign && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenCharacter(myCharInCampaign.id, camp.id)}
-                            className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg transition cursor-pointer shadow"
-                          >
-                            🎲 Entrar na Mesa (Abrir Ficha)
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                      <Portrait name={myChar?.name || camp.name} url={myChar?.portraitUrl} size="lg" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xl trpg-display text-zinc-100 truncate">{myChar?.name || 'Sem ficha'}</span>
+                        <span className="block text-sm text-zinc-300 truncate mt-0.5">{camp.name}</span>
+                        <span className="flex items-center gap-2 mt-2 text-xs text-zinc-500">
+                          <SystemSigilBadge system={camp.system} compact /> Mestre @{camp.dm?.username}
+                        </span>
+                      </span>
+                      <Icon name="chevron-down" size={18} className="-rotate-90 text-zinc-500 shrink-0" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 
-      {/* ABA: MEUS PERSONAGENS */}
       {activeTab === 'characters' && (
         <div className="flex flex-col gap-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-lg font-bold text-zinc-200">Cofre de Personagens</h2>
-              <p className="text-zinc-400 text-xs">
-                Fichas criadas por você que podem ser usadas em qualquer campanha do mesmo sistema.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setWizardLockedSystem(undefined);
-                setIsCreatingChar(true);
-              }}
-              className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-black transition cursor-pointer shadow-lg"
-            >
-              ✨ + Novo Personagem (Assistente Guiado)
-            </button>
-          </div>
+          <SectionHeader
+            title="Personagens"
+            description="Monte fichas antes da sessão e leve qualquer uma para uma mesa compatível."
+            action={
+              <button type="button" onClick={() => openWizard()} className="trpg-btn-primary">
+                <Icon name="plus" size={17} /> Criar personagem
+              </button>
+            }
+          />
 
           {characters.length === 0 ? (
-            <div className="bg-zinc-900/50 border border-dashed border-zinc-800 p-8 rounded-xl text-center">
-              <p className="text-zinc-400 text-sm">Seu cofre está vazio.</p>
-              <p className="text-zinc-500 text-xs mt-1">
-                Crie personagens com antecedência para vinculá-los às mesas rapidamente.
-              </p>
-            </div>
+            <EmptyState
+              title="Nenhum personagem ainda"
+              body="O assistente guia a criação passo a passo: origem, atributos, classe e perícias."
+              action={
+                <button type="button" onClick={() => openWizard()} className="trpg-btn-primary">
+                  <Icon name="sparkles" size={16} /> Criar o primeiro personagem
+                </button>
+              }
+            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {characters.map((char) => (
-                <div
-                  key={char.id}
-                  className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-4"
-                >
-                  <div className="flex items-center gap-4">
-                    {char.portraitUrl ? (
-                      <img
-                        src={char.portraitUrl}
-                        alt={char.name}
-                        className="w-24 h-24 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0 bg-zinc-950"
-                      />
-                    ) : (
-                      <div className="w-24 h-24 rounded-2xl bg-zinc-950 border-2 border-amber-500/40 flex items-center justify-center text-2xl font-extrabold text-amber-400 shrink-0">
-                        {char.name.substring(0, 2).toUpperCase()}
-                      </div>
-                    )}
-
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-base text-white truncate" title={char.name}>
-                        {char.name}
-                      </h3>
-                      {char.campaign && (
-                        <p className="text-xs text-emerald-400 font-medium mt-1.5 truncate">
-                          Vinculado a: {char.campaign.name}
-                        </p>
-                      )}
-                      <div className="mt-1.5">
-                        <span className="inline-block text-[10px] bg-zinc-800 text-amber-400 border border-zinc-700/80 px-2 py-0.5 rounded font-mono uppercase">
-                          {char.system}
+            <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {characters.map((char) => {
+                const nex = char.system === 'ordem-paranormal' ? char.sheetData?.nex : undefined;
+                return (
+                  <li key={char.id} className="trpg-card trpg-card-interactive p-4 flex flex-col gap-4">
+                    <button
+                      type="button"
+                      onClick={() => onOpenCharacter(char.id, char.campaign?.id, char.system)}
+                      className="flex items-center gap-4 text-left rounded-lg"
+                    >
+                      <Portrait name={char.name} url={char.portraitUrl} size="lg" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xl trpg-display text-zinc-100 truncate" title={char.name}>
+                          {char.name}
                         </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-2">
+                        <span className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                          <SystemSigilBadge system={char.system} compact />
+                          {nex !== undefined && <span className="trpg-badge trpg-num">NEX {nex}%</span>}
+                        </span>
+                        <span className={`block text-xs mt-1.5 truncate ${char.campaign ? 'text-emerald-300' : 'text-zinc-500'}`}>
+                          {char.campaign ? `Na mesa ${char.campaign.name}` : 'Livre no cofre'}
+                        </span>
+                      </span>
+                    </button>
+                    <div className="flex items-center gap-1 pt-3 border-t border-zinc-800">
                       <button
-                        onClick={() => onOpenCharacter(char.id, char.campaign?.id)}
-                        className="flex-1 py-2 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                        type="button"
+                        onClick={() => onOpenCharacter(char.id, char.campaign?.id, char.system)}
+                        className="trpg-btn-secondary trpg-btn-sm flex-1"
                       >
-                        📜 Abrir Ficha Completa
+                        Abrir ficha
                       </button>
-
                       {char.campaign && (
                         <button
                           type="button"
                           onClick={async () => {
-                            if (
-                              !window.confirm(
-                                `Retirar "${char.name}" da campanha atual e devolvê-lo ao Cofre livre?`
-                              )
-                            )
-                              return;
+                            if (!window.confirm(`Tirar "${char.name}" da mesa e devolver ao cofre?`)) return;
                             try {
                               await removeCharacterFromCampaign(char.campaign!.id, char.id);
                               loadDashboardData();
@@ -786,22 +878,17 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                               alert(err.message);
                             }
                           }}
-                          className="px-2.5 py-2 bg-zinc-950 hover:bg-amber-950 text-zinc-400 hover:text-amber-300 border border-zinc-800 rounded-lg text-xs font-bold transition cursor-pointer"
-                          title="Sair da Campanha e voltar para o Cofre"
+                          className="trpg-icon-btn"
+                          aria-label={`Tirar ${char.name} da mesa`}
+                          title="Tirar da mesa"
                         >
-                          🚪
+                          <Icon name="undo" size={17} />
                         </button>
                       )}
-
                       <button
                         type="button"
                         onClick={async () => {
-                          if (
-                            !window.confirm(
-                              `Tem certeza que deseja excluir permanentemente a ficha de "${char.name}"?`
-                            )
-                          )
-                            return;
+                          if (!window.confirm(`Excluir a ficha de "${char.name}" para sempre?`)) return;
                           try {
                             await deleteCharacter(char.id);
                             loadDashboardData();
@@ -809,266 +896,102 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                             alert(err.message);
                           }
                         }}
-                        className="px-3 py-2 bg-zinc-950 hover:bg-red-950 text-zinc-500 hover:text-red-400 border border-zinc-800 rounded-lg text-xs font-bold transition cursor-pointer"
-                        title="Excluir Personagem Permanentemente"
+                        className="trpg-icon-btn hover:text-red-300!"
+                        aria-label={`Excluir ${char.name}`}
+                        title="Excluir"
                       >
-                        🗑️
+                        <Icon name="trash" size={17} />
                       </button>
                     </div>
-                </div>
-              ))}
-            </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       )}
 
-      {/* ABA: MESTRE (DM) */}
       {activeTab === 'dm' && (
         <div className="flex flex-col gap-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-lg font-bold text-zinc-200">Campanhas que você Mestra</h2>
-              <p className="text-zinc-400 text-xs">
-                Crie e gerencie mesas, envie convites e controle as travas de ficha dos jogadores.
-              </p>
-            </div>
-            <button
-              onClick={() => setIsCreatingCampaign(!isCreatingCampaign)}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
-            >
-              {isCreatingCampaign ? 'Cancelar' : '+ Nova Aventura'}
-            </button>
-          </div>
-
-          {isCreatingCampaign && (
-            <form
-              onSubmit={handleCreateCampaign}
-              className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4"
-            >
-              <h3 className="font-bold text-amber-500 text-sm">Configurar Nova Aventura</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Nome da Campanha</label>
-                  <input
-                    type="text"
-                    required
-                    value={newCampaignName}
-                    onChange={(e) => setNewCampaignName(e.target.value)}
-                    placeholder="Ex: O Segredo na Floresta, Coração de Rubi..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Sistema da Mesa</label>
-                  <select
-                    value={newCampaignSystem}
-                    onChange={(e) => setNewCampaignSystem(e.target.value as SystemId)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="ordem-paranormal">Ordem Paranormal</option>
-                    <option value="tormenta20">Tormenta 20</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Descrição Breve (Opcional)</label>
-                <input
-                  type="text"
-                  value={newCampaignDesc}
-                  onChange={(e) => setNewCampaignDesc(e.target.value)}
-                  placeholder="Ex: Campanha de mistério e investigação"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              {newCampaignSystem === 'ordem-paranormal' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 border-t border-zinc-800/80">
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">
-                      NEX Padrão Exigido na Mesa (Opcional)
-                    </label>
-                    <select
-                      value={newCampaignReqNex}
-                      onChange={(e) => setNewCampaignReqNex(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm"
-                    >
-                      <option value="">Qualquer NEX (Livre)</option>
-                      {ORDEM_NEX_PROGRESSION.map((m) => (
-                        <option key={m.nex} value={String(m.nex)}>
-                          NEX {m.nex}%
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">
-                      Patente Padrão Exigida na Mesa (Opcional)
-                    </label>
-                    <select
-                      value={newCampaignReqPatent}
-                      onChange={(e) => setNewCampaignReqPatent(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm"
-                    >
-                      <option value="">Qualquer Patente (Livre)</option>
-                      <option value="Mundano">Mundano</option>
-                      {ORDEM_PATENTS.map((p) => (
-                        <option key={p.id} value={p.name}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-              <button
-                type="submit"
-                className="self-end px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition cursor-pointer"
-              >
-                Criar Mesa de Mestre
+          <SectionHeader
+            title="Mestrar"
+            description="Abra o escudo para conduzir combate, ameaças, itens, anotações e a tela da TV."
+            action={
+              <button type="button" onClick={() => setIsCreatingCampaign(true)} className="trpg-btn-primary">
+                <Icon name="plus" size={17} /> Nova campanha
               </button>
-            </form>
-          )}
+            }
+          />
 
           {dmCampaigns.length === 0 ? (
-            <div className="bg-zinc-900/50 border border-dashed border-zinc-800 p-8 rounded-xl text-center">
-              <p className="text-zinc-400 text-sm">Você ainda não criou nenhuma aventura como Mestre.</p>
-              <p className="text-zinc-500 text-xs mt-1">Clique no botão acima para criar sua primeira mesa!</p>
-            </div>
+            <EmptyState
+              title="Nenhuma campanha ainda"
+              body="Crie uma campanha para ganhar um código de convite e abrir o escudo do mestre."
+              action={
+                <button type="button" onClick={() => setIsCreatingCampaign(true)} className="trpg-btn-primary">
+                  <Icon name="plus" size={17} /> Criar campanha
+                </button>
+              }
+            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ul className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {dmCampaigns.map((camp) => (
-                <div
-                  key={camp.id}
-                  className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between gap-4"
-                >
-                  <div>
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-bold text-lg text-white">{camp.name}</h3>
-                      <span className="text-xs bg-amber-950/60 border border-amber-800 text-amber-400 px-2.5 py-1 rounded-full uppercase font-mono">
-                        {camp.system}
-                      </span>
+                <li key={camp.id} className="trpg-card p-5 flex flex-col gap-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="text-2xl trpg-display text-zinc-100 leading-tight">{camp.name}</h3>
+                      {camp.description && <p className="text-sm text-zinc-400 mt-1.5 max-w-[60ch]">{camp.description}</p>}
                     </div>
-                    {camp.description && <p className="text-xs text-zinc-400 mt-2">{camp.description}</p>}
-                    {(typeof camp.requiredNex === 'number' || camp.requiredPatent) && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {typeof camp.requiredNex === 'number' && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/70">
-                            ⚡ NEX Exigido: {camp.requiredNex}%
-                          </span>
-                        )}
-                        {camp.requiredPatent && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/70">
-                            🎖️ Patente: {camp.requiredPatent}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between mt-3 bg-zinc-950 px-3 py-2 rounded-lg border border-zinc-800">
-                      <span className="text-xs font-mono text-zinc-400">
-                        Código: <strong className="text-amber-500">{camp.inviteCode}</strong>
-                      </span>
-                      <span className="text-xs text-zinc-400">
-                        Jogadores na mesa: <strong className="text-white">{camp.characters?.length || 0}</strong>
-                      </span>
-                    </div>
+                    <SystemSigilBadge system={camp.system} compact />
                   </div>
 
-                  {invitingCampaignId === camp.id ? (
-                    <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 flex flex-col gap-2.5">
-                      <label className="text-xs font-bold text-amber-400">
-                        ✉️ Convidar Jogador para {camp.name}:
-                      </label>
-                      <input
-                        type="text"
-                        value={targetUsername}
-                        onChange={(e) => setTargetUsername(e.target.value)}
-                        placeholder="Nome de usuário do jogador (Ex: teste)"
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-white"
-                      />
-                      {camp.system === 'ordem-paranormal' && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[10px] text-zinc-400 mb-0.5">
-                              NEX Exigido
-                            </label>
-                            <select
-                              value={inviteReqNex}
-                              onChange={(e) => setInviteReqNex(e.target.value)}
-                              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
-                            >
-                              <option value="">Qualquer NEX</option>
-                              {ORDEM_NEX_PROGRESSION.map((m) => (
-                                <option key={m.nex} value={String(m.nex)}>
-                                  NEX {m.nex}%
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-zinc-400 mb-0.5">
-                              Patente Exigida
-                            </label>
-                            <select
-                              value={inviteReqPatent}
-                              onChange={(e) => setInviteReqPatent(e.target.value)}
-                              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
-                            >
-                              <option value="">Qualquer Patente</option>
-                              <option value="Mundano">Mundano</option>
-                              {ORDEM_PATENTS.map((p) => (
-                                <option key={p.id} value={p.name}>
-                                  {p.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setInvitingCampaignId(null)}
-                          className="px-2.5 py-1 bg-zinc-800 text-zinc-400 rounded text-xs cursor-pointer"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSendInvite(camp.id)}
-                          className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold cursor-pointer"
-                        >
-                          Enviar Convite
-                        </button>
-                      </div>
+                  <dl className="grid grid-cols-2 sm:grid-cols-3 gap-px rounded-lg overflow-hidden bg-zinc-800 text-sm">
+                    <div className="bg-zinc-950/70 px-3 py-2">
+                      <dt className="text-xs text-zinc-500">Código</dt>
+                      <dd className="trpg-code text-zinc-100">{camp.inviteCode}</dd>
                     </div>
-                  ) : (
-                    <div className="flex gap-2 mt-2">
+                    <div className="bg-zinc-950/70 px-3 py-2">
+                      <dt className="text-xs text-zinc-500">Jogadores</dt>
+                      <dd className="trpg-num font-semibold text-zinc-100">{camp.characters?.length || 0}</dd>
+                    </div>
+                    <div className="bg-zinc-950/70 px-3 py-2 col-span-2 sm:col-span-1">
+                      <dt className="text-xs text-zinc-500">Requisitos</dt>
+                      <dd className="text-zinc-200 truncate">
+                        {typeof camp.requiredNex === 'number' || camp.requiredPatent
+                          ? [typeof camp.requiredNex === 'number' ? `NEX ${camp.requiredNex}%` : '', camp.requiredPatent || '']
+                              .filter(Boolean)
+                              .join(', ')
+                          : 'Livre'}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => onEnterSession(camp.id, 'dm')}
-                      className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                      type="button"
+                      onClick={() => onEnterSession(camp.id, 'dm', camp.system)}
+                      className="trpg-btn-primary flex-1"
                     >
-                      Abrir Escudo do Mestre
+                      <Icon name="shield" size={17} /> Abrir escudo
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         setInvitingCampaignId(camp.id);
                         setTargetUsername('');
-                        setInviteReqNex(
-                          typeof camp.requiredNex === 'number' ? String(camp.requiredNex) : ''
-                        );
+                        setInviteReqNex(typeof camp.requiredNex === 'number' ? String(camp.requiredNex) : '');
                         setInviteReqPatent(camp.requiredPatent || '');
                       }}
-                      className="px-3 py-2 bg-indigo-950/70 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/70 rounded-lg text-xs font-bold transition cursor-pointer"
-                      title="Convidar jogador definindo NEX e Patente exigidos"
+                      className="trpg-btn-secondary"
                     >
-                      ✉️ Convidar
+                      <Icon name="users" size={16} /> Convidar
                     </button>
                     <button
                       type="button"
                       onClick={async () => {
                         if (
                           !window.confirm(
-                            `Tem certeza que deseja excluir a campanha "${camp.name}"? Todos os personagens vinculados voltarão intactos para o Cofre dos jogadores.`
+                            `Excluir a campanha "${camp.name}"? As fichas dos jogadores voltam intactas para os cofres.`
                           )
                         )
                           return;
@@ -1079,22 +1002,23 @@ export function Dashboard({ currentUser, onEnterSession, onOpenCharacter }: Dash
                           alert(err.message);
                         }
                       }}
-                      className="px-3 py-2 bg-zinc-950 hover:bg-red-950 text-zinc-500 hover:text-red-400 border border-zinc-800 rounded-lg text-xs font-bold transition cursor-pointer"
-                      title="Excluir Campanha"
+                      className="trpg-icon-btn hover:text-red-300!"
+                      aria-label={`Excluir campanha ${camp.name}`}
+                      title="Excluir campanha"
                     >
-                      🗑️
+                      <Icon name="trash" size={17} />
                     </button>
                   </div>
-                  )}
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       )}
 
-      {/* ABA: ADMIN */}
       {activeTab === 'admin' && <AdminPanel />}
+
+      {activeTab === 'settings' && <UserSettingsPanel currentUser={currentUser} />}
     </div>
   );
 }

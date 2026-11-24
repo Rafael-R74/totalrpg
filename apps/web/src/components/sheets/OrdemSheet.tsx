@@ -20,6 +20,8 @@ import {
   getOrdemEffectiveCredit,
 } from '@totalrpg/shared';
 
+import { Icon } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface OrdemSheetProps {
   data: OrdemSheetData;
   bonuses: ComputedBonuses;
@@ -478,7 +480,7 @@ export function OrdemSheet({
                   title="Abrir Assistente Guiado de Evolução de NEX"
                   className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-black transition cursor-pointer shadow whitespace-nowrap"
                 >
-                  ⬆️ Evoluir NEX
+                  <Icon name="trending" size={15} /> Evoluir NEX
                 </button>
               )}
             </div>
@@ -526,7 +528,7 @@ export function OrdemSheet({
                   </span>
                 </p>
                 <span className="inline-block text-[10px] font-mono text-emerald-400">
-                  💰 Crédito: <strong>{effectiveCredit}</strong>
+                  <Icon name="coins" /> Crédito: <strong>{effectiveCredit}</strong>
                 </span>
               </div>
             )}
@@ -539,9 +541,7 @@ export function OrdemSheet({
             </label>
             <div className="flex flex-wrap items-center gap-2">
               {safeData.affinity ? (
-                <span className="text-xs font-bold px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
-                  {safeData.affinity}
-                </span>
+                <ElementBadge element={safeData.affinity} size="md" />
               ) : (
                 <span className="text-xs text-zinc-500 font-semibold">
                   {safeData.nex >= 50 ? 'Não escolhida' : 'Bloqueada (<50%)'}
@@ -556,7 +556,7 @@ export function OrdemSheet({
           <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex items-center justify-between">
             <div>
               <span className="block text-[10px] uppercase font-bold text-zinc-400">
-                🛡️ Defesa Total
+                <Icon name="shield" /> Defesa Total
               </span>
               <span className="text-[10px] text-zinc-500">
                 10 + AGI ({effectiveAgi}) {bonuses.defense ? `+ ${bonuses.defense}` : ''}
@@ -582,8 +582,8 @@ export function OrdemSheet({
           >
             <div>
               <span className="block text-[10px] uppercase font-bold text-amber-400">
-                ⚡ Limite de PE / Turno
-                {hasActiveInitiativeOrder && isMyTurnInCombat ? ` • ⚔️ SEU TURNO (Rod. ${currentRoundNumber})` : ''}
+                <Icon name="zap" /> Limite de PE / Turno
+                {hasActiveInitiativeOrder && isMyTurnInCombat ? ` • SEU TURNO (Rod. ${currentRoundNumber})` : ''}
               </span>
               <span className="text-[10px] text-zinc-500">
                 {hasActiveInitiativeOrder
@@ -603,7 +603,7 @@ export function OrdemSheet({
           <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex items-center justify-between">
             <div>
               <span className="block text-[10px] uppercase font-bold text-purple-400">
-                🔮 DT de Rituais / Poderes
+                <Icon name="sigil" /> DT de Rituais / Poderes
               </span>
               <span className="text-[10px] text-zinc-500">
                 10 + Limite Base + PRE ({effectivePre})
@@ -618,13 +618,13 @@ export function OrdemSheet({
           <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex items-center justify-between">
             <div>
               <span className="block text-[10px] uppercase font-bold text-emerald-400">
-                🏃 Deslocamento
+                <Icon name="footprints" /> Deslocamento
               </span>
               <span className="text-[10px] text-zinc-500">
                 {isOverloaded
-                  ? '⚠️ Reduzido (-3m sobrecarga)'
+                  ? 'Reduzido (-3m sobrecarga)'
                   : isTrabalhadorRural
-                  ? '🌿 Ignora Terreno Difícil'
+                  ? 'Ignora Terreno Difícil'
                   : 'Padrão da cena'}
               </span>
             </div>
@@ -642,7 +642,7 @@ export function OrdemSheet({
         <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[11px] uppercase font-black tracking-wider text-sky-400">
-              🛡️ Ações Especiais de Defesa (Reação • 1x/Rodada)
+              <Icon name="shield" /> Ações Especiais de Defesa (Reação • 1x/Rodada)
             </span>
             <span className="text-[10px] text-zinc-500">
               Valores calculados automaticamente
@@ -654,7 +654,7 @@ export function OrdemSheet({
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 flex flex-col gap-1.5">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <span className="text-xs font-extrabold text-white block">🏃 Se Esquivar</span>
+                  <span className="text-xs font-extrabold text-white block"><Icon name="footprints" /> Se Esquivar</span>
                   <span className="text-[10px] text-zinc-400">
                     Defesa ({totalDefense}) + Reflexos ({reflexosInfo.total >= 0 ? `+${reflexosInfo.total}` : reflexosInfo.total})
                   </span>
@@ -666,19 +666,19 @@ export function OrdemSheet({
 
               {hasCampoProtetor && (
                 <span className="text-[11px] font-bold text-cyan-200 bg-cyan-950/50 border border-cyan-800/60 rounded px-2 py-0.5">
-                  ⚡ Com Campo Protetor (-1 PE): Def {esquivaCampoProtetor}
+                  <Icon name="zap" /> Com Campo Protetor (-1 PE): Def {esquivaCampoProtetor}
                 </span>
               )}
 
               {hasCampoProtetorAffinity && (
                 <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/50 border border-cyan-800/60 rounded px-2 py-0.5">
-                  ⚡ Afinidade: +5 Reflexos & Evasão
+                  <Icon name="zap" /> Afinidade: +5 Reflexos & Evasão
                 </span>
               )}
 
               {!reflexosInfo.trained && (
                 <span className="text-[10px] text-amber-300/90 font-semibold">
-                  ⚠️ Requer treinamento em Reflexos (p. 88)
+                  <Icon name="warning" /> Requer treinamento em Reflexos (p. 88)
                 </span>
               )}
             </div>
@@ -687,7 +687,7 @@ export function OrdemSheet({
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 flex flex-col gap-1.5">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <span className="text-xs font-extrabold text-white block">🛡️ Se Bloquear</span>
+                  <span className="text-xs font-extrabold text-white block"><Icon name="shield" /> Se Bloquear</span>
                   <span className="text-[10px] text-zinc-400">
                     Fortitude ({fortitudeInfo.total})
                     {cascaGrossaRd > 0 ? ` + ${cascaGrossaRd} VIG (Casca Grossa)` : ''}
@@ -708,7 +708,7 @@ export function OrdemSheet({
 
               {!fortitudeInfo.trained && (
                 <span className="text-[10px] text-amber-300/90 font-semibold">
-                  ⚠️ Requer treinamento em Fortitude (p. 88)
+                  <Icon name="warning" /> Requer treinamento em Fortitude (p. 88)
                 </span>
               )}
             </div>
@@ -722,7 +722,7 @@ export function OrdemSheet({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] uppercase font-black tracking-wider text-amber-400 mr-1">
-                  🎖️ Proficiências:
+                  <Icon name="award" /> Proficiências:
                 </span>
                 {bonuses.effectiveProficiencies.map((prof) => {
                   const isManualEditable = allowAttrEdit || allowSkillEdit;
@@ -852,7 +852,7 @@ export function OrdemSheet({
 
           {bonuses.hasProtectionProficiencyPenalty && (
             <div className="bg-red-950/55 border border-red-600/80 rounded-lg px-3 py-2 text-[11px] text-red-200 font-semibold">
-              ⚠️ <strong>Penalidade por Não Proficiência em Proteção (p. 62):</strong> Você está equipando{' '}
+              <Icon name="warning" /> <strong>Penalidade por Não Proficiência em Proteção (p. 62):</strong> Você está equipando{' '}
               <strong>
                 {bonuses.nonProficientProtections.map((np) => np.itemName).join(', ')}
               </strong>{' '}
@@ -863,7 +863,7 @@ export function OrdemSheet({
           {bonuses.damageResistances.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">
               <span className="text-[10px] uppercase font-black tracking-wider text-cyan-400 mr-1">
-                🛡️ Resistências a Dano (RD):
+                <Icon name="shield" /> Resistências a Dano (RD):
               </span>
               {bonuses.damageResistances.map((rd) => (
                 <span
@@ -879,7 +879,7 @@ export function OrdemSheet({
 
           {bonuses.vestimentaLimitExceeded && (
             <div className="bg-amber-950/50 border border-amber-600/70 rounded-lg px-3 py-1.5 text-[11px] text-amber-200 font-semibold">
-              🧥 <strong>Limite de Vestimentas (p. 63):</strong> Você tem mais de 2 vestimentas equipadas. Apenas as 2 primeiras concedem bônus simultaneamente.
+              <strong>Limite de Vestimentas (p. 63):</strong> Você tem mais de 2 vestimentas equipadas. Apenas as 2 primeiras concedem bônus simultaneamente.
             </div>
           )}
 
@@ -887,7 +887,7 @@ export function OrdemSheet({
             <div className="bg-purple-950/40 border border-purple-700/70 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-purple-200">
                 <span className="font-black uppercase tracking-wider text-purple-300">
-                  👁️ O Preço da Maldição ({bonuses.totalCursesCarried}):
+                  <Icon name="conhecimento" /> O Preço da Maldição ({bonuses.totalCursesCarried}):
                 </span>
                 {(['int', 'agi', 'pre', 'for'] as const).map((ak) => {
                   const info = bonuses.cursePriceByAttr[ak];
@@ -943,12 +943,12 @@ export function OrdemSheet({
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {isTeoricoConspiracao && (
               <span className="px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/70 text-cyan-200 text-xs font-bold">
-                🧠 Eu Já Sabia (Teórico da Conspiração): Resistência a Dano Mental = {mentalResistance} (Intelecto)
+                <Icon name="brain" /> Eu Já Sabia (Teórico da Conspiração): Resistência a Dano Mental = {mentalResistance} (Intelecto)
               </span>
             )}
             {hasInabalavel && (
               <span className="px-2.5 py-1 rounded-lg bg-purple-950/70 border border-purple-700/70 text-purple-200 text-xs font-bold">
-                🛡️ Inabalável: RD Mental 10 & Paranormal 10 (Vontade metade = 0 dano)
+                <Icon name="shield" /> Inabalável: RD Mental 10 & Paranormal 10 (Vontade metade = 0 dano)
               </span>
             )}
             {resistirPowers.map((rp) => {
@@ -960,12 +960,9 @@ export function OrdemSheet({
                 rp.element ||
                 'Elemento';
               return (
-                <span
-                  key={rp.id}
-                  className="px-2.5 py-1 rounded-lg bg-purple-950/60 border border-purple-700/60 text-purple-200 text-xs font-bold"
-                >
-                  🛡️ RD {elLabel}: {isAff ? '20 (Afinidade)' : '10'}
-                </span>
+                <ElementBadge key={rp.id} element={elLabel} size="md" showIcon={false}>
+                  <Icon name="shield" size={13} /> RD {elLabel}: {isAff ? '20 (Afinidade)' : '10'}
+                </ElementBadge>
               );
             })}
             {sangueFerventeAb && (() => {
@@ -983,7 +980,7 @@ export function OrdemSheet({
                   }`}
                 >
                   <span>
-                    🩸 Sangue Fervente ({isMachucado ? `ATIVO: +${bonusVal}` : `quando Machucado: +${bonusVal}`}):
+                    <Icon name="sangue" /> Sangue Fervente ({isMachucado ? `ATIVO: +${bonusVal}` : `quando Machucado: +${bonusVal}`}):
                   </span>
                   <button
                     type="button"
@@ -1022,33 +1019,33 @@ export function OrdemSheet({
                   className="px-2.5 py-1 rounded-lg bg-red-950/80 hover:bg-red-700 border border-red-500 text-red-100 text-xs font-extrabold transition cursor-pointer shadow"
                   title="Cura Acelerada até a metade dos PV máximos enquanto Machucado"
                 >
-                  🩸 Cura Acelerada Sangue Vivo (+{healVal} PV)
+                  <Icon name="sangue" /> Cura Acelerada Sangue Vivo (+{healVal} PV)
                 </button>
               );
             })()}
             {hasCascaGrossa && (
               <span className="px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/70 text-amber-200 text-xs font-bold">
-                🛡️ Casca Grossa: Soma +{effectiveVig} (VIG) na RD ao Bloquear
+                <Icon name="shield" /> Casca Grossa: Soma +{effectiveVig} (VIG) na RD ao Bloquear
               </span>
             )}
             {hasCaiDentro && (
               <span className="px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/70 text-amber-200 text-xs font-bold">
-                🛡️ DT Cai Dentro (Vontade): {10 + peLimitPerTurn + effectiveVig}
+                <Icon name="shield" /> DT Cai Dentro (Vontade): {10 + peLimitPerTurn + effectiveVig}
               </span>
             )}
             {hasPeritoExplosivos && (
               <span className="px-2.5 py-1 rounded-lg bg-orange-950/70 border border-orange-700/70 text-orange-200 text-xs font-bold">
-                💣 DT Explosivos (Perito em Explosivos): {10 + peLimitPerTurn + effectiveAgi + effectiveInt} (Exclui até {Math.max(0, effectiveInt)} alvo(s))
+                <Icon name="bomb" /> DT Explosivos (Perito em Explosivos): {10 + peLimitPerTurn + effectiveAgi + effectiveInt} (Exclui até {Math.max(0, effectiveInt)} alvo(s))
               </span>
             )}
             {hasAssassinar && (
               <span className="px-2.5 py-1 rounded-lg bg-red-950/70 border border-red-700/70 text-red-200 text-xs font-bold">
-                🗡️ DT Assassinar (Fortitude): {10 + peLimitPerTurn + effectiveAgi}
+                <Icon name="sword" /> DT Assassinar (Fortitude): {10 + peLimitPerTurn + effectiveAgi}
               </span>
             )}
             {hasInquebravel && isMachucado && (
               <span className="px-2.5 py-1 rounded-lg bg-red-950/80 border border-red-600/80 text-red-200 text-xs font-bold animate-pulse">
-                🩸 Inquebrável Ativo (Machucado): +5 na Defesa e RD 5 (Não fica indefeso se Morrendo)
+                <Icon name="sangue" /> Inquebrável Ativo (Machucado): +5 na Defesa e RD 5 (Não fica indefeso se Morrendo)
               </span>
             )}
           </div>
@@ -1058,7 +1055,7 @@ export function OrdemSheet({
       {/* Pentágono de Atributos com Bônus Ativos e Regra de 0 Dados (2d20 menor) */}
       <div className="bg-zinc-900 p-5 rounded-xl border border-zinc-800">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500">
+          <h3 className="text-base font-semibold text-zinc-100">
             Pentágono de Atributos
           </h3>
           <span className="text-xs text-zinc-500">
@@ -1071,7 +1068,7 @@ export function OrdemSheet({
         {(interludePhysical > 0 || interludeMental > 0 || allowAttrEdit) && (
           <div className="mb-4 p-3 rounded-xl bg-indigo-950/30 border border-indigo-700/50 flex flex-wrap items-center justify-between gap-2">
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-300">
-              🌙 Dados Bônus de Interlúdio (Em Estoque)
+              <Icon name="moon" /> Dados Bônus de Interlúdio (Em Estoque)
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-1">
@@ -1087,7 +1084,7 @@ export function OrdemSheet({
                       : 'bg-zinc-950 hover:bg-zinc-800 text-emerald-300 border-emerald-700/70 cursor-pointer'
                   }`}
                 >
-                  🏋️ Exercitar-se ({interludePhysical}): +1d20 FOR/AGI/VIG
+                  <Icon name="dumbbell" /> Exercitar-se ({interludePhysical}): +1d20 FOR/AGI/VIG
                   {armInterludePhysical ? ' ✓ ARMADO' : ''}
                 </button>
                 {allowAttrEdit && (
@@ -1123,7 +1120,7 @@ export function OrdemSheet({
                       : 'bg-zinc-950 hover:bg-zinc-800 text-purple-300 border-purple-700/70 cursor-pointer'
                   }`}
                 >
-                  📚 Ler ({interludeMental}): +1d20 INT/PRE
+                  <Icon name="library" /> Ler ({interludeMental}): +1d20 INT/PRE
                   {armInterludeMental ? ' ✓ ARMADO' : ''}
                 </button>
                 {allowAttrEdit && (
@@ -1181,11 +1178,11 @@ export function OrdemSheet({
                       setArmOriginBoost(false);
                     }
                     if (isInterludePhysAttr) {
-                      labelSuffix += ' [🏋️ Exercitar-se +1d20]';
+                      labelSuffix += ' [Exercitar-se +1d20]';
                       adjustInterludeDice('physical', -1);
                       setArmInterludePhysical(false);
                     } else if (isInterludeMentAttr) {
-                      labelSuffix += ' [📚 Ler +1d20]';
+                      labelSuffix += ' [Ler +1d20]';
                       adjustInterludeDice('mental', -1);
                       setArmInterludeMental(false);
                     }
@@ -1233,7 +1230,7 @@ export function OrdemSheet({
                       )}
                     </div>
                     <span className="text-[10px] font-mono text-zinc-500">
-                      {rawTotalDice <= 0 ? '🎲 2d20 (menor)' : `🎲 ${rawTotalDice}d20`}
+                      {rawTotalDice <= 0 ? '2d20 (menor)' : `${rawTotalDice}d20`}
                     </span>
                   </>
                 )}
@@ -1246,18 +1243,18 @@ export function OrdemSheet({
       {/* Perícias (Tabela 2.1 Oficial v1.3: Somente Treinada, Penalidade de Carga, Kit, 0d20) */}
       <div className="bg-zinc-900 p-5 rounded-xl border border-zinc-800">
         <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500">
+          <h3 className="text-base font-semibold text-zinc-100">
             Perícias ({safeData.skills.length})
           </h3>
           <div className="flex flex-wrap gap-2 text-[10px] text-zinc-400">
             <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800">
-              🔒 <strong>TREINADA:</strong> exige treinamento
+              <Icon name="lock" /> <strong>TREINADA:</strong> exige treinamento
             </span>
             <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800">
-              🏋️ <strong>CARGA:</strong> sofre -5 em sobrecarga
+              <Icon name="dumbbell" /> <strong>CARGA:</strong> sofre -5 em sobrecarga
             </span>
             <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800">
-              🧰 <strong>KIT:</strong> certas ações exigem kit
+              <Icon name="briefcase" /> <strong>KIT:</strong> certas ações exigem kit
             </span>
           </div>
         </div>
@@ -1269,7 +1266,7 @@ export function OrdemSheet({
           <div className="mb-3 p-3 rounded-xl bg-amber-950/20 border border-amber-700/40 flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs text-amber-200">
               <strong className="text-amber-400">
-                ✨ {originObj?.powerName} (Poder de {originObj?.name}):
+                <Icon name="sparkles" /> {originObj?.powerName} (Poder de {originObj?.name}):
               </strong>{' '}
               <span className="text-zinc-300">{originObj?.powerDescription}</span>
             </div>
@@ -1291,7 +1288,7 @@ export function OrdemSheet({
                 }}
                 className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shrink-0 shadow"
               >
-                💻 Usar Motor de Busca (-2 PE → Rolar Tecnologia)
+                Usar Motor de Busca (-2 PE → Rolar Tecnologia)
               </button>
             ) : originId === 'trambiqueiro' ? (
               <button
@@ -1333,7 +1330,7 @@ export function OrdemSheet({
               >
                 {impostorUsedInScene
                   ? '✓ Impostor já usado nesta cena'
-                  : '🎭 Usar Impostor (-2 PE → Rolar Enganação, 1x/Cena)'}
+                  : 'Usar Impostor (-2 PE → Rolar Enganação, 1x/Cena)'}
               </button>
             ) : originId === 'investigador' && faroPistasUsedInScene ? (
               <span className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-500 text-xs font-bold shrink-0">
@@ -1360,8 +1357,8 @@ export function OrdemSheet({
                 }`}
               >
                 {armOriginBoost
-                  ? `⚡ ${originObj?.powerName} (Poder de ${originObj?.name}) ARMADO (+5 no próximo teste, -${originObj?.powerCost} PE)`
-                  : `✨ Armar ${originObj?.powerName} (Poder de ${originObj?.name}) (+5 no próximo teste, -${originObj?.powerCost} PE)`}
+                  ? `${originObj?.powerName} (Poder de ${originObj?.name}) ARMADO (+5 no próximo teste, -${originObj?.powerCost} PE)`
+                  : `Armar ${originObj?.powerName} (Poder de ${originObj?.name}) (+5 no próximo teste, -${originObj?.powerCost} PE)`}
               </button>
             )}
           </div>
@@ -1371,7 +1368,7 @@ export function OrdemSheet({
         {hasIntuicaoParanormal && (
           <div className="mb-3 p-3 rounded-xl bg-purple-950/20 border border-purple-800/40 flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-purple-200">
-              <strong className="text-purple-300">👁️ Intuição Paranormal:</strong> Ao facilitar investigação, soma seu Intelecto ({effectiveInt}) ou Presença ({effectivePre}) no teste.
+              <strong className="text-purple-300"><Icon name="conhecimento" /> Intuição Paranormal:</strong> Ao facilitar investigação, soma seu Intelecto ({effectiveInt}) ou Presença ({effectivePre}) no teste.
             </span>
             <button
               type="button"
@@ -1383,8 +1380,8 @@ export function OrdemSheet({
               }`}
             >
               {armIntuicaoParanormal
-                ? `👁️ Intuição ARMADA (+${Math.max(effectiveInt, effectivePre)} no próx. teste)`
-                : `👁️ Armar Intuição Paranormal (+${Math.max(effectiveInt, effectivePre)} Facilitar Investigação)`}
+                ? `Intuição ARMADA (+${Math.max(effectiveInt, effectivePre)} no próx. teste)`
+                : `Armar Intuição Paranormal (+${Math.max(effectiveInt, effectivePre)} Facilitar Investigação)`}
             </button>
           </div>
         )}
@@ -1398,7 +1395,7 @@ export function OrdemSheet({
                 {hasEcletico && (
                   <>
                     <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-300 mr-1">
-                      ⚡ Eclético{safeData.nex >= 40 ? ' / Engenhosidade' : ''}:
+                      <Icon name="zap" /> Eclético{safeData.nex >= 40 ? ' / Engenhosidade' : ''}:
                     </span>
                     <button
                       type="button"
@@ -1457,7 +1454,7 @@ export function OrdemSheet({
                     }`}
                     title="Muda o atributo-base da próxima perícia (exceto Luta e Pontaria) para Intelecto por 2 PE"
                   >
-                    🧠 Conhecimento Aplicado (-2 PE → Usar INT [{effectiveInt}d20])
+                    <Icon name="brain" /> Conhecimento Aplicado (-2 PE → Usar INT [{effectiveInt}d20])
                   </button>
                 )}
               </div>
@@ -1477,7 +1474,7 @@ export function OrdemSheet({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-300">
-                        🎓 Perito ({currentPeritoIds.length}/2):
+                        <Icon name="graduation" /> Perito ({currentPeritoIds.length}/2):
                       </span>
                       {availableTiers.map((t) => (
                         <button
@@ -1505,8 +1502,8 @@ export function OrdemSheet({
                       }`}
                     >
                       {armPerito
-                        ? `🎓 Perito ARMADO (+1d${activePeritoDice} • -${peritoCost} PE)`
-                        : `🎓 Armar Perito (+1d${activePeritoDice} • -${peritoCost} PE)`}
+                        ? `Perito ARMADO (+1d${activePeritoDice} • -${peritoCost} PE)`
+                        : `Armar Perito (+1d${activePeritoDice} • -${peritoCost} PE)`}
                     </button>
                   </div>
 
@@ -1557,7 +1554,7 @@ export function OrdemSheet({
                             key={pid}
                             className="px-2 py-0.5 rounded bg-blue-950/70 text-blue-200 border border-blue-800 font-bold"
                           >
-                            🎓 {sk?.name || pid}
+                            <Icon name="graduation" /> {sk?.name || pid}
                           </span>
                         );
                       })}
@@ -1572,7 +1569,7 @@ export function OrdemSheet({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 lg:max-h-[640px] lg:overflow-y-auto lg:pr-1">
           {safeData.skills.map((skill) => {
             const meta = ORDEM_SKILLS_METADATA.find((m) => m.id === skill.id);
             const canUseConhecimentoAplicadoHere =
@@ -1652,26 +1649,26 @@ export function OrdemSheet({
                 armedEcleticoDegree > 0 && skill.trainingDegree < armedEcleticoDegree;
               if (usedEcletico) {
                 peToSpend += ecleticoCost;
-                suffixParts.push(`⚡ Eclético +${armedEcleticoDegree}`);
+                suffixParts.push(`Eclético +${armedEcleticoDegree}`);
               }
 
               // 2. Conhecimento Aplicado
               if (canUseConhecimentoAplicadoHere) {
                 peToSpend += 2;
-                suffixParts.push('🧠 Conhecimento Aplicado (INT)');
+                suffixParts.push('Conhecimento Aplicado (INT)');
               }
 
               // 2b. Intuição Paranormal (Ocultista)
               if (armIntuicaoParanormal) {
                 const intuicaoBonus = Math.max(effectiveInt, effectivePre);
                 rollMod += intuicaoBonus;
-                suffixParts.push(`👁️ Intuição Paranormal +${intuicaoBonus}`);
+                suffixParts.push(`Intuição Paranormal +${intuicaoBonus}`);
               }
 
               // 2c. Identificação Paranormal (Ocultista — Ocultismo)
               if (opts?.forceIdentificacaoParanormal && skill.id === 'ocultismo') {
                 rollMod += 10;
-                suffixParts.push('🔍 Identificação Paranormal +10');
+                suffixParts.push('Identificação Paranormal +10');
               }
 
               // 3. Perito
@@ -1680,12 +1677,12 @@ export function OrdemSheet({
                 const peritoDieResult = Math.floor(Math.random() * activePeritoDice) + 1;
                 rollMod += peritoDieResult;
                 peToSpend += peritoCost;
-                suffixParts.push(`🎓 Perito +1d${activePeritoDice}: +${peritoDieResult}`);
+                suffixParts.push(`Perito +1d${activePeritoDice}: +${peritoDieResult}`);
               }
 
               // 4. Primeira Impressão (+2d20 na 1ª vez da cena)
               if (isPrimeiraImpressaoEligible) {
-                suffixParts.push('✨ Primeira Impressão +2d20');
+                suffixParts.push('Primeira Impressão +2d20');
                 if (isInCampaign) {
                   sceneEffectToAdd = {
                     id: 'pwr-scene-primeira-impressao',
@@ -1746,11 +1743,11 @@ export function OrdemSheet({
                 suffixParts.push('Sem Kit -5');
               }
               if (isInterludePhysSkill) {
-                suffixParts.push('🏋️ Exercitar-se +1d20');
+                suffixParts.push('Exercitar-se +1d20');
                 adjustInterludeDice('physical', -1);
                 setArmInterludePhysical(false);
               } else if (isInterludeMentSkill) {
-                suffixParts.push('📚 Ler +1d20');
+                suffixParts.push('Ler +1d20');
                 adjustInterludeDice('mental', -1);
                 setArmInterludeMental(false);
               }
@@ -1782,7 +1779,7 @@ export function OrdemSheet({
                         : 'bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border-zinc-700'
                     }`}
                   >
-                    🎲 {rawDiceCount <= 0 ? '2d20(menor)' : `${rawDiceCount}d20`}
+                    <Icon name="d20" /> {rawDiceCount <= 0 ? '2d20(menor)' : `${rawDiceCount}d20`}
                     {totalBonus >= 0 ? `+${totalBonus}` : totalBonus}
                   </button>
 
@@ -1793,7 +1790,7 @@ export function OrdemSheet({
                       title={`Rolar ${skill.name} somando Perito +1d${activePeritoDice} (-${peritoCost} PE)`}
                       className="px-2 py-1 bg-blue-950/70 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-700/70 rounded text-[10px] font-mono font-bold transition cursor-pointer shrink-0"
                     >
-                      🎓 +1d{activePeritoDice} (-{peritoCost} PE)
+                      <Icon name="graduation" /> +1d{activePeritoDice} (-{peritoCost} PE)
                     </button>
                   )}
 
@@ -1806,7 +1803,7 @@ export function OrdemSheet({
                       title="Identificação Paranormal: +10 em Ocultismo para identificar criaturas, objetos ou rituais"
                       className="px-2 py-1 bg-purple-950/70 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-700/70 rounded text-[10px] font-mono font-bold transition cursor-pointer shrink-0"
                     >
-                      🔍 Identificar (+10)
+                      <Icon name="search" /> Identificar (+10)
                     </button>
                   )}
 
@@ -1820,7 +1817,7 @@ export function OrdemSheet({
                           className="text-[9px] font-bold px-1 rounded bg-zinc-900 text-zinc-400 border border-zinc-800"
                           title="Somente Treinada"
                         >
-                          🔒
+                          <Icon name="lock" />
                         </span>
                       )}
                       {meta?.armorPenalty && (
@@ -1832,7 +1829,7 @@ export function OrdemSheet({
                           }`}
                           title="Penalidade de Carga (-5 se sobrecarregado)"
                         >
-                          🏋️{isOverloaded ? ' -5' : ''}
+                          <Icon name="dumbbell" />{isOverloaded ? ' -5' : ''}
                         </span>
                       )}
                       {meta?.requiresKit && (
@@ -1856,20 +1853,20 @@ export function OrdemSheet({
                                 : 'Sem Kit na mochila (-5 dispensado manualmente para esta ação). Clique para reativar -5.'
                             }
                           >
-                            {applyMissingKitPenalty ? '🧰 Sem Kit (-5)' : '🧰 Sem Kit (0)'}
+                            {applyMissingKitPenalty ? 'Sem Kit (-5)' : 'Sem Kit (0)'}
                           </button>
                         ) : (
                           <span
                             className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/70"
                             title="Kit de Perícia ou Acessório Instrumental presente na mochila!"
                           >
-                            🧰 Kit OK
+                            <Icon name="briefcase" /> Kit OK
                           </span>
                         )
                       )}
                       {isPeritoSkill && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
-                          🎓 Perito
+                          <Icon name="graduation" /> Perito
                         </span>
                       )}
                       {isPrimeiraImpressaoEligible && (
@@ -1877,7 +1874,7 @@ export function OrdemSheet({
                           className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700"
                           title="Primeira Impressão: +2d20 no primeiro teste social/intuição da cena"
                         >
-                          ✨ 1ª Impressão (+2d20)
+                          <Icon name="sparkles" /> 1ª Impressão (+2d20)
                         </span>
                       )}
                     </div>

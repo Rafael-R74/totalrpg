@@ -58,7 +58,10 @@ import { TormentaSheet } from './TormentaSheet';
 import { SheetExtras } from './SheetExtras';
 import { ImageUploadField } from '../ImageUploadField';
 import { TempVitalBar } from '../TempVitalBar';
+import { useTheme } from '../../theme/themeEngine';
 
+import { Icon, stripEmoji } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface SheetContainerProps {
   characterId: string;
   currentUserId: string;
@@ -122,6 +125,7 @@ export function SheetContainer({
   initiativeRequestSignal,
   externalCombatState,
 }: SheetContainerProps) {
+  const { setActiveSystem } = useTheme();
   const [character, setCharacter] = useState<FullCharacterResponse | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
   const [customSkills, setCustomSkills] = useState<SystemSkillDefinition[]>([]);
@@ -226,6 +230,12 @@ export function SheetContainer({
       characterName: base.name,
     });
   }
+
+  useEffect(() => {
+    if (character?.system) {
+      setActiveSystem(character.system);
+    }
+  }, [character?.system, setActiveSystem]);
 
   useEffect(() => {
     if (onRegisterSpendResource) {
@@ -404,7 +414,7 @@ export function SheetContainer({
       emitLivePatchFromCharacter(nextChar);
       handleSaveSheet(nextChar);
       showHoverToast(
-        `🛡️ ${ritualName}: +${newRoll.total} PV Temporários aplicados na ficha!`
+        `${ritualName}: +${newRoll.total} PV Temporários aplicados na ficha!`
       );
     }
 
@@ -753,7 +763,7 @@ export function SheetContainer({
 
         if (hadPreviousTurn) {
           showHoverToast(
-            `⚔️ Seu turno chegou (Rodada ${liveCombatState!.roundNumber ?? 1})! Limite de PE/turno${
+            `Seu turno chegou (Rodada ${liveCombatState!.roundNumber ?? 1})! Limite de PE/turno${
               postureReset ? ' e Combate Defensivo' : ''
             } reiniciados.`
           );
@@ -784,11 +794,11 @@ export function SheetContainer({
         true
       );
       showHoverToast(
-        `👁️ O Preço da Maldição (${detail.element}): -${detail.amount} SAN descontados.`
+        `O Preço da Maldição (${detail.element}): -${detail.amount} SAN descontados.`
       );
       logSheetActivity({
         category: 'vital',
-        summary: `👁️ O Preço da Maldição (${detail.element}): perdeu ${detail.amount} SAN`,
+        summary: `O Preço da Maldição (${detail.element}): perdeu ${detail.amount} SAN`,
         costText: `-${detail.amount} SAN`,
         tone: 'purple',
       });
@@ -813,7 +823,7 @@ export function SheetContainer({
       }, true);
       const nextTempHp = Number((updated?.sheetData as any)?.tempHp || detail.amount);
       showHoverToast(
-        `🛡️ ${detail.label || 'PV Temporários'}: ${nextTempHp} PV temporários ativos na ficha!`
+        `${detail.label || 'PV Temporários'}: ${nextTempHp} PV temporários ativos na ficha!`
       );
     }
 
@@ -991,7 +1001,7 @@ export function SheetContainer({
         v.id === 'san' ? { ...v, current: Math.max(0, v.current - amount) } : v
       ),
     }));
-    showHoverToast(`🧠 ${reason}: -${amount} SAN descontados.`);
+    showHoverToast(`${reason}: -${amount} SAN descontados.`);
   }
 
   function handleHealPv(amount: number, label?: string) {
@@ -1011,8 +1021,8 @@ export function SheetContainer({
 
       if (pvBar.current >= healingCap) {
         blockedCapMessage = isSangueVivo
-          ? `🩸 Sangue Vivo: PVs já estão em ou acima da metade máxima (${healingCap} PV).`
-          : `💚 Seus PVs já estão no máximo (${effectiveMax} PV).`;
+          ? `Sangue Vivo: PVs já estão em ou acima da metade máxima (${healingCap} PV).`
+          : `Seus PVs já estão no máximo (${effectiveMax} PV).`;
         return base;
       }
 
@@ -1031,7 +1041,7 @@ export function SheetContainer({
       showHoverToast(blockedCapMessage);
     } else if (actualHealed > 0) {
       showHoverToast(
-        `💚 ${label || 'Cura'}: +${actualHealed} PV (${resultingCurrent}/${effectiveMaxForToast})!`
+        `${label || 'Cura'}: +${actualHealed} PV (${resultingCurrent}/${effectiveMaxForToast})!`
       );
     }
   }
@@ -1044,7 +1054,7 @@ export function SheetContainer({
         v.id === 'pv' ? { ...v, current: Math.max(0, v.current - amount) } : v
       ),
     }));
-    if (reason) showHoverToast(`🩸 ${reason}: -${amount} PV.`);
+    if (reason) showHoverToast(`${reason}: -${amount} PV.`);
   }
 
   function handleGrantTempPe(amount: number, label?: string) {
@@ -1076,11 +1086,11 @@ export function SheetContainer({
 
     if (cappedOut) {
       showHoverToast(
-        `⚡ ${label}: teto de ${peLimit} PE temporários por cena já atingido!`
+        `${label}: teto de ${peLimit} PE temporários por cena já atingido!`
       );
     } else if (gained > 0) {
       showHoverToast(
-        `⚡ ${label || 'PE Temporário'}: +${gained} PE Temp (Total Temp: ${resultingTempPe} PE)!`
+        `${label || 'PE Temporário'}: +${gained} PE Temp (Total Temp: ${resultingTempPe} PE)!`
       );
     }
   }
@@ -1296,7 +1306,7 @@ export function SheetContainer({
     }, false);
     if (!nextChar) return;
     emitLivePatchFromCharacter(nextChar);
-    setFeedbackMsg('🎬 Cena encerrada! Efeitos de cena e PVs temporários limpos.');
+    setFeedbackMsg('Cena encerrada! Efeitos de cena e PVs temporários limpos.');
     setTimeout(() => setFeedbackMsg(''), 3500);
     handleSaveSheet(nextChar);
   }
@@ -1426,13 +1436,13 @@ export function SheetContainer({
     if (usePoderDoFlagelo) {
       if (pvBar && pvBar.current < pvCostFlagelo) {
         showHoverToast(
-          `🩸 PV básicos insuficientes para Poder do Flagelo (${ritual.name})! Necessário: ${pvCostFlagelo} PV (Atual: ${pvBar.current} PV).`
+          `PV básicos insuficientes para Poder do Flagelo (${ritual.name})! Necessário: ${pvCostFlagelo} PV (Atual: ${pvBar.current} PV).`
         );
         return;
       }
     } else if (peBar && peBar.current + tempPe < form.totalCost) {
       showHoverToast(
-        `⚡ PE insuficiente para conjurar ${ritual.name} (${form.label})! Necessário: ${form.totalCost} PE (Atual: ${peBar.current + tempPe} PE).`
+        `PE insuficiente para conjurar ${ritual.name} (${form.label})! Necessário: ${form.totalCost} PE (Atual: ${peBar.current + tempPe} PE).`
       );
       return;
     }
@@ -1452,7 +1462,7 @@ export function SheetContainer({
       peSpentThisTurn + form.totalCost > ritualPeTurnLimit
     ) {
       showHoverToast(
-        `⚠️ Limite de PE por turno para rituais atingido (${peSpentThisTurn}/${ritualPeTurnLimit} PE)!`
+        `Limite de PE por turno para rituais atingido (${peSpentThisTurn}/${ritualPeTurnLimit} PE)!`
       );
       return;
     }
@@ -1548,7 +1558,7 @@ export function SheetContainer({
         modifiers: form.sceneModifiers,
         ...newEffectBase,
       });
-      effectNotes.push(`⚔️ ${ritual.name} (${form.label}): ${weaponDescParts.join(', ')} ativo na cena!`);
+      effectNotes.push(`${ritual.name} (${form.label}): ${weaponDescParts.join(', ')} ativo na cena!`);
     } else if (form.tempHpFlat) {
       // Substitui eventual PV Temporário anterior do mesmo ritual (ex: Tela de Ruído Normal -> Discente)
       const oldGranted = prevSameRitualEffect?.tempHpGranted || 0;
@@ -1565,7 +1575,7 @@ export function SheetContainer({
           ...newEffectBase,
         },
       ];
-      effectNotes.push(`🛡️ +${form.tempHpFlat} PV Temporários recebidos na cena!`);
+      effectNotes.push(`+${form.tempHpFlat} PV Temporários recebidos na cena!`);
     } else if (form.sceneDefenseBonus) {
       const defModifiers = [
         {
@@ -1587,7 +1597,7 @@ export function SheetContainer({
           ...newEffectBase,
         },
       ];
-      effectNotes.push(`🛡️ +${form.sceneDefenseBonus} na Defesa ativo até o fim da cena!`);
+      effectNotes.push(`+${form.sceneDefenseBonus} na Defesa ativo até o fim da cena!`);
     } else if (ritualDefId === 'ord-rit-cineraria') {
       const cinerariaDesc =
         form.mode === 'verdadeiro'
@@ -1605,7 +1615,7 @@ export function SheetContainer({
           ...newEffectBase,
         },
       ];
-      effectNotes.push(`🌫️ Cinerária (${form.label}): ${cinerariaDesc}!`);
+      effectNotes.push(`Cinerária (${form.label}): ${cinerariaDesc}!`);
     } else if (form.sceneModifiers && form.sceneModifiers.length > 0 && !form.tempHpFormula) {
       nextSceneEffects = [
         ...withoutSameRitual,
@@ -1618,7 +1628,7 @@ export function SheetContainer({
           ...newEffectBase,
         },
       ];
-      effectNotes.push(`✨ Efeito de ${ritual.name} (${form.label}) ativo na cena!`);
+      effectNotes.push(`Efeito de ${ritual.name} (${form.label}) ativo na cena!`);
     } else if (
       isSustainedForm ||
       recurringInfo.recurringFormula ||
@@ -1638,8 +1648,8 @@ export function SheetContainer({
       ];
       effectNotes.push(
         isSustainedForm
-          ? `🔄 ${ritual.name} (${form.label}) agora está sustentado na cena!`
-          : `✨ Efeito de ${ritual.name} ativo na cena!`
+          ? `${ritual.name} (${form.label}) agora está sustentado na cena!`
+          : `Efeito de ${ritual.name} ativo na cena!`
       );
     }
 
@@ -1830,7 +1840,7 @@ export function SheetContainer({
 
     logSheetActivity({
       category: 'ability',
-      summary: `Conjurou 🔮 ${ritual.name} [${form.label}]`,
+      summary: `Conjurou ${ritual.name} [${form.label}]`,
       costText: usePoderDoFlagelo ? `-${pvCostFlagelo} PV` : `-${form.totalCost} PE`,
       details: isMedoRitual
         ? `Invocando o Medo: -${sanLost} SAN e -${permSanLost} SAN Máx Permanente`
@@ -1853,7 +1863,7 @@ export function SheetContainer({
     }
     if (peSpentThisTurn + amount > peTurnLimit) {
       showHoverToast(
-        `⚠️ Limite de PE por turno atingido${
+        `Limite de PE por turno atingido${
           powerLabel ? ` para ${powerLabel}` : ''
         } (${peSpentThisTurn}/${peTurnLimit} PE gastos neste turno)! Ele será resetado automaticamente quando seu turno chegar novamente.`
       );
@@ -1870,7 +1880,7 @@ export function SheetContainer({
     const availableTemp = targetBarId === 'pe' ? tempPe : 0;
     if (resourceBar.current + availableTemp < amount) {
       showHoverToast(
-        `⚡ ${resourceBar.label} insuficiente${
+        `${resourceBar.label} insuficiente${
           powerLabel ? ` para usar ${powerLabel}` : ''
         }! Necessário: ${amount} (Atual: ${resourceBar.current + availableTemp}).`
       );
@@ -1893,7 +1903,7 @@ export function SheetContainer({
     const currentTempPe = targetBarId === 'pe' ? Number(baseRaw.tempPe || 0) : 0;
     if (resourceBar.current + currentTempPe < amount) {
       showHoverToast(
-        `⚡ ${resourceBar.label} insuficiente! Necessário: ${amount} (Atual: ${
+        `${resourceBar.label} insuficiente! Necessário: ${amount} (Atual: ${
           resourceBar.current + currentTempPe
         }).`
       );
@@ -2052,7 +2062,7 @@ export function SheetContainer({
     if (originId === 'trambiqueiro') {
       const inCamp = Boolean(character?.campaignId);
       if (inCamp && activeSceneEffects.some((e) => e.id === 'orig-scene-impostor')) {
-        showHoverToast('🎭 Impostor só pode ser utilizado 1 vez por cena!');
+        showHoverToast('Impostor só pode ser utilizado 1 vez por cena!');
         return;
       }
       if (
@@ -2118,7 +2128,7 @@ export function SheetContainer({
         tone: 'info',
       });
       setFeedbackMsg(
-        `🧠 Sentido Tático ativado (-2 PE)! +${intAttr} na Defesa e Resistências nesta cena.`
+        `Sentido Tático ativado (-2 PE)! +${intAttr} na Defesa e Resistências nesta cena.`
       );
       setTimeout(() => setFeedbackMsg(''), 4000);
     }
@@ -2341,10 +2351,10 @@ export function SheetContainer({
       summaryParts.push(`+${pvGain} PV / +${peGain} PE / +${sanGain} SAN`);
     }
     if (interludeExerciseCount > 0) {
-      summaryParts.push(`🏋️ Exercitar-se +${interludeExerciseCount}d20 físico em estoque`);
+      summaryParts.push(`Exercitar-se +${interludeExerciseCount}d20 físico em estoque`);
     }
     if (interludeReadCount > 0) {
-      summaryParts.push(`📚 Ler +${interludeReadCount}d20 mental em estoque`);
+      summaryParts.push(`Ler +${interludeReadCount}d20 mental em estoque`);
     }
 
     let sealPeCost = 0;
@@ -2356,7 +2366,7 @@ export function SheetContainer({
         (a) => a.category === 'ritual' && a.id === interludeMaintenanceSealRitualId
       );
       if (!sealRitual) {
-        showHoverToast('⚠️ Selecione um ritual conhecido para fabricar o Selo Paranormal.');
+        showHoverToast('Selecione um ritual conhecido para fabricar o Selo Paranormal.');
         return;
       }
       const rDef = findOrdemRitualDef(sealRitual.id) || findOrdemRitualDef(sealRitual.name);
@@ -2371,7 +2381,7 @@ export function SheetContainer({
       const peAfterSleep = Math.min(effPeMax, (peBar?.current || 0) + peGain);
       if (peAfterSleep < sealPeCost) {
         showHoverToast(
-          `⚠️ PE insuficiente para fabricar Selo de ${sealRitual.name} (custa ${sealPeCost} PE).`
+          `PE insuficiente para fabricar Selo de ${sealRitual.name} (custa ${sealPeCost} PE).`
         );
         return;
       }
@@ -2396,9 +2406,9 @@ export function SheetContainer({
               nextInventory = nextInventory.map((it) =>
                 it.id === targetItem.id ? { ...it, remainingCharges: restored } : it
               );
-              summaryParts.push(`🔧 ${targetItem.name} recarregado/consertado (${restored} cargas)`);
+              summaryParts.push(`${targetItem.name} recarregado/consertado (${restored} cargas)`);
             } else {
-              summaryParts.push(`🔧 Manutenção realizada em ${targetItem.name}`);
+              summaryParts.push(`Manutenção realizada em ${targetItem.name}`);
             }
           }
         } else if (interludeMaintenanceMode === 'ammo') {
@@ -2424,7 +2434,7 @@ export function SheetContainer({
               description: preset.description,
             });
           }
-          summaryParts.push(`🔫 +1 ${preset.name}`);
+          summaryParts.push(`+1 ${preset.name}`);
         } else if (interludeMaintenanceMode === 'seal' && sealRitual) {
           nextInventory.push({
             id: `item-selo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -2443,7 +2453,7 @@ export function SheetContainer({
             storedRitualElement: sealRitual.element,
             description: `Selo Paranormal fabricado em Interlúdio contendo ${sealRitual.name} (${sealCircle}º Círculo, ${sealPeCost} PE). Ativar consome 1 unidade.`,
           });
-          summaryParts.push(`🔮 Selo (${sealRitual.name}) fabricado (-${sealPeCost} PE)`);
+          summaryParts.push(`Selo (${sealRitual.name}) fabricado (-${sealPeCost} PE)`);
         }
       }
 
@@ -2493,14 +2503,14 @@ export function SheetContainer({
           (bonuses.skillBonus[sk.id] || 0) +
           rapidoBonus;
         triggerCharacterRoll(
-          `🔍 Interlúdio — Revisar Caso (${sk.name})${
-            rapidoBonus > 0 ? ` [🥪 Prato Rápido +${rapidoBonus}]` : ''
+          `Interlúdio — Revisar Caso (${sk.name})${
+            rapidoBonus > 0 ? ` [Prato Rápido +${rapidoBonus}]` : ''
           }`,
           diceCount,
           20,
           modTotal
         );
-        summaryParts.push(`🔍 Revisar Caso (${sk.name})`);
+        summaryParts.push(`Revisar Caso (${sk.name})`);
       }
     }
 
@@ -2513,7 +2523,7 @@ export function SheetContainer({
       tone: 'info',
     });
     if (summaryParts.length > 0) {
-      showHoverToast(`🌙 Interlúdio aplicado: ${summaryParts.join(' • ')}`);
+      showHoverToast(`Interlúdio aplicado: ${summaryParts.join(' • ')}`);
     }
   }
 
@@ -2649,7 +2659,7 @@ export function SheetContainer({
 
     const missingSteps = getNexEvolutionMissingSteps(currentNex, nextNex, milestone);
     if (missingSteps.length > 0) {
-      showHoverToast(`⚠️ Complete as escolhas obrigatórias antes de evoluir: ${missingSteps.join(' • ')}`);
+      showHoverToast(`Complete as escolhas obrigatórias antes de evoluir: ${missingSteps.join(' • ')}`);
       return;
     }
 
@@ -2885,7 +2895,7 @@ export function SheetContainer({
           );
           if (!reqValidation.met) {
             showHoverToast(
-              `🔒 Você não cumpre os pré-requisitos para escolher ${pEntry.name} (Falta: ${reqValidation.missing.join(', ')})!`
+              `Você não cumpre os pré-requisitos para escolher ${pEntry.name} (Falta: ${reqValidation.missing.join(', ')})!`
             );
             return;
           }
@@ -3174,6 +3184,31 @@ export function SheetContainer({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Faixa fixa de vitais (celular): sempre à vista enquanto o jogador rola a ficha */}
+      <div className="md:hidden sticky top-14 z-30 -mx-[var(--trpg-gutter)] px-[var(--trpg-gutter)] py-2 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 flex gap-3">
+        {character.vitals.map((bar) => {
+          const max = Math.max(1, bar.max + (bonuses.vitalMax[bar.id] || 0));
+          const color =
+            bar.id === 'pv' ? 'var(--trpg-pv)' : bar.id === 'san' ? 'var(--trpg-san)' : bar.id === 'pe' ? 'var(--trpg-pe)' : bar.color;
+          const extra = bar.id === 'pv' ? tempHp : bar.id === 'pe' ? tempPe : 0;
+          return (
+            <div key={bar.id} className="flex-1 min-w-0">
+              <div className="flex items-baseline justify-between gap-1 text-xs">
+                <span className="text-zinc-400 truncate">{bar.id.toUpperCase()}</span>
+                <span className="trpg-num font-semibold text-zinc-100">
+                  {bar.current}
+                  <span className="text-zinc-500">/{max}</span>
+                  {extra > 0 && <span className="text-cyan-300"> +{extra}</span>}
+                </span>
+              </div>
+              <div className="trpg-meter h-1.5! mt-1">
+                <div className="trpg-meter-fill" style={{ width: `${Math.max(0, Math.min(100, (bar.current / max) * 100))}%`, background: color }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {hoverToastMsg && (
         <div className="fixed bottom-6 right-6 z-[60] bg-red-950/95 border border-red-500 text-red-100 px-4 py-3 rounded-xl shadow-2xl text-xs font-extrabold flex items-center gap-2 animate-fade-in">
           <span>{hoverToastMsg}</span>
@@ -3182,9 +3217,9 @@ export function SheetContainer({
 
       {/* MODAL DE CONVOCAÇÃO DE INICIATIVA ENVIADO PELO MESTRE */}
       {showInitiativePrompt && (
-        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-zinc-900 border-2 border-amber-500 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col items-center text-center gap-4">
-            <div className="text-5xl animate-bounce">⚔️</div>
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col items-center text-center gap-4">
+            <div className="text-5xl"><Icon name="swords" /></div>
             <div>
               <span className="text-[11px] font-mono uppercase tracking-widest text-amber-400 font-bold">
                 Chamado do Mestre
@@ -3212,7 +3247,7 @@ export function SheetContainer({
               }}
               className="w-full py-3.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-sm font-extrabold transition cursor-pointer shadow-lg shadow-amber-900/40"
             >
-              🎲 Rolar Iniciativa ({initDiceCount}d20
+              <Icon name="d20" /> Rolar Iniciativa ({initDiceCount}d20
               {initTotalBonus >= 0 ? `+${initTotalBonus}` : initTotalBonus})
             </button>
           </div>
@@ -3221,7 +3256,7 @@ export function SheetContainer({
 
       {/* MODAL DE PASSAR ITEM PARA ALIADO DA MESA (ETAPA 4E - COM SELETOR DE QUANTIDADE) */}
       {itemToTradeModal && (
-        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <form
             onSubmit={handleConfirmTransfer}
             className="bg-zinc-900 border-2 border-blue-500 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4"
@@ -3237,7 +3272,7 @@ export function SheetContainer({
                 )}
                 <div>
                   <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">
-                    🤝 Passar Item para Aliado
+                    <Icon name="handshake" /> Passar Item para Aliado
                   </span>
                   <h3 className="text-lg font-extrabold text-white mt-0.5">
                     {itemToTradeModal.name}
@@ -3274,7 +3309,7 @@ export function SheetContainer({
                   <option value="">-- Selecione um aliado da mesa --</option>
                   {tradeAllies.map((ally) => (
                     <option key={ally.id} value={ally.id}>
-                      🛡️ {ally.name} (Jogador: @{ally.owner.username})
+                      {ally.name} (Jogador: @{ally.owner.username})
                     </option>
                   ))}
                 </select>
@@ -3343,7 +3378,7 @@ export function SheetContainer({
                 disabled={!selectedAllyId || isTransferring}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white rounded-lg text-xs font-extrabold cursor-pointer shadow"
               >
-                {isTransferring ? 'Entregando...' : `🤝 Entregar (${tradeQuantity}x)`}
+                {isTransferring ? 'Entregando...' : `Entregar (${tradeQuantity}x)`}
               </button>
             </div>
           </form>
@@ -3356,7 +3391,7 @@ export function SheetContainer({
           <div className="bg-zinc-900 border border-red-800 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-2">
-                <span className="text-xl">🩸</span>
+                <span className="text-xl"><Icon name="sangue" /></span>
                 <div>
                   <span className="text-[10px] font-mono uppercase text-red-400 font-bold">
                     Condição Ativa no Personagem
@@ -3388,7 +3423,7 @@ export function SheetContainer({
                       key={m.id}
                       className="text-xs font-mono bg-red-950/60 text-red-300 border border-red-800/60 px-2.5 py-1 rounded"
                     >
-                      ⚡ {m.targetType} [{m.targetKey}]: {m.value >= 0 ? `+${m.value}` : m.value}
+                      <Icon name="zap" /> {m.targetType} [{m.targetKey}]: {m.value >= 0 ? `+${m.value}` : m.value}
                     </span>
                   ))}
                 </div>
@@ -3421,11 +3456,11 @@ export function SheetContainer({
       {isPortraitZoomOpen && character.portraitUrl && (
         <div
           onClick={() => setIsPortraitZoomOpen(false)}
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 backdrop-blur-md cursor-zoom-out"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 overflow-y-auto cursor-zoom-out"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative bg-zinc-900 border-2 border-amber-500/80 rounded-3xl p-4 max-w-2xl w-full flex flex-col items-center gap-3 shadow-2xl"
+            className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-4 max-w-2xl w-full flex flex-col items-center gap-3 shadow-2xl"
           >
             <img
               src={character.portraitUrl}
@@ -3447,14 +3482,14 @@ export function SheetContainer({
       )}
 
       {/* PAINEL HERO DA FICHA: RETRATO EM GRANDE DESTAQUE + CABEÇALHO + BARRAS VITAIS */}
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl flex flex-col lg:flex-row gap-6 items-center lg:items-stretch shadow-xl">
+      <div className="trpg-card trpg-card-signature p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-start sm:items-stretch">
         {/* Coluna Esquerda: Retrato Grande do Personagem */}
-        <div className="flex flex-col items-center gap-3 shrink-0">
+        <div className="flex flex-col items-center gap-3 shrink-0 self-center sm:self-start">
           {character.portraitUrl ? (
             <div
               onClick={() => setIsPortraitZoomOpen(true)}
               title="Clique para ampliar o retrato do personagem"
-              className="w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-2xl overflow-hidden border-2 border-amber-500/80 shadow-2xl shadow-black/70 bg-zinc-950 cursor-zoom-in group relative"
+              className="w-32 h-32 sm:w-40 sm:h-40 lg:w-52 lg:h-52 rounded-xl overflow-hidden border border-zinc-700 bg-zinc-950 cursor-zoom-in group relative"
             >
               <img
                 src={character.portraitUrl}
@@ -3462,12 +3497,12 @@ export function SheetContainer({
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
               <span className="absolute bottom-2 right-2 bg-black/75 text-amber-400 border border-amber-500/50 px-2 py-0.5 rounded-lg text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                🔍 Ampliar
+                <Icon name="search" /> Ampliar
               </span>
             </div>
           ) : (
-            <div className="w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-2xl bg-zinc-950 border-2 border-dashed border-amber-500/40 flex flex-col items-center justify-center gap-2 text-amber-400 shadow-inner">
-              <span className="text-5xl font-extrabold">
+            <div className="w-32 h-32 sm:w-40 sm:h-40 lg:w-52 lg:h-52 rounded-xl bg-zinc-950 border border-dashed border-zinc-700 flex flex-col items-center justify-center gap-2 text-zinc-300">
+              <span className="text-5xl trpg-display">
                 {character.name.substring(0, 2).toUpperCase()}
               </span>
               <span className="text-[11px] text-zinc-500 font-medium px-4 text-center">
@@ -3500,22 +3535,12 @@ export function SheetContainer({
             <div className="flex flex-wrap justify-between items-start gap-4">
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <button
-                    onClick={onBack}
-                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  >
-                    ← Voltar
-                  </button>
-
-                  <span className="text-[10px] font-mono uppercase bg-amber-950/60 text-amber-400 border border-amber-800/60 px-2.5 py-1 rounded-md font-bold">
-                    {character.system}
-                  </span>
-                  <span className="text-xs text-zinc-400 font-medium">
-                    {campaign ? `Mesa: ${campaign.name}` : 'Ficha Livre no Cofre'}
+                  <span className="text-sm text-zinc-400">
+                    {campaign ? campaign.name : 'Livre no cofre'}
                   </span>
                   {isLockedByMaster && (
-                    <span className="text-[10px] font-mono uppercase bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold">
-                      🔒 Travada pelo Mestre
+                    <span className="trpg-badge bg-red-950/70! text-red-200!">
+                      <Icon name="lock" size={12} /> Travada pelo mestre
                     </span>
                   )}
                 </div>
@@ -3529,11 +3554,11 @@ export function SheetContainer({
                         setCharacter((prev) => (prev ? { ...prev, name: e.target.value } : null))
                       }
                       placeholder="Nome do Personagem"
-                      className="bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-xl font-extrabold text-white"
+                      className="trpg-input text-xl font-semibold max-w-md"
                     />
                   ) : (
                     <div className="flex flex-wrap items-baseline gap-2.5">
-                      <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                      <h2 className="text-3xl sm:text-4xl leading-tight">
                         {character.name}
                       </h2>
                       {(rawSheet.personalProfile?.age || rawSheet.personalProfile?.pronouns) && (
@@ -3552,10 +3577,9 @@ export function SheetContainer({
                       type="button"
                       onClick={() => setSelectedConditionModal(cond)}
                       title="Clique para ver os detalhes desta condição"
-                      className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-700 rounded-full text-xs font-bold flex items-center gap-1 transition cursor-pointer shadow"
+                      className="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/70 text-red-200 border border-red-800/80 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-colors"
                     >
-                      <span>🩸 {cond.name}</span>
-                      <span className="text-[10px] text-red-400 ml-0.5">ⓘ</span>
+                      <Icon name="warning" size={13} /> {cond.name}
                     </button>
                   ))}
 
@@ -3574,8 +3598,8 @@ export function SheetContainer({
 
               <div className="flex items-center gap-3">
                 {feedbackMsg && (
-                  <span className="text-xs font-bold text-emerald-400 animate-pulse">
-                    ✓ {feedbackMsg}
+                  <span role="status" className="text-sm text-emerald-300 flex items-center gap-1.5">
+                    <Icon name="check" size={15} /> {stripEmoji(feedbackMsg)}
                   </span>
                 )}
 
@@ -3583,15 +3607,11 @@ export function SheetContainer({
                   type="button"
                   disabled={isLockedByMaster}
                   onClick={() => setIsEditMode(!isEditMode)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    isLockedByMaster
-                      ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
-                      : isEditMode
-                      ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
-                  }`}
+                  aria-pressed={isEditMode}
+                  className={isEditMode ? 'trpg-btn-quiet trpg-btn-sm' : 'trpg-btn-secondary trpg-btn-sm'}
                 >
-                  {isEditMode ? '🎲 Voltar ao Modo Jogo' : '✏️ Entrar no Modo Edição'}
+                  <Icon name={isEditMode ? 'x' : 'pencil'} size={15} />
+                  {isEditMode ? 'Sair da edição' : 'Editar ficha'}
                 </button>
 
                 {isEditMode && (
@@ -3599,9 +3619,10 @@ export function SheetContainer({
                     type="button"
                     disabled={isSaving}
                     onClick={() => handleSaveSheet()}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                    className="trpg-btn-primary trpg-btn-sm"
                   >
-                    {isSaving ? 'Salvando...' : '💾 Salvar Ficha'}
+                    <Icon name="save" size={15} />
+                    {isSaving ? 'Salvando…' : 'Salvar'}
                   </button>
                 )}
               </div>
@@ -3611,7 +3632,7 @@ export function SheetContainer({
               <div className="bg-zinc-950 border border-red-900/60 p-3.5 rounded-xl flex flex-col gap-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-red-400">
-                    👑 Controle do Mestre: Escolha uma condição para aplicar ao personagem
+                    <Icon name="crown" /> Controle do Mestre: Escolha uma condição para aplicar ao personagem
                   </span>
                   <button
                     type="button"
@@ -3643,36 +3664,31 @@ export function SheetContainer({
             )}
           </div>
 
-          {/* Barras Vitais integradas ao lado do Retrato Grande */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Vitais: medidor com marca a cada 5 pontos, números grandes, ajustes rápidos */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {character.vitals.map((bar) => {
               const bonusMax = bonuses.vitalMax[bar.id] || 0;
               const effectiveMax = Math.max(1, bar.max + bonusMax);
               const percent = Math.max(0, Math.min(100, (bar.current / effectiveMax) * 100));
-              const tempAmount =
-                bar.id === 'pv' ? tempHp : bar.id === 'pe' ? tempPe : 0;
+              const tempAmount = bar.id === 'pv' ? tempHp : bar.id === 'pe' ? tempPe : 0;
               const tempMax =
-                bar.id === 'pv'
-                  ? Number(rawSheet.tempHpMax || 0)
-                  : bar.id === 'pe'
-                  ? Number(rawSheet.tempPeMax || 0)
-                  : 0;
+                bar.id === 'pv' ? Number(rawSheet.tempHpMax || 0) : bar.id === 'pe' ? Number(rawSheet.tempPeMax || 0) : 0;
+              const tick = Math.max(2, Math.min(50, (5 / effectiveMax) * 100));
+              const barColor =
+                bar.id === 'pv' ? 'var(--trpg-pv)' : bar.id === 'san' ? 'var(--trpg-san)' : bar.id === 'pe' ? 'var(--trpg-pe)' : bar.color;
 
               return (
-                <div
-                  key={bar.id}
-                  className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col justify-between gap-2.5"
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex flex-wrap items-center gap-1.5">
+                <div key={bar.id} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3.5 flex flex-col gap-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-medium text-zinc-300 flex flex-wrap items-center gap-1.5">
                       {bar.label}
                       {character.system === 'ordem-paranormal' && bar.id === 'san' && (
                         bar.current <= 0 ? (
                           <span
-                            className="text-[10px] font-black px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-700 animate-pulse"
-                            title="Diplomacia ou Religião DT 20 em até 3 rodadas para acalmar!"
+                            className="trpg-badge bg-red-950! text-red-200!"
+                            title="Diplomacia ou Religião DT 20 em até 3 rodadas para acalmar"
                           >
-                            🔴 ENLOUQUECENDO
+                            Enlouquecendo
                           </span>
                         ) : bar.current <= Math.floor(effectiveMax / 2) ? (
                           canMasterControl ? (
@@ -3680,58 +3696,50 @@ export function SheetContainer({
                               type="button"
                               onClick={() => {
                                 const effect =
-                                  ORDEM_INSANITY_EFFECTS[
-                                    Math.floor(Math.random() * ORDEM_INSANITY_EFFECTS.length)
-                                  ];
+                                  ORDEM_INSANITY_EFFECTS[Math.floor(Math.random() * ORDEM_INSANITY_EFFECTS.length)];
                                 setInsanityEffectText(effect);
                               }}
-                              className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 hover:bg-amber-900 cursor-pointer"
-                              title="Exclusivo do Mestre: Clique para sortear um Efeito de Insanidade (Tabela 5.1 - 1d20)"
+                              className="trpg-badge bg-orange-950! text-orange-200! hover:bg-orange-900!"
+                              title="Só o mestre: sortear um efeito de insanidade (1d20)"
                             >
-                              🟡 PERTURBADO (🎲 1d20)
+                              Perturbado <Icon name="d20" size={12} />
                             </button>
                           ) : (
-                            <span
-                              className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700"
-                              title="Sanidade na metade ou menos (Perturbado)"
-                            >
-                              🟡 PERTURBADO
+                            <span className="trpg-badge bg-orange-950! text-orange-200!" title="Sanidade na metade ou menos">
+                              Perturbado
                             </span>
                           )
                         ) : (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
-                            🟢 São
-                          </span>
+                          <span className="trpg-badge bg-emerald-950/70! text-emerald-300!">São</span>
                         )
                       )}
                     </span>
                     {isEditMode && canEditVitals ? (
-                      <div className="flex items-center gap-1 font-mono text-xs">
+                      <div className="flex items-center gap-1 trpg-num text-sm">
                         <input
                           type="number"
+                          aria-label={`${bar.label} atual`}
                           value={bar.current}
                           onChange={(e) => handleVitalChange(bar.id, 'current', Number(e.target.value))}
-                          className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-center text-white"
+                          className="w-14 trpg-input min-h-0! py-1! px-1.5! text-center"
                         />
-                        <span>/</span>
+                        <span className="text-zinc-500">/</span>
                         <input
                           type="number"
+                          aria-label={`${bar.label} máximo`}
                           value={bar.max}
                           onChange={(e) => handleVitalChange(bar.id, 'max', Number(e.target.value))}
-                          className="w-12 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-center text-white"
+                          className="w-14 trpg-input min-h-0! py-1! px-1.5! text-center"
                         />
-                        {bonusMax !== 0 && (
-                          <span className="text-emerald-400">({bonusMax > 0 ? `+${bonusMax}` : bonusMax})</span>
-                        )}
+                        {bonusMax !== 0 && <span className="text-emerald-300 text-xs">({bonusMax > 0 ? `+${bonusMax}` : bonusMax})</span>}
                       </div>
                     ) : (
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-mono text-sm font-bold text-white">
-                          {bar.current} / {effectiveMax}
-                        </span>
+                      <div className="text-right leading-none">
+                        <span className="trpg-num text-[1.75rem] font-semibold text-zinc-100">{bar.current}</span>
+                        <span className="trpg-num text-base text-zinc-500"> / {effectiveMax}</span>
                         {bonusMax !== 0 && (
-                          <span className="text-[10px] font-mono text-emerald-400">
-                            ({bonusMax > 0 ? `+${bonusMax}` : bonusMax} poder)
+                          <span className="block text-xs text-emerald-300 mt-1">
+                            {bonusMax > 0 ? `+${bonusMax}` : bonusMax} de poderes
                           </span>
                         )}
                       </div>
@@ -3739,37 +3747,37 @@ export function SheetContainer({
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <div className="w-full h-3.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
-                      <div
-                        className="h-full transition-all duration-200 ease-out"
-                        style={{ width: `${percent}%`, backgroundColor: bar.color }}
-                      />
+                    <div
+                      className="trpg-meter h-3!"
+                      role="meter"
+                      aria-label={bar.label}
+                      aria-valuemin={0}
+                      aria-valuemax={effectiveMax}
+                      aria-valuenow={bar.current}
+                    >
+                      <div className="trpg-meter-fill" style={{ width: `${percent}%`, background: barColor }} />
+                      <div className="trpg-meter-ticks" style={{ ['--tick' as string]: `${tick}%` }} />
                     </div>
-
                     {(bar.id === 'pv' || bar.id === 'pe') && (
-                      <TempVitalBar
-                        current={tempAmount}
-                        max={tempMax}
-                        barId={bar.id}
-                        size="md"
-                      />
+                      <TempVitalBar current={tempAmount} max={tempMax} barId={bar.id} size="md" />
                     )}
                   </div>
 
                   {canEditVitals && (
-                    <div className="flex justify-between gap-1 mt-0.5">
+                    <div className="grid grid-cols-4 gap-1" role="group" aria-label={`Ajustar ${bar.label}`}>
                       {[-5, -1, +1, +5].map((delta) => (
                         <button
                           key={delta}
                           type="button"
                           onClick={() => handleVitalDelta(bar.id, delta)}
-                          className={`flex-1 py-1 rounded text-xs font-mono font-bold transition cursor-pointer ${
+                          aria-label={`${delta > 0 ? 'Somar' : 'Tirar'} ${Math.abs(delta)} de ${bar.label}`}
+                          className={`min-h-9 rounded-md trpg-num text-sm font-semibold border transition-colors ${
                             delta < 0
-                              ? 'bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-900/50'
-                              : 'bg-emerald-950/50 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-900/50'
+                              ? 'border-zinc-800 text-red-300 hover:bg-red-950/60 hover:border-red-900'
+                              : 'border-zinc-800 text-emerald-300 hover:bg-emerald-950/60 hover:border-emerald-900'
                           }`}
                         >
-                          {delta > 0 ? `+${delta}` : delta}
+                          {delta > 0 ? `+${delta}` : `−${Math.abs(delta)}`}
                         </button>
                       ))}
                     </div>
@@ -3784,11 +3792,11 @@ export function SheetContainer({
             <div className="bg-zinc-950 border border-purple-800/60 px-4 py-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-black uppercase tracking-wider text-purple-300 flex items-center gap-1">
-                  ⏳ Efeitos da Cena:
+                  <Icon name="hourglass" /> Efeitos da Cena:
                 </span>
                 {tempHp > 0 && (
                   <span className="px-2.5 py-1 bg-cyan-950/80 border border-cyan-600/70 text-cyan-200 rounded-lg text-xs font-bold">
-                    🛡️ +{tempHp} PV Temporários ativos
+                    <Icon name="shield" /> +{tempHp} PV Temporários ativos
                   </span>
                 )}
                 {activeSceneEffects.map((eff) => (
@@ -3797,7 +3805,7 @@ export function SheetContainer({
                     title={eff.description}
                     className="px-2.5 py-1 bg-purple-950/80 border border-purple-600/60 text-purple-200 rounded-lg text-xs font-bold flex items-center gap-1.5"
                   >
-                    <span>✨ {eff.name} ({eff.source}): {eff.description}</span>
+                    <span><Icon name="sparkles" /> {eff.name} ({eff.source}): {eff.description}</span>
                   </span>
                 ))}
                 {activeSceneEffects.length === 0 && tempHp === 0 && (
@@ -3814,7 +3822,7 @@ export function SheetContainer({
                   className="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-700 border border-purple-500/60 text-purple-100 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap"
                   title="Exclusivo do Mestre: Encerra todos os efeitos que duram 1 cena e zera os PV Temporários"
                 >
-                  🎬 Encerrar Cena (Mestre)
+                  <Icon name="clapperboard" /> Encerrar Cena (Mestre)
                 </button>
               )}
             </div>
@@ -3831,14 +3839,14 @@ export function SheetContainer({
             >
               <div className="text-xs space-y-0.5">
                 <p className="font-black uppercase tracking-wider">
-                  🧠 Vislumbres do Passado (Poder de Amnésico) — Resultado: {vislumbresResult.keptRoll} vs DT 10
+                  <Icon name="brain" /> Vislumbres do Passado (Poder de Amnésico) — Resultado: {vislumbresResult.keptRoll} vs DT 10
                 </p>
                 <p className="font-semibold">
                   {vislumbresResult.passed
                     ? vislumbresResult.peGranted
-                      ? `✅ Você recebeu +${vislumbresResult.peGranted} PE Temporários na sua barra de PE!`
-                      : '✅ Sucesso no teste de Intelecto! Clique no botão ao lado para girar o seu 1d4 de PE Temporário.'
-                    : '❌ Falha no teste de Intelecto (DT 10).'}
+                      ? `Você recebeu +${vislumbresResult.peGranted} PE Temporários na sua barra de PE!`
+                      : 'Sucesso no teste de Intelecto! Clique no botão ao lado para girar o seu 1d4 de PE Temporário.'
+                    : 'Falha no teste de Intelecto (DT 10).'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -3848,7 +3856,7 @@ export function SheetContainer({
                     onClick={handleRollVislumbresPe}
                     className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold shadow-lg cursor-pointer animate-pulse"
                   >
-                    🎲 Girar 1d4 PE Temporários
+                    <Icon name="d20" /> Girar 1d4 PE Temporários
                   </button>
                 )}
                 <button
@@ -3876,7 +3884,7 @@ export function SheetContainer({
               <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-black uppercase tracking-wider">
-                      🔮 {ritualCastSummaryModal.ritualName} ({ritualCastSummaryModal.formLabel}) •{' '}
+                      <Icon name="sigil" /> {ritualCastSummaryModal.ritualName} ({ritualCastSummaryModal.formLabel}) •{' '}
                       {ritualCastSummaryModal.pvSpent
                         ? `-${ritualCastSummaryModal.pvSpent} PV`
                         : `-${ritualCastSummaryModal.peSpent} PE`}
@@ -3889,12 +3897,12 @@ export function SheetContainer({
                   </div>
                   <p className="text-xs font-bold">
                     {ritualCastSummaryModal.isMedoRitual
-                      ? `💀 Invocando o Medo: você perdeu ${ritualCastSummaryModal.sanLost} de Sanidade atual e -${ritualCastSummaryModal.permSanLost} de Sanidade Máxima Permanente!`
+                      ? `Invocando o Medo: você perdeu ${ritualCastSummaryModal.sanLost} de Sanidade atual e -${ritualCastSummaryModal.permSanLost} de Sanidade Máxima Permanente!`
                       : ritualCastSummaryModal.passed
-                      ? '✅ Sucesso no Custo do Paranormal! Sua mente resistiu ao Outro Lado (0 de Sanidade perdida).'
+                      ? 'Sucesso no Custo do Paranormal! Sua mente resistiu ao Outro Lado (0 de Sanidade perdida).'
                       : ritualCastSummaryModal.failedByFiveOrMore
-                      ? `💀 Falha por 5 ou mais no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} de Sanidade atual e -1 de Sanidade Máxima Permanente!`
-                      : `⚠️ Falha no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} pontos de Sanidade.`}
+                      ? `Falha por 5 ou mais no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} de Sanidade atual e -1 de Sanidade Máxima Permanente!`
+                      : `Falha no Custo do Paranormal! Você perdeu ${ritualCastSummaryModal.sanLost} pontos de Sanidade.`}
                   </p>
                 {ritualCastSummaryModal.effectAppliedText && (
                   <p className="text-xs text-cyan-300 font-bold">
@@ -3922,7 +3930,7 @@ export function SheetContainer({
                       }}
                       className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold shadow cursor-pointer"
                     >
-                      🎲 Rolar Dano ({ritualCastSummaryModal.damageFormulaToRoll})
+                      <Icon name="d20" /> Rolar Dano ({ritualCastSummaryModal.damageFormulaToRoll})
                     </button>
                   )}
                   {ritualCastSummaryModal.healingFormulaToRoll && (
@@ -3944,7 +3952,7 @@ export function SheetContainer({
                       }}
                       className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-extrabold shadow cursor-pointer"
                     >
-                      💚 Rolar Cura ({ritualCastSummaryModal.healingFormulaToRoll})
+                      <Icon name="heart-pulse" /> Rolar Cura ({ritualCastSummaryModal.healingFormulaToRoll})
                     </button>
                   )}
                 <button
@@ -3967,7 +3975,7 @@ export function SheetContainer({
             <div className="flex justify-between items-start">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">
-                  🧠 Estado Perturbado • Tabela 5.1 (1d20)
+                  <Icon name="brain" /> Estado Perturbado • Tabela 5.1 (1d20)
                 </span>
                 <h3 className="text-lg font-black text-white">Efeito de Insanidade</h3>
               </div>
@@ -3994,7 +4002,7 @@ export function SheetContainer({
                 }}
                 className="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 rounded-lg text-xs font-bold"
               >
-                🎲 Rolar Novamente (1d20)
+                <Icon name="d20" /> Rolar Novamente (1d20)
               </button>
               <button
                 type="button"
@@ -4070,7 +4078,7 @@ export function SheetContainer({
             <div className="flex justify-between items-start gap-3">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
-                  🌙 Regras Oficiais de Investigação (p. 92–93)
+                  <Icon name="moon" /> Regras Oficiais de Investigação (p. 92–93)
                 </span>
                 <h3 className="text-lg font-black text-white">Cena de Interlúdio Completa</h3>
               </div>
@@ -4104,7 +4112,7 @@ export function SheetContainer({
                 {rawSheet.pendingInterlude ? (
                   <div className="p-2.5 rounded-xl bg-indigo-950/50 border border-indigo-500/60 flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-indigo-200">
-                      🛏️ Definido pelo Mestre:{' '}
+                      Definido pelo Mestre:{' '}
                       {interludeComfort === 0.5
                         ? 'Precário (0,5x)'
                         : interludeComfort === 2
@@ -4151,7 +4159,7 @@ export function SheetContainer({
                     onChange={(e) => setInterludeSleep(e.target.checked)}
                   />
                   <div>
-                    <span className="block text-xs font-bold text-white">💤 Ação: Dormir</span>
+                    <span className="block text-xs font-bold text-white">Ação: Dormir</span>
                     <span className="text-[11px] text-zinc-400">
                       Recupera <strong className="text-emerald-300">+{previewPv} PV</strong> e{' '}
                       <strong className="text-amber-300">+{previewPe} PE</strong> (Limite {peLimitInterlude} PE).
@@ -4166,7 +4174,7 @@ export function SheetContainer({
                     onChange={(e) => setInterludeRelax(e.target.checked)}
                   />
                   <div>
-                    <span className="block text-xs font-bold text-white">🧘 Ação: Relaxar</span>
+                    <span className="block text-xs font-bold text-white">Ação: Relaxar</span>
                     <span className="text-[11px] text-zinc-400">
                       Recupera <strong className="text-cyan-300">+{previewSan} SAN</strong>.
                     </span>
@@ -4178,7 +4186,7 @@ export function SheetContainer({
               <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
                 <div>
                   <label className="block text-xs font-bold uppercase text-zinc-300 mb-1.5">
-                    🍲 Ação: Alimentar-se (1º Prato)
+                    Ação: Alimentar-se (1º Prato)
                   </label>
                   <select
                     value={interludeDish}
@@ -4196,7 +4204,7 @@ export function SheetContainer({
 
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-amber-400 mb-1">
-                    👨‍🍳 2º Prato Especial {hasChefOrigin ? '(Origem Chef ativa!)' : '(Caso haja um Chef no grupo)'}
+                    2º Prato Especial {hasChefOrigin ? '(Origem Chef ativa!)' : '(Caso haja um Chef no grupo)'}
                   </label>
                   <select
                     value={interludeSecondDish}
@@ -4217,7 +4225,7 @@ export function SheetContainer({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">🏋️ Ação: Exercitar-se</span>
+                    <span className="text-xs font-bold text-white"><Icon name="dumbbell" /> Ação: Exercitar-se</span>
                     <span className="text-[10px] font-mono text-emerald-300">
                       Estoque: {Number(currentBonusDice.physical || 0)}
                     </span>
@@ -4245,7 +4253,7 @@ export function SheetContainer({
 
                 <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">📚 Ação: Ler</span>
+                    <span className="text-xs font-bold text-white"><Icon name="library" /> Ação: Ler</span>
                     <span className="text-[10px] font-mono text-purple-300">
                       Estoque: {Number(currentBonusDice.mental || 0)}
                     </span>
@@ -4282,7 +4290,7 @@ export function SheetContainer({
                   />
                   <div>
                     <span className="block text-xs font-bold text-white">
-                      🔧 Ação: Manutenção
+                      <Icon name="wrench" /> Ação: Manutenção
                     </span>
                     <span className="text-[11px] text-zinc-400">
                       Conserta/recarrega item, fabrica pacote de munição ou cria Selo Paranormal.
@@ -4294,9 +4302,9 @@ export function SheetContainer({
                   <div className="space-y-2.5 pt-2 border-t border-zinc-800/80">
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { id: 'repair', label: '🔧 Consertar / Cargas' },
-                        { id: 'ammo', label: '🔫 Fabricar Munição' },
-                        { id: 'seal', label: '🔮 Criar Selo' },
+                        { id: 'repair', label: 'Consertar / Cargas' },
+                        { id: 'ammo', label: 'Fabricar Munição' },
+                        { id: 'seal', label: 'Criar Selo' },
                       ].map((m) => (
                         <button
                           key={m.id}
@@ -4363,7 +4371,7 @@ export function SheetContainer({
                           >
                             {hasCriarSeloPower
                               ? '✓ Poder Criar Selo ativo'
-                              : '⚠️ Requer poder Criar Selo (ou autorização do Mestre)'}
+                              : 'Requer poder Criar Selo (ou autorização do Mestre)'}
                           </span>
                           <span className="font-mono text-zinc-400">
                             Selos ativos: {activeSealsCount} / {presenceCap} (PRE)
@@ -4408,7 +4416,7 @@ export function SheetContainer({
                   />
                   <div>
                     <span className="block text-xs font-bold text-white">
-                      🔍 Ação: Revisar Caso
+                      <Icon name="search" /> Ação: Revisar Caso
                     </span>
                     <span className="text-[11px] text-zinc-400">
                       Rola teste de perícia para obter pistas ou bônus na investigação
@@ -4431,7 +4439,7 @@ export function SheetContainer({
                       ))}
                     </select>
                     <span className="px-2.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono font-bold text-amber-300">
-                      🎲 {reviewSkillDice <= 0 ? '2d20(menor)' : `${reviewSkillDice}d20`}
+                      <Icon name="d20" /> {reviewSkillDice <= 0 ? '2d20(menor)' : `${reviewSkillDice}d20`}
                       {reviewSkillMod >= 0 ? `+${reviewSkillMod}` : reviewSkillMod}
                     </span>
                   </div>
@@ -4452,7 +4460,7 @@ export function SheetContainer({
                 onClick={handleApplyInterludeRecovery}
                 className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black cursor-pointer"
               >
-                ✨ Aplicar Ações de Interlúdio
+                <Icon name="sparkles" /> Aplicar Ações de Interlúdio
               </button>
             </div>
           </div>
@@ -4613,11 +4621,11 @@ export function SheetContainer({
 
         return (
           <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
-            <div className="bg-zinc-900 border-2 border-amber-500 rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
               <div className="px-6 py-4 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-                    ⬆️ Assistente Guiado de Evolução • Ordem Paranormal v1.3
+                    Evolução de NEX
                   </span>
                   <h3 className="text-xl font-black text-white">
                     Avançar Exposição ({clsObj.name}): NEX {currentNex}% → NEX {nextNex}%
@@ -4651,7 +4659,7 @@ export function SheetContainer({
                   rawSheet.characterClass !== 'mundano' && (
                     <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-amber-500/40">
                       <label className="block text-xs font-black uppercase text-amber-400">
-                        🛤️ Escolha sua Trilha de {clsObj.name} (Desbloqueia o Poder de 10% agora)
+                        <Icon name="route" /> Escolha sua Trilha de {clsObj.name} (Desbloqueia o Poder de 10% agora)
                       </label>
                       <div className="grid grid-cols-1 gap-2.5 max-h-80 overflow-y-auto pr-1">
                         {classTrails.map((t) => {
@@ -4680,7 +4688,7 @@ export function SheetContainer({
                               {p10 && (
                                 <div className="mt-2 p-2.5 rounded-lg bg-zinc-950 border border-amber-500/30">
                                   <span className="block text-[11px] font-black text-amber-300">
-                                    ⚡ Poder de 10% — {p10.name} {p10.cost > 0 ? `(${p10.cost} PE)` : '(Passivo)'}:
+                                    <Icon name="zap" /> Poder de 10% — {p10.name} {p10.cost > 0 ? `(${p10.cost} PE)` : '(Passivo)'}:
                                   </span>
                                   <p className="text-xs text-zinc-200 mt-0.5">{p10.description}</p>
                                 </div>
@@ -4710,7 +4718,7 @@ export function SheetContainer({
                   <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/50 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
-                        🛤️ Novo Poder da Trilha {selectedTrailObj.name} Desbloqueado ({nextNex}%)
+                        <Icon name="route" /> Novo Poder da Trilha {selectedTrailObj.name} Desbloqueado ({nextNex}%)
                       </span>
                       <span className="text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-700 px-2 py-0.5 rounded">
                         {unlockedTrailPowerAtThisNex.cost > 0
@@ -4732,8 +4740,8 @@ export function SheetContainer({
                   <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                     <label className="block text-xs font-black uppercase text-amber-400">
                       {milestone?.grantsVersatility
-                        ? `🛤️ Versatilidade (NEX 50%: Escolha Poder de ${clsObj.name}, Transcender ou Poder de 10% de outra Trilha)`
-                        : `✨ Escolha seu Poder de NEX ${nextNex}% (Poder de Classe ou Transcender)`}
+                        ? `Versatilidade (NEX 50%: Escolha Poder de ${clsObj.name}, Transcender ou Poder de 10% de outra Trilha)`
+                        : `Escolha seu Poder de NEX ${nextNex}% (Poder de Classe ou Transcender)`}
                     </label>
                     <div
                       className={`grid gap-2 ${
@@ -4755,7 +4763,7 @@ export function SheetContainer({
                             : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                         }`}
                       >
-                        ⚔️ Poder de {clsObj.name} (+SAN normal)
+                        <Icon name="swords" /> Poder de {clsObj.name} (+SAN normal)
                       </button>
                       <button
                         type="button"
@@ -4770,7 +4778,7 @@ export function SheetContainer({
                             : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                         }`}
                       >
-                        👁️ Transcender (Poder Paranormal)
+                        <Icon name="conhecimento" /> Transcender (Poder Paranormal)
                       </button>
                       {milestone?.grantsVersatility && classTrails.length > 1 && (
                         <button
@@ -4786,7 +4794,7 @@ export function SheetContainer({
                               : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                           }`}
                         >
-                          🛤️ 1º Poder de outra Trilha
+                          <Icon name="route" /> 1º Poder de outra Trilha
                         </button>
                       )}
                     </div>
@@ -4794,7 +4802,7 @@ export function SheetContainer({
                     {evoChoiceMode === 'transcend' && (
                       <div className="space-y-2">
                         <p className="text-[11px] text-purple-300 bg-purple-950/40 border border-purple-800/50 p-2.5 rounded-lg">
-                          ⚠️ Regra Oficial (p. 114): Ao escolher <strong>Transcender</strong>, você recebe um Poder Paranormal, mas <strong>não recebe o aumento de Sanidade</strong> deste avanço de NEX.
+                          <Icon name="warning" /> Regra Oficial (p. 114): Ao escolher <strong>Transcender</strong>, você recebe um Poder Paranormal, mas <strong>não recebe o aumento de Sanidade</strong> deste avanço de NEX.
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                           {['ALL', 'Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
@@ -4802,13 +4810,16 @@ export function SheetContainer({
                               key={el}
                               type="button"
                               onClick={() => setEvoPowerElementFilter(el)}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                                evoPowerElementFilter === el
-                                  ? 'bg-purple-600 border-purple-400 text-white'
-                                  : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                              aria-pressed={evoPowerElementFilter === el}
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                el === 'ALL'
+                                  ? evoPowerElementFilter === el
+                                    ? 'border bg-zinc-800 border-zinc-500 text-zinc-100'
+                                    : 'border bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                                  : elementChoiceClasses(el, evoPowerElementFilter === el)
                               }`}
                             >
-                              {el === 'ALL' ? 'Todos Elementos' : el}
+                              {el === 'ALL' ? 'Todos os elementos' : el}
                             </button>
                           ))}
                         </div>
@@ -4854,7 +4865,7 @@ export function SheetContainer({
                           type="text"
                           value={evoPowerSearch}
                           onChange={(e) => setEvoPowerSearch(e.target.value)}
-                          placeholder="🔎 Pesquisar poder por nome ou efeito..."
+                          placeholder="Pesquisar poder por nome ou efeito..."
                           className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
                         />
 
@@ -4913,9 +4924,7 @@ export function SheetContainer({
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-xs text-white">{pw.name}</span>
                                     {pw.metadata?.element && (
-                                      <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">
-                                        {pw.metadata.element}
-                                      </span>
+                                      <ElementBadge element={pw.metadata.element} />
                                     )}
                                   </div>
                                   <div className="flex items-center gap-1.5">
@@ -4925,7 +4934,7 @@ export function SheetContainer({
                                       </span>
                                     ) : canUpgradeAffinity ? (
                                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900 text-purple-200 border border-purple-500">
-                                        👁️ Desbloquear Afinidade
+                                        <Icon name="conhecimento" /> Desbloquear Afinidade
                                       </span>
                                     ) : (
                                       <span
@@ -4972,7 +4981,7 @@ export function SheetContainer({
                               <div className="mt-2 p-3 rounded-xl bg-zinc-900 border border-amber-500/40 space-y-2">
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="font-bold text-amber-300">
-                                    🎓 Treinamento em Perícia: Escolha até 2 perícias para evoluir
+                                    <Icon name="graduation" /> Treinamento em Perícia: Escolha até 2 perícias para evoluir
                                   </span>
                                   <span className="font-mono text-amber-200">
                                     {evoSkillTrainingPowerIds.length} / 2
@@ -5048,7 +5057,7 @@ export function SheetContainer({
                             return (
                               <div className="mt-2 p-3 rounded-xl bg-zinc-900 border border-purple-500/40 space-y-2">
                                 <label className="block text-xs font-bold text-purple-300">
-                                  🔮 Aprender Ritual: Escolha o Ritual (até {maxAprenderCircle}º Círculo)
+                                  <Icon name="sigil" /> Aprender Ritual: Escolha o Ritual (até {maxAprenderCircle}º Círculo)
                                 </label>
                                 <select
                                   value={evoExtraPowerRitualId}
@@ -5103,7 +5112,7 @@ export function SheetContainer({
                             return (
                               <div className="mt-2 p-3 rounded-xl bg-zinc-900 border border-amber-500/40 space-y-2">
                                 <label className="block text-xs font-bold text-amber-300">
-                                  👁️ Expansão de Conhecimento: Escolha 1 Poder de Outra Classe
+                                  <Icon name="conhecimento" /> Expansão de Conhecimento: Escolha 1 Poder de Outra Classe
                                 </label>
                                 <select
                                   value={evoExpansaoPowerId}
@@ -5129,7 +5138,7 @@ export function SheetContainer({
                 {milestone?.grantsAttributeIncrease && (
                   <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                     <label className="block text-xs font-black uppercase text-amber-400">
-                      📈 Aumento de Atributo (+1 ponto, máx. 5)
+                      <Icon name="trending" /> Aumento de Atributo (+1 ponto, máx. 5)
                     </label>
                     <div className="grid grid-cols-5 gap-2">
                       {(['agi', 'for', 'int', 'pre', 'vig'] as const).map((k) => {
@@ -5159,7 +5168,7 @@ export function SheetContainer({
                   <div className="space-y-2.5 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <label className="block text-xs font-black uppercase text-amber-400">
-                        🎓 Grau de Treinamento ({nextNex >= 70 ? 'Expert +15' : 'Veterano +10'}): Escolha até {maxSkillUpgrades} perícias ({clsObj.trainingUpgradeBase} da classe + {Math.max(0, effIntForTraining)} INT)
+                        <Icon name="graduation" /> Grau de Treinamento ({nextNex >= 70 ? 'Expert +15' : 'Veterano +10'}): Escolha até {maxSkillUpgrades} perícias ({clsObj.trainingUpgradeBase} da classe + {Math.max(0, effIntForTraining)} INT)
                       </label>
                       <span
                         className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded border ${
@@ -5215,18 +5224,22 @@ export function SheetContainer({
                 {milestone?.grantsAffinity && (
                   <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-purple-500/40">
                     <label className="block text-xs font-black uppercase text-purple-300">
-                      👁️ Afinidade com Elemento Paranormal (NEX 50%)
+                      <Icon name="conhecimento" /> Afinidade com Elemento Paranormal (NEX 50%)
                     </label>
-                    <select
-                      value={evoAffinity}
-                      onChange={(e) => setEvoAffinity(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-500/40 text-sm text-white"
-                    >
-                      <option value="Sangue">🩸 Sangue</option>
-                      <option value="Morte">💀 Morte</option>
-                      <option value="Conhecimento">👁️ Conhecimento</option>
-                      <option value="Energia">⚡ Energia</option>
-                    </select>
+                    <div role="radiogroup" aria-label="Elemento de afinidade" className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                        <button
+                          key={el}
+                          type="button"
+                          role="radio"
+                          aria-checked={evoAffinity === el}
+                          onClick={() => setEvoAffinity(el)}
+                          className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 ${elementChoiceClasses(el, evoAffinity === el)}`}
+                        >
+                          <Icon name={el.toLowerCase()} size={15} /> {el}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -5235,7 +5248,7 @@ export function SheetContainer({
                   <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-purple-500/40">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <label className="block text-xs font-black uppercase text-purple-300">
-                        🔮 Escolhido pelo Outro Lado: Escolha +1 Novo Ritual (Até {maxCircleUnlocked}º Círculo)
+                        <Icon name="sigil" /> Escolhido pelo Outro Lado: Escolha +1 Novo Ritual (Até {maxCircleUnlocked}º Círculo)
                       </label>
                       {evoNewRitualId && (
                         <span className="text-xs font-bold text-emerald-400">
@@ -5249,7 +5262,7 @@ export function SheetContainer({
                         type="text"
                         value={evoRitualSearch}
                         onChange={(e) => setEvoRitualSearch(e.target.value)}
-                        placeholder="🔎 Pesquisar ritual por nome ou efeito..."
+                        placeholder="Pesquisar ritual por nome ou efeito..."
                         className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-purple-500"
                       />
                       <div className="flex flex-wrap gap-1">
@@ -5278,13 +5291,16 @@ export function SheetContainer({
                           key={el}
                           type="button"
                           onClick={() => setEvoRitualElementFilter(el)}
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
-                            evoRitualElementFilter === el
-                              ? 'bg-amber-600 border-amber-400 text-white'
-                              : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                          aria-pressed={evoRitualElementFilter === el}
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            el === 'ALL'
+                              ? evoRitualElementFilter === el
+                                ? 'border bg-zinc-800 border-zinc-500 text-zinc-100'
+                                : 'border bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                              : elementChoiceClasses(el, evoRitualElementFilter === el)
                           }`}
                         >
-                          {el === 'ALL' ? 'Todos Elementos' : el}
+                          {el === 'ALL' ? 'Todos os elementos' : el}
                         </button>
                       ))}
                     </div>
@@ -5294,7 +5310,7 @@ export function SheetContainer({
                         <div className="flex items-center justify-between">
                           <div>
                             <span className="text-[10px] font-black uppercase text-amber-400">
-                              🔮 Escolha Obrigatória do Ritual
+                              <Icon name="sigil" /> Escolha Obrigatória do Ritual
                             </span>
                             <h5 className="text-xs font-black text-white">
                               De qual elemento você quer aprender &quot;Amaldiçoar Arma&quot;?
@@ -5311,10 +5327,10 @@ export function SheetContainer({
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           {(
                             [
-                              { el: 'Sangue', icon: '🩸', color: 'bg-red-900/70 hover:bg-red-700 border-red-500 text-red-100' },
-                              { el: 'Morte', icon: '💀', color: 'bg-zinc-900 hover:bg-zinc-700 border-zinc-400 text-zinc-100' },
-                              { el: 'Conhecimento', icon: '👁️', color: 'bg-amber-900/70 hover:bg-amber-700 border-amber-400 text-amber-100' },
-                              { el: 'Energia', icon: '⚡', color: 'bg-purple-900/70 hover:bg-purple-700 border-purple-400 text-purple-100' },
+                              { el: 'Sangue', icon: 'sangue' },
+                              { el: 'Morte', icon: 'morte' },
+                              { el: 'Conhecimento', icon: 'conhecimento' },
+                              { el: 'Energia', icon: 'energia' },
                             ] as const
                           ).map((opt) => {
                             const hasThisEl = characterAbilities.some((ab) =>
@@ -5329,13 +5345,9 @@ export function SheetContainer({
                                   setEvoNewRitualId(`ord-rit-amaldicoar-arma:${opt.el}`);
                                   setEvoShowAmaldicoarPrompt(false);
                                 }}
-                                className={`py-2 px-2.5 rounded-lg border font-black text-xs transition flex items-center justify-center gap-1.5 ${
-                                  hasThisEl
-                                    ? 'bg-zinc-950 border-zinc-800 text-zinc-600 cursor-not-allowed'
-                                    : `${opt.color} cursor-pointer`
-                                }`}
+                                className={`py-2 px-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${elementChoiceClasses(opt.el, false)}`}
                               >
-                                <span>{opt.icon}</span>
+                                <Icon name={opt.icon} size={16} />
                                 <span>{opt.el}</span>
                                 {hasThisEl && <span>(Já tem)</span>}
                               </button>
@@ -5384,15 +5396,14 @@ export function SheetContainer({
                                   {r.name}
                                   {pickedElement ? ` (${pickedElement})` : ''}
                                 </span>
-                                <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">
-                                  {r.metadata?.circle || 1}º Círculo • {r.metadata?.element || 'Paranormal'}
-                                </span>
+                                <span className="text-xs text-zinc-400 trpg-num">{r.metadata?.circle || 1}º círculo</span>
+                                <ElementBadge element={r.metadata?.element || 'Paranormal'} />
                                 <span className="text-[10px] font-mono bg-blue-950 text-blue-300 border border-blue-800 px-1.5 py-0.5 rounded">
                                   {r.cost} PE
                                 </span>
                                 {r.metadata?.damageFormula && (
                                   <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-1.5 py-0.5 rounded">
-                                    🎲 {r.metadata.damageFormula}
+                                    <Icon name="d20" /> {r.metadata.damageFormula}
                                   </span>
                                 )}
                               </div>
@@ -5423,7 +5434,7 @@ export function SheetContainer({
                   <div className="px-6 py-4 bg-zinc-950 border-t border-zinc-800 space-y-2.5">
                     {evoMissingRequirements.length > 0 && (
                       <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-500/60 text-xs text-amber-200 font-semibold">
-                        ⚠️ Pendente antes de avançar: {evoMissingRequirements.join(' • ')}
+                        <Icon name="warning" /> Pendente antes de avançar: {evoMissingRequirements.join(' • ')}
                       </div>
                     )}
                     <div className="flex justify-end gap-3">
@@ -5444,7 +5455,7 @@ export function SheetContainer({
                             : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
                         }`}
                       >
-                        ✅ Confirmar Evolução para NEX {nextNex}%
+                        <Icon name="check-circle" /> Confirmar Evolução para NEX {nextNex}%
                       </button>
                     </div>
                   </div>
@@ -5460,7 +5471,7 @@ export function SheetContainer({
         <div className="bg-indigo-950/60 border border-indigo-500/70 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-indigo-950/40">
           <div>
             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300 block">
-              🌙 Cena de Interlúdio Liberada
+              <Icon name="moon" /> Cena de Interlúdio Liberada
             </span>
             <p className="text-sm font-bold text-white">
               O Mestre iniciou um Interlúdio para você! (Descanso:{' '}
@@ -5481,7 +5492,7 @@ export function SheetContainer({
             onClick={() => handleOpenInterludeModal(rawSheet.pendingInterlude.comfort)}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition cursor-pointer shadow"
           >
-            🌙 Escolher Ações de Interlúdio
+            <Icon name="moon" /> Escolher Ações de Interlúdio
           </button>
         </div>
       )}

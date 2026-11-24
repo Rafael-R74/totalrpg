@@ -1,6 +1,7 @@
 import { MonitorDirectorState, CampaignMerchant } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 
+import { Icon } from '../ui/Icon';
 interface MonitorDirectorPanelProps {
   campaignId: string;
   director: MonitorDirectorState;
@@ -20,46 +21,43 @@ export function MonitorDirectorPanel({
   }
 
   return (
-    <div className="bg-zinc-900 border border-amber-500/40 rounded-2xl p-5 flex flex-col gap-5 shadow-xl">
+    <div className="trpg-card p-5 flex flex-col gap-5">
       <div className="flex flex-wrap justify-between items-center gap-4 border-b border-zinc-800 pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <h3 className="text-sm font-extrabold uppercase tracking-wider text-amber-400">
-              🖥️ Diretor do 2º Monitor (Tela Pública dos Jogadores)
-            </h3>
-          </div>
-          <p className="text-xs text-zinc-400 mt-1">
-            Esquerda da TV: Grupo de Jogadores • Direita da TV: Ameaças em Luta e/ou Mercador Ativo • Centro: Projeções!
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
+            <Icon name="tv" size={18} /> Tela da TV
+          </h3>
+          <p className="text-sm text-zinc-400 mt-1 max-w-[60ch]">
+            O que os jogadores veem: o grupo à esquerda, ameaças ou a loja à direita e suas projeções no centro.
           </p>
         </div>
 
         <button
           type="button"
           onClick={handleOpenSecondMonitorWindow}
-          className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-amber-900/40 flex items-center gap-2"
+          className="trpg-btn-primary"
         >
-          <span>🖥️ Abrir Tela do 2º Monitor</span>
-          <span className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded font-mono">Nova Janela ↗</span>
+          <Icon name="tv" size={17} /> Abrir tela da TV
+          <span className="text-xs font-normal opacity-80">em nova janela</span>
         </button>
       </div>
 
       {director.activeProjection && (
-        <div className="bg-amber-950/50 border-2 border-amber-500 p-4 rounded-xl flex justify-between items-center gap-4">
+        <div className="bg-amber-950/40 border border-amber-700 p-4 rounded-xl flex flex-wrap justify-between items-center gap-4">
           <div>
-            <span className="text-[10px] font-mono uppercase text-amber-300 font-bold">
-              🔍 Projeção em Destaque Ativa no 2º Monitor ({director.activeProjection.type.toUpperCase()})
+            <span className="text-sm text-amber-200 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" /> Projetando na TV agora
             </span>
-            <h4 className="text-base font-extrabold text-white">
+            <h4 className="text-lg font-semibold text-zinc-100">
               {director.activeProjection.title}
             </h4>
           </div>
           <button
             type="button"
             onClick={() => onChangeDirector({ ...director, activeProjection: null })}
-            className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-xl text-xs font-extrabold cursor-pointer"
+            className="trpg-btn-secondary trpg-btn-sm"
           >
-            ✕ Encerrar Projeção na TV
+            <Icon name="x" size={15} /> Parar projeção
           </button>
         </div>
       )}
@@ -68,9 +66,9 @@ export function MonitorDirectorPanel({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-zinc-950 border border-zinc-800 p-4 rounded-xl">
         <div className="flex flex-col justify-between gap-2">
           <span className="text-xs font-bold text-zinc-300">
-            ⚔️ Barra de Turnos & Bloco de Ameaças no Combate
+            <Icon name="swords" /> Turnos e ameaças no combate
           </span>
-          <label className="flex items-center gap-2 text-xs text-amber-400 font-semibold cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-zinc-200 cursor-pointer">
             <input
               type="checkbox"
               checked={director.showCombatTracker}
@@ -78,20 +76,20 @@ export function MonitorDirectorPanel({
                 onChangeDirector({ ...director, showCombatTracker: e.target.checked })
               }
             />
-            Exibir Barra de Turnos e Bloco Lateral de Ameaças quando houver combate
+            Mostrar a ordem de turnos e as ameaças durante o combate
           </label>
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-bold text-zinc-300">
-            👹 Regra de Visibilidade do PV das Ameaças (No Topo e nos Blocos de Luta):
+            <Icon name="ghost" /> Vida das ameaças na TV
           </label>
           <div className="grid grid-cols-3 gap-1.5">
             {(
               [
-                { id: 'narrative', label: '🎭 Narrativo' },
-                { id: 'exact', label: '🔢 PV Exato' },
-                { id: 'hidden', label: '🔒 Oculto' },
+                { id: 'narrative', label: 'Narrativo' },
+                { id: 'exact', label: 'PV Exato' },
+                { id: 'hidden', label: 'Oculto' },
               ] as const
             ).map((opt) => (
               <button
@@ -102,8 +100,8 @@ export function MonitorDirectorPanel({
                 }
                 className={`py-2 px-2 rounded-lg text-xs font-extrabold border transition cursor-pointer ${
                   director.enemyHpVisibility === opt.id
-                    ? 'bg-red-700 border-red-400 text-white shadow'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                    ? 'bg-zinc-800 border-zinc-500 text-zinc-100'
+                    : 'bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-100'
                 }`}
               >
                 {opt.label}
@@ -117,7 +115,7 @@ export function MonitorDirectorPanel({
       <div className="bg-zinc-950 border border-blue-900/50 p-4 rounded-xl flex flex-col gap-3">
         <div className="flex justify-between items-center">
           <span className="text-xs font-bold text-blue-400 uppercase">
-            🪙 Exibir Mercador no Lado Direito do 2º Monitor:
+            <Icon name="coins" /> Exibir Mercador no Lado Direito do 2º Monitor:
           </span>
           {director.activeMerchantId && (
             <button
@@ -132,7 +130,7 @@ export function MonitorDirectorPanel({
 
         {merchants.length === 0 ? (
           <p className="text-xs text-zinc-500">
-            Nenhum mercador criado na aba "🎒 Itens & Mercadores".
+            Nenhum mercador criado na aba "<Icon name="backpack" /> Itens & Mercadores".
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -154,7 +152,7 @@ export function MonitorDirectorPanel({
                       : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                   }`}
                 >
-                  🪙 {m.name} ({m.stock.length} itens) {isSelected ? '• NA TV' : ''}
+                  <Icon name="coins" /> {m.name} ({m.stock.length} itens) {isSelected ? '• NA TV' : ''}
                 </button>
               );
             })}
@@ -166,7 +164,7 @@ export function MonitorDirectorPanel({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col gap-3">
           <span className="text-xs font-bold text-amber-400 uppercase">
-            🌄 Ambientação da Cena Atual
+            Ambientação da Cena Atual
           </span>
           <input
             type="text"
@@ -191,7 +189,7 @@ export function MonitorDirectorPanel({
 
         <div className="bg-zinc-950 border border-purple-900/50 p-4 rounded-xl flex flex-col justify-between gap-3">
           <span className="text-xs font-bold text-purple-400 uppercase">
-            🖼️ Projetar Imagem / Mapa / Pista Livre
+            Projetar Imagem / Mapa / Pista Livre
           </span>
           <input
             type="text"
@@ -221,7 +219,7 @@ export function MonitorDirectorPanel({
             }
             className="w-full py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-xl text-xs font-extrabold cursor-pointer"
           >
-            🖥️ Projetar Imagem no 2º Monitor
+            <Icon name="monitor" /> Projetar Imagem no 2º Monitor
           </button>
         </div>
       </div>

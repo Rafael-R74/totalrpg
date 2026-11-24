@@ -17,4 +17,3 @@ apps/web/src/components/dice/DiceLab.tsx
 # Local Content Packs (BYOC - textos de livros de regras fora do Git)
 data/packs/*.local.json
 data/packs/*.pack.json
-

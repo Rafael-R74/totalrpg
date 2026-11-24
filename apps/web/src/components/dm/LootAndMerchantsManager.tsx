@@ -15,6 +15,7 @@ import {
 import { DMScreenCharacter } from '../../services/api';
 import { ImageUploadField } from '../ImageUploadField';
 
+import { Icon } from '../ui/Icon';
 export interface CampaignStoredItem {
   id: string;
   item: RPGItem;
@@ -373,11 +374,11 @@ export function LootAndMerchantsManager({
           <div className="bg-zinc-900 border border-amber-500/70 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[85vh]">
             <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
               <div>
-                <h3 className="text-lg font-extrabold text-amber-500">
-                  📚 Puxar Item ou Arma do Compêndio
+                <h3 className="text-lg font-semibold text-zinc-100">
+                  <Icon name="library" /> Puxar Item ou Arma do Compêndio
                 </h3>
                 <p className="text-xs text-zinc-400">
-                  Pesquise no catálogo oficial do sistema para guardar no Bloco de Itens da sua aventura.
+                  Pesquise no catálogo oficial do sistema para guardar nos itens da aventura.
                 </p>
               </div>
               <button
@@ -400,7 +401,7 @@ export function LootAndMerchantsManager({
                       : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  🎒 Equipamentos Normais
+                  <Icon name="backpack" /> Equipamentos Normais
                 </button>
                 <button
                   type="button"
@@ -411,7 +412,7 @@ export function LootAndMerchantsManager({
                       : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  👁️ Equipamentos Paranormais & Amaldiçoados
+                  <Icon name="conhecimento" /> Equipamentos Paranormais & Amaldiçoados
                 </button>
               </div>
             )}
@@ -421,7 +422,7 @@ export function LootAndMerchantsManager({
               autoFocus
               value={vaultSearchQuery}
               onChange={(e) => setVaultSearchQuery(e.target.value)}
-              placeholder="🔍 Pesquisar arma, equipamento ou proteção..."
+              placeholder="Pesquisar arma, equipamento ou proteção..."
               className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
             />
 
@@ -441,7 +442,7 @@ export function LootAndMerchantsManager({
                         <span className="text-sm font-bold text-white">{entry.name}</span>
                         {entry.metadata?.damageFormula && (
                           <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded">
-                            ⚔️ {entry.metadata.damageFormula}
+                            <Icon name="swords" /> {entry.metadata.damageFormula}
                           </span>
                         )}
                         <span className="text-[10px] font-mono text-zinc-500">
@@ -473,7 +474,7 @@ export function LootAndMerchantsManager({
             <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
               <div>
                 <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">
-                  🪙 Abastecer Loja do Mercador
+                  <Icon name="coins" /> Abastecer Loja do Mercador
                 </span>
                 <h3 className="text-lg font-extrabold text-white">
                   Adicionar Estoque em: {activeMerchantForModal.name}
@@ -498,7 +499,7 @@ export function LootAndMerchantsManager({
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
-                🎒 Itens da Aventura ({campaignItems.length})
+                <Icon name="backpack" /> Itens da Aventura ({campaignItems.length})
               </button>
               <button
                 type="button"
@@ -509,7 +510,7 @@ export function LootAndMerchantsManager({
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
-                📚 Itens do Compêndio
+                <Icon name="library" /> Itens do Compêndio
               </button>
             </div>
 
@@ -524,7 +525,7 @@ export function LootAndMerchantsManager({
                       : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  🎒 Equipamentos Normais
+                  <Icon name="backpack" /> Equipamentos Normais
                 </button>
                 <button
                   type="button"
@@ -535,7 +536,7 @@ export function LootAndMerchantsManager({
                       : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  👁️ Equipamentos Paranormais & Amaldiçoados
+                  <Icon name="conhecimento" /> Equipamentos Paranormais & Amaldiçoados
                 </button>
               </div>
             )}
@@ -549,7 +550,7 @@ export function LootAndMerchantsManager({
                   type="text"
                   value={stockSearchQuery}
                   onChange={(e) => setStockSearchQuery(e.target.value)}
-                  placeholder="🔍 Digite o nome do item..."
+                  placeholder="Digite o nome do item..."
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
                 />
               </div>
@@ -583,7 +584,7 @@ export function LootAndMerchantsManager({
               {stockModalTab === 'adventure' ? (
                 filteredAdventureForStock.length === 0 ? (
                   <p className="text-xs text-zinc-500 text-center py-8">
-                    Nenhum item encontrado no Bloco de Itens da Aventura.
+                    Nenhum item com esse nome nos itens da aventura.
                   </p>
                 ) : (
                   filteredAdventureForStock.map((stored) => (
@@ -633,7 +634,7 @@ export function LootAndMerchantsManager({
                       <span className="text-sm font-bold text-white">{entry.name}</span>
                       {entry.metadata?.damageFormula && (
                         <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-1.5 py-0.5 rounded ml-2">
-                          ⚔️ {entry.metadata.damageFormula}
+                          <Icon name="swords" /> {entry.metadata.damageFormula}
                         </span>
                       )}
                       <p className="text-xs text-zinc-400 mt-0.5">{entry.description}</p>
@@ -705,7 +706,7 @@ export function LootAndMerchantsManager({
             className="bg-zinc-900 border border-blue-500 rounded-2xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-4"
           >
             <h3 className="text-base font-extrabold text-white">
-              ✏️ Editar Item do Estoque
+              <Icon name="pencil" /> Editar Item do Estoque
             </h3>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Nome do Item na Loja</label>
@@ -772,14 +773,14 @@ export function LootAndMerchantsManager({
                   <img
                     src={itemToGiveModal.stored.item.imageUrl}
                     alt={itemToGiveModal.stored.item.name}
-                    className="w-20 h-20 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0 bg-zinc-950"
+                    className="w-20 h-20 rounded-2xl object-cover border border-zinc-700 shadow-lg shrink-0 bg-zinc-950"
                   />
                 )}
                 <div>
                   <span className="text-[10px] font-mono uppercase text-amber-400 font-bold">
                     {itemToGiveModal.fromMerchant
-                      ? '🪙 Venda / Entrega de Mercador (Silenciosa)'
-                      : '🎁 Entregar Recompensa da Aventura (Com Modal de Loot)'}
+                      ? 'Venda / Entrega de Mercador (Silenciosa)'
+                      : 'Entregar Recompensa da Aventura (Com Modal de Loot)'}
                   </span>
                   <h3 className="text-lg font-extrabold text-white mt-0.5">
                     {itemToGiveModal.stored.item.name}
@@ -886,8 +887,8 @@ export function LootAndMerchantsManager({
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 shadow-lg">
         <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
           <div>
-            <h3 className="text-sm font-extrabold uppercase tracking-wider text-amber-500">
-              🎒 Bloco de Itens & Pistas da Aventura ({campaignItems.length})
+            <h3 className="text-base font-semibold text-zinc-100">
+              <Icon name="backpack" /> Itens e pistas ({campaignItems.length})
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
               Crie itens com imagem opcional, projete-os no 2º Monitor ou entregue aos jogadores!
@@ -903,7 +904,7 @@ export function LootAndMerchantsManager({
               }}
               className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-zinc-700 rounded-xl text-xs font-bold transition cursor-pointer"
             >
-              📚 Puxar do Compêndio
+              <Icon name="library" /> Puxar do Compêndio
             </button>
 
             <button
@@ -928,8 +929,8 @@ export function LootAndMerchantsManager({
             onSubmit={handleSaveCampaignItem}
             className="bg-zinc-950 border border-amber-800/60 p-4 rounded-xl flex flex-col gap-3"
           >
-            <h4 className="text-xs font-bold uppercase text-amber-400">
-              {editingStoredItemId ? `✏️ Editando Item: ${itemName}` : '🛠️ Novo Item da Aventura'}
+            <h4 className="text-sm font-semibold text-zinc-100">
+              {editingStoredItemId ? `Editando Item: ${itemName}` : 'Novo Item da Aventura'}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               <div className="sm:col-span-2">
@@ -1018,18 +1019,18 @@ export function LootAndMerchantsManager({
                           <img
                             src={stored.item.imageUrl}
                             alt={stored.item.name}
-                            className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-amber-500/60 shadow-lg shrink-0 bg-zinc-900"
+                            className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border border-zinc-700 shadow-lg shrink-0 bg-zinc-900"
                           />
                         ) : (
                           <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-3xl shrink-0">
-                            {stored.attack ? '⚔️' : '🎒'}
+                            <Icon name={stored.attack ? 'swords' : 'backpack'} />
                           </div>
                         )}
                         <div className="min-w-0">
                           <h4 className="font-bold text-base text-white truncate">{stored.item.name}</h4>
                           {stored.attack && (
                             <span className="inline-block text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded mt-1">
-                              ⚔️ Dano: {stored.attack.damageFormula}
+                              <Icon name="swords" /> Dano: {stored.attack.damageFormula}
                             </span>
                           )}
                           {stored.item.description && (
@@ -1054,7 +1055,7 @@ export function LootAndMerchantsManager({
                         }}
                         className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition cursor-pointer"
                       >
-                        🎁 Entregar
+                        <Icon name="gift" /> Entregar
                       </button>
 
                       <button
@@ -1078,7 +1079,7 @@ export function LootAndMerchantsManager({
                         }`}
                         title="Exibir este item em destaque no 2º Monitor"
                       >
-                        {isProjected ? '🖥️ Sair' : '🖥️ TV'}
+                        {isProjected ? 'Sair' : 'TV'}
                       </button>
 
                       <button
@@ -1086,7 +1087,7 @@ export function LootAndMerchantsManager({
                         onClick={() => handleStartEditStoredItem(stored)}
                         className="px-2 py-1.5 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded-lg text-xs font-bold cursor-pointer"
                       >
-                        ✏️
+                        <Icon name="pencil" />
                       </button>
                       <button
                         type="button"
@@ -1110,11 +1111,11 @@ export function LootAndMerchantsManager({
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 shadow-lg">
         <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
           <div>
-            <h3 className="text-sm font-extrabold uppercase tracking-wider text-blue-400">
-              🪙 Bloco de Mercadores & Lojas ({merchants.length})
+            <h3 className="text-base font-semibold text-zinc-100">
+              <Icon name="coins" /> Lojas e mercadores ({merchants.length})
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Clique em "🖥️ Abrir no 2º Monitor" em qualquer Mercador para exibi-lo no lado direito da TV!
+              Clique em "<Icon name="monitor" /> Abrir no 2º Monitor" em qualquer Mercador para exibi-lo no lado direito da TV!
             </p>
           </div>
 
@@ -1141,7 +1142,7 @@ export function LootAndMerchantsManager({
           >
             <div className="flex-1 w-full">
               <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                {editingMerchantId ? '✏️ Editando Nome do Mercador' : 'Nome do Mercador / Loja'}
+                {editingMerchantId ? 'Editando Nome do Mercador' : 'Nome do Mercador / Loja'}
               </label>
               <input
                 type="text"
@@ -1190,7 +1191,7 @@ export function LootAndMerchantsManager({
                   <div className="flex flex-col gap-3">
                     <div className="flex justify-between items-start border-b border-zinc-800 pb-2.5 gap-2">
                       <div>
-                        <h4 className="font-extrabold text-base text-white">🪙 {merchant.name}</h4>
+                        <h4 className="font-extrabold text-base text-white"><Icon name="coins" /> {merchant.name}</h4>
                         {merchant.description && (
                           <p className="text-xs text-zinc-400">{merchant.description}</p>
                         )}
@@ -1206,14 +1207,14 @@ export function LootAndMerchantsManager({
                           }`}
                           title="Exibir esta loja no lado direito do 2º Monitor"
                         >
-                          {isShowingOnMonitor ? '🖥️ Na TV (Fechar)' : '🖥️ Abrir no 2º Monitor'}
+                          {isShowingOnMonitor ? 'Na TV (Fechar)' : 'Abrir no 2º Monitor'}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleStartEditMerchant(merchant)}
                           className="px-2 py-1 bg-zinc-800 hover:bg-blue-600 text-zinc-300 hover:text-white rounded text-xs font-bold cursor-pointer"
                         >
-                          ✏️
+                          <Icon name="pencil" />
                         </button>
                         <button
                           type="button"
@@ -1250,7 +1251,7 @@ export function LootAndMerchantsManager({
                                   />
                                 ) : (
                                   <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-lg shrink-0">
-                                    {st.attack ? '⚔️' : '🎒'}
+                                    <Icon name={st.attack ? 'swords' : 'backpack'} />
                                   </div>
                                 )}
                                 <div className="truncate">
@@ -1289,7 +1290,7 @@ export function LootAndMerchantsManager({
                                   }}
                                   className="px-1.5 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white rounded text-[10px] cursor-pointer"
                                 >
-                                  ✏️
+                                  <Icon name="pencil" />
                                 </button>
                                 <button
                                   type="button"

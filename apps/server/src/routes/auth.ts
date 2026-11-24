@@ -1,11 +1,35 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import fs from 'node:fs';
+import path from 'node:path';
 import { prisma } from '../prisma';
+import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
 
 export const authRouter = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const USER_PREFS_FILE = path.resolve(
+  __dirname,
+  '../../../../data/packs/user-ui-preferences.local.json'
+);
+
+function readAllUserPrefs(): Record<string, unknown> {
+  try {
+    if (!fs.existsSync(USER_PREFS_FILE)) return {};
+    return JSON.parse(fs.readFileSync(USER_PREFS_FILE, 'utf-8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAllUserPrefs(data: Record<string, unknown>) {
+  const dir = path.dirname(USER_PREFS_FILE);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(USER_PREFS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
 
 // 1. Rota de cadastro
 authRouter.post('/register', async (req, res) => {
@@ -113,5 +137,38 @@ authRouter.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Erro no login:', error);
     return res.status(500).json({ error: 'Erro interno ao realizar login.' });
+  }
+});
+
+// 3. Preferências visuais do usuário (paleta, direção de arte e conforto visual)
+authRouter.get('/preferences', authMiddleware as any, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Não autenticado.' });
+    }
+    const all = readAllUserPrefs();
+    return res.json({ preferences: all[req.userId] || null });
+  } catch (error) {
+    console.error('Erro ao ler preferências visuais:', error);
+    return res.status(500).json({ error: 'Erro ao carregar preferências.' });
+  }
+});
+
+authRouter.put('/preferences', authMiddleware as any, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Não autenticado.' });
+    }
+    const { preferences } = req.body;
+    if (!preferences || typeof preferences !== 'object') {
+      return res.status(400).json({ error: 'Objeto de preferências inválido.' });
+    }
+    const all = readAllUserPrefs();
+    all[req.userId] = preferences;
+    writeAllUserPrefs(all);
+    return res.json({ message: 'Preferências salvas com sucesso.', preferences });
+  } catch (error) {
+    console.error('Erro ao salvar preferências visuais:', error);
+    return res.status(500).json({ error: 'Erro ao salvar preferências.' });
   }
 });

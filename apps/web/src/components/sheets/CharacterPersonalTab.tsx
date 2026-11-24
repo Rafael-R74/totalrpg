@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CharacterPersonalProfile, SystemId } from '@totalrpg/shared';
 
+import { Icon } from '../ui/Icon';
 interface CharacterPersonalTabProps {
   system: SystemId;
   personalProfile: CharacterPersonalProfile;
@@ -32,42 +33,42 @@ const LONG_FIELDS: Array<{
   {
     key: 'appearance',
     label: 'Aparência Física & Traços Marcantes',
-    icon: '🪞',
+    icon: 'user',
     placeholder: 'Cicatrizes, vestuário habitual, expressão, postura, marcas paranormais...',
     rows: 3,
   },
   {
     key: 'personality',
     label: 'Personalidade, Manias & Medos',
-    icon: '🧠',
+    icon: 'brain',
     placeholder: 'Como reage sob pressão, virtudes, defeitos, fobias e hábitos...',
     rows: 3,
   },
   {
     key: 'backstory',
     label: 'História / Backstory',
-    icon: '📖',
+    icon: 'book',
     placeholder: 'Passado do personagem, primeiro contato com o Outro Lado e entrada na Ordem...',
     rows: 5,
   },
   {
     key: 'goals',
     label: 'Objetivos & Motivações',
-    icon: '🎯',
+    icon: 'target',
     placeholder: 'O que move o personagem a arriscar a vida nas missões...',
     rows: 3,
   },
   {
     key: 'bonds',
     label: 'Pessoas & Vínculos Importantes',
-    icon: '🤝',
+    icon: 'handshake',
     placeholder: 'Familiares, contatos, aliados, rivais ou pessoas desaparecidas...',
     rows: 3,
   },
   {
     key: 'personalNotes',
     label: 'Diário & Anotações Pessoais',
-    icon: '📝',
+    icon: 'pencil',
     placeholder: 'Pistas, memórias de sessão, juramentos e lembretes particulares...',
     rows: 4,
   },
@@ -98,8 +99,8 @@ export function CharacterPersonalTab({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-950 border border-zinc-800 px-4 py-3 rounded-xl">
         <div>
-          <h4 className="text-xs font-black uppercase tracking-wider text-amber-400">
-            👤 Dossiê Pessoal & História do Personagem
+          <h4 className="text-sm font-semibold text-zinc-100">
+            <Icon name="user" /> Dossiê Pessoal & História do Personagem
           </h4>
           <p className="text-[11px] text-zinc-400">
             {canEditPersonal
@@ -118,7 +119,7 @@ export function CharacterPersonalTab({
                 : 'bg-zinc-900 hover:bg-amber-600 text-amber-300 hover:text-white border-amber-700/70'
             }`}
           >
-            {isEditingProfile ? '✓ Concluir Edição' : '✏️ Editar Perfil Pessoal'}
+            {isEditingProfile ? '✓ Concluir Edição' : 'Editar Perfil Pessoal'}
           </button>
         )}
       </div>
@@ -127,7 +128,7 @@ export function CharacterPersonalTab({
       {proficiencies.length > 0 && (
         <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 mr-1">
-            🎖️ Proficiências ({system === 'ordem-paranormal' ? 'Ordem v1.3' : 'Sistema'}):
+            <Icon name="award" /> Proficiências ({system === 'ordem-paranormal' ? 'Ordem v1.3' : 'Sistema'}):
           </span>
           {proficiencies.map((p) => (
             <span
@@ -143,7 +144,7 @@ export function CharacterPersonalTab({
       {/* Bloco 1: Dados Pessoais & Identidade */}
       <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-3">
         <h5 className="text-xs font-extrabold uppercase tracking-wider text-zinc-300">
-          🪪 Identidade & Características Físicas
+          Identidade & Características Físicas
         </h5>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -187,7 +188,7 @@ export function CharacterPersonalTab({
             onClick={() => setIsEditingProfile(true)}
             className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold cursor-pointer"
           >
-            ✏️ Preencher História e Dados Pessoais
+            <Icon name="pencil" /> Preencher História e Dados Pessoais
           </button>
         </div>
       ) : (
@@ -203,7 +204,7 @@ export function CharacterPersonalTab({
                 }`}
               >
                 <label className="text-xs font-extrabold text-amber-400 flex items-center gap-1.5">
-                  <span>{field.icon}</span>
+                  <Icon name={field.icon} size={16} />
                   <span>{field.label}</span>
                 </label>
 

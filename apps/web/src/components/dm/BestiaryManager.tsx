@@ -15,6 +15,8 @@ import {
   instantiateCampaignThreatFromTemplate,
 } from '@totalrpg/shared';
 
+import { Icon } from '../ui/Icon';
+import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface BestiaryManagerProps {
   system: SystemId;
   threats: CampaignThreat[];
@@ -64,14 +66,6 @@ function formatD20Pool(diceCount: number, bonus: number): string {
   return `${diceCount}d20${modStr}`;
 }
 
-const ELEMENT_BADGE_STYLES: Record<string, string> = {
-  Sangue: 'bg-red-950/80 text-red-300 border-red-700/70',
-  Morte: 'bg-zinc-900 text-zinc-200 border-zinc-600',
-  Conhecimento: 'bg-amber-950/80 text-amber-300 border-amber-600/70',
-  Energia: 'bg-purple-950/80 text-purple-300 border-purple-600/70',
-  Medo: 'bg-cyan-950/80 text-cyan-200 border-cyan-600/70',
-  Realidade: 'bg-slate-900 text-slate-300 border-slate-700',
-};
 
 const ACTION_BADGE_STYLES: Record<ThreatActionType, string> = {
   Passiva: 'bg-zinc-800 text-zinc-300 border-zinc-700',
@@ -530,14 +524,14 @@ export function BestiaryManager({
             }
             className="px-2.5 py-1 bg-zinc-950 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded-lg text-[11px] font-mono font-bold transition cursor-pointer"
           >
-            🎯 {formatD20Pool(atk.diceCount, atk.attackBonus)}
+            <Icon name="target" /> {formatD20Pool(atk.diceCount, atk.attackBonus)}
           </button>
           <button
             type="button"
             onClick={() => handleRollAttackDamage(actorName, atk)}
             className="px-2.5 py-1 bg-zinc-950 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded-lg text-[11px] font-mono font-bold transition cursor-pointer"
           >
-            🩸 {atk.damageFormula}
+            <Icon name="sangue" /> {atk.damageFormula}
             {atk.damageType ? ` ${atk.damageType}` : ''}
             {extraLabel}
           </button>
@@ -581,7 +575,7 @@ export function BestiaryManager({
               }
               className="px-2 py-0.5 bg-zinc-950 hover:bg-red-700 text-red-300 hover:text-white border border-red-800/70 rounded text-[11px] font-mono font-bold transition cursor-pointer"
             >
-              🎲 Rolar {ab.damageFormula}
+              <Icon name="d20" /> Rolar {ab.damageFormula}
             </button>
           )}
         </div>
@@ -596,8 +590,8 @@ export function BestiaryManager({
       <div className="flex flex-col gap-3 border-b border-zinc-800 pb-4">
         <div className="flex flex-wrap justify-between items-start gap-3">
           <div>
-            <h3 className="text-sm font-extrabold uppercase tracking-wider text-red-400">
-              👹 Bestiário Oficial & Ameaças da Mesa
+            <h3 className="text-base font-semibold text-zinc-100">
+              <Icon name="ghost" /> Bestiário Oficial & Ameaças da Mesa
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
               Consulte as criaturas e NPCs do Cap. 7, envie múltiplas instâncias em 1 clique para o combate ou customize suas próprias ameaças.
@@ -610,7 +604,7 @@ export function BestiaryManager({
                 className="px-3 py-1.5 bg-zinc-950 border border-amber-700/50 rounded-xl text-xs font-mono text-zinc-300"
                 title="Soma do NEX de todos os personagens da campanha — compare com o VD das ameaças (Cap. 7)"
               >
-                ⚖️ NEX Total do Grupo:{' '}
+                <Icon name="scroll" /> NEX Total do Grupo:{' '}
                 <strong className="text-amber-400 font-extrabold">{partyTotalNex}</strong>
               </div>
             )}
@@ -643,7 +637,7 @@ export function BestiaryManager({
                   : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
               }`}
             >
-              📖 Catálogo Oficial Cap. 7 ({ORDEM_BESTIARY_THREATS.length})
+              <Icon name="book" /> Catálogo Oficial Cap. 7 ({ORDEM_BESTIARY_THREATS.length})
             </button>
             <button
               type="button"
@@ -654,7 +648,7 @@ export function BestiaryManager({
                   : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
               }`}
             >
-              👹 Ameaças Salvas na Mesa ({threats.length})
+              <Icon name="ghost" /> Ameaças Salvas na Mesa ({threats.length})
             </button>
           </div>
         )}
@@ -666,10 +660,10 @@ export function BestiaryManager({
           onSubmit={handleSaveThreat}
           className="bg-zinc-950 border border-red-900/60 p-5 rounded-2xl flex flex-col gap-5"
         >
-          <h4 className="text-sm font-bold text-red-400 uppercase">
+          <h4 className="text-sm font-semibold text-zinc-100">
             {editingThreatId
-              ? `✏️ Editando Ameaça da Mesa: ${name}`
-              : `🛠️ Construtor Completo de Criatura / NPC (${system})`}
+              ? `Editando Ameaça da Mesa: ${name}`
+              : `Construtor Completo de Criatura / NPC (${system})`}
           </h4>
 
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
@@ -834,7 +828,7 @@ export function BestiaryManager({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                  🛡️ Resistências (RD)
+                  <Icon name="shield" /> Resistências (RD)
                 </label>
                 <input
                   type="text"
@@ -846,7 +840,7 @@ export function BestiaryManager({
               </div>
               <div>
                 <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                  ✨ Imunidades
+                  <Icon name="sparkles" /> Imunidades
                 </label>
                 <input
                   type="text"
@@ -858,7 +852,7 @@ export function BestiaryManager({
               </div>
               <div>
                 <label className="block text-[10px] uppercase text-zinc-400 font-bold mb-1">
-                  💔 Vulnerabilidades
+                  <Icon name="heart-crack" /> Vulnerabilidades
                 </label>
                 <input
                   type="text"
@@ -900,7 +894,7 @@ export function BestiaryManager({
           {/* PERÍCIAS */}
           <div className="bg-zinc-900/70 border border-zinc-800 p-3.5 rounded-xl flex flex-col gap-3">
             <span className="text-xs font-bold text-amber-400">
-              🎯 Perícias e Testes de Resistência ({skills.length})
+              <Icon name="target" /> Perícias e Testes de Resistência ({skills.length})
             </span>
 
             <div className="flex flex-wrap gap-2 items-end">
@@ -967,7 +961,7 @@ export function BestiaryManager({
           <div className="bg-zinc-900/70 border border-zinc-800 p-3.5 rounded-xl flex flex-col gap-3">
             <div className="flex flex-wrap justify-between items-center gap-2">
               <span className="text-xs font-bold text-red-400">
-                ⚔️ Ataques e Ações Agressivas ({attacks.length})
+                <Icon name="swords" /> Ataques e Ações Agressivas ({attacks.length})
               </span>
 
               <select
@@ -980,7 +974,7 @@ export function BestiaryManager({
                 className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-[11px] text-amber-400"
               >
                 <option value="" disabled>
-                  📚 Importar arma/magia com dano do Compêndio...
+                  Importar arma/magia com dano do Compêndio...
                 </option>
                 {compendiumEntries
                   .filter((c) => c.metadata?.damageFormula)
@@ -1091,7 +1085,7 @@ export function BestiaryManager({
           {/* HABILIDADES ESPECIAIS E AÇÕES */}
           <div className="bg-zinc-900/70 border border-zinc-800 p-3.5 rounded-xl flex flex-col gap-3">
             <span className="text-xs font-bold text-purple-300">
-              ✨ Habilidades Passivas e Ações Especiais ({specialAbilities.length})
+              <Icon name="sparkles" /> Habilidades Passivas e Ações Especiais ({specialAbilities.length})
             </span>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
@@ -1186,7 +1180,7 @@ export function BestiaryManager({
           {isOrdem && (
             <div>
               <label className="block text-[10px] uppercase text-cyan-300 font-bold mb-1">
-                🧩 Enigma de Medo (Opcional)
+                <Icon name="puzzle" /> Enigma de Medo (Opcional)
               </label>
               <textarea
                 rows={2}
@@ -1216,8 +1210,8 @@ export function BestiaryManager({
             className="w-full py-2.5 bg-red-700 hover:bg-red-600 text-white rounded-xl text-xs font-extrabold cursor-pointer shadow-lg"
           >
             {editingThreatId
-              ? '💾 Salvar Alterações na Ameaça'
-              : '💾 Salvar Nova Ameaça na Mesa'}
+              ? 'Salvar Alterações na Ameaça'
+              : 'Salvar Nova Ameaça na Mesa'}
           </button>
         </form>
       )}
@@ -1233,7 +1227,7 @@ export function BestiaryManager({
                   type="text"
                   value={catalogSearch}
                   onChange={(e) => setCatalogSearch(e.target.value)}
-                  placeholder="🔎 Buscar por nome, ataque, habilidade, resistência ou subgrupo..."
+                  placeholder="Buscar por nome, ataque, habilidade, resistência ou subgrupo..."
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2 text-xs text-white"
                 />
               </div>
@@ -1244,7 +1238,7 @@ export function BestiaryManager({
                   onChange={(e) => setVdRangeFilter(e.target.value as any)}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200"
                 >
-                  <option value="ALL">📊 Todas as Faixas de VD</option>
+                  <option value="ALL">Todas as Faixas de VD</option>
                   <option value="10-40">VD 10 – 40 (Iniciantes)</option>
                   <option value="60-140">VD 60 – 140 (Agentes)</option>
                   <option value="160-280">VD 160 – 280 (Veteranos)</option>
@@ -1259,22 +1253,22 @@ export function BestiaryManager({
                   onChange={(e) => setCatalogSort(e.target.value as any)}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-200"
                 >
-                  <option value="vd-asc">⬆️ Ordenar por VD (Menor → Maior)</option>
-                  <option value="vd-desc">⬇️ Ordenar por VD (Maior → Menor)</option>
-                  <option value="name-asc">🔤 Ordem Alfabética (A → Z)</option>
+                  <option value="vd-asc">VD do menor para o maior</option>
+                  <option value="vd-desc">VD do maior para o menor</option>
+                  <option value="name-asc">Ordem Alfabética (A → Z)</option>
                 </select>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-1.5">
               {[
-                { id: 'ALL' as const, label: 'Todos (67)' },
-                { id: 'sangue' as const, label: '🩸 Sangue (12)' },
-                { id: 'morte' as const, label: '💀 Morte (12)' },
-                { id: 'conhecimento' as const, label: '👁️ Conhecimento (12)' },
-                { id: 'energia' as const, label: '⚡ Energia (12)' },
-                { id: 'medo' as const, label: '🌫️ Medo (1)' },
-                { id: 'realidade' as const, label: '🔫 Realidade (18)' },
+                { id: 'ALL' as const, label: 'Todos (67)', icon: 'ghost', color: '' },
+                { id: 'sangue' as const, label: 'Sangue (12)', icon: 'sangue', color: 'var(--trpg-el-sangue)' },
+                { id: 'morte' as const, label: 'Morte (12)', icon: 'morte', color: 'var(--trpg-el-morte)' },
+                { id: 'conhecimento' as const, label: 'Conhecimento (12)', icon: 'conhecimento', color: 'var(--trpg-el-conhecimento)' },
+                { id: 'energia' as const, label: 'Energia (12)', icon: 'energia', color: 'var(--trpg-el-energia)' },
+                { id: 'medo' as const, label: 'Medo (1)', icon: 'medo', color: 'var(--trpg-el-medo)' },
+                { id: 'realidade' as const, label: 'Realidade (18)', icon: 'user', color: '' },
               ].map((pill) => (
                 <button
                   key={pill.id}
@@ -1283,12 +1277,16 @@ export function BestiaryManager({
                     setGroupFilter(pill.id);
                     if (pill.id !== 'realidade') setRealitySubFilter('ALL');
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                    groupFilter === pill.id
-                      ? 'bg-red-700 text-white border-red-500 shadow'
-                      : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                  aria-pressed={groupFilter === pill.id}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5 ${
+                    pill.color
+                      ? elementChoiceClasses(pill.id, groupFilter === pill.id)
+                      : groupFilter === pill.id
+                      ? 'border bg-zinc-800 text-zinc-100 border-zinc-500'
+                      : 'border bg-transparent text-zinc-400 border-zinc-800 hover:text-zinc-100 hover:border-zinc-600'
                   }`}
                 >
+                  <Icon name={pill.icon} size={14} />
                   {pill.label}
                 </button>
               ))}
@@ -1298,10 +1296,10 @@ export function BestiaryManager({
               <div className="flex flex-wrap gap-1.5 pt-1 border-t border-zinc-800/80">
                 {[
                   { id: 'ALL', label: 'Todos da Realidade' },
-                  { id: 'Criminosos & Mercenários', label: '🗡️ Criminosos & Mercenários (5)' },
-                  { id: 'Cultistas', label: '🕯️ Cultistas (3)' },
-                  { id: 'Forças da Lei', label: '🚓 Forças da Lei (3)' },
-                  { id: 'Animais', label: '🐾 Animais (7)' },
+                  { id: 'Criminosos & Mercenários', label: 'Criminosos & Mercenários (5)' },
+                  { id: 'Cultistas', label: 'Cultistas (3)' },
+                  { id: 'Forças da Lei', label: 'Forças da Lei (3)' },
+                  { id: 'Animais', label: 'Animais (7)' },
                 ].map((sub) => (
                   <button
                     key={sub.id}
@@ -1332,8 +1330,6 @@ export function BestiaryManager({
                 const isExpanded = Boolean(expandedCatalogIds[tpl.id]);
                 const qty = catalogQtyById[tpl.id] || 1;
                 const diffBadge = getEncounterDifficultyBadge(tpl.vd, partyTotalNex);
-                const elStyle =
-                  ELEMENT_BADGE_STYLES[tpl.element] || ELEMENT_BADGE_STYLES.Realidade;
 
                 return (
                   <div
@@ -1348,23 +1344,16 @@ export function BestiaryManager({
                             <span className="px-2 py-0.5 rounded-md bg-red-950 text-red-200 border border-red-700/80 font-mono text-[11px] font-extrabold">
                               VD {tpl.vd}
                             </span>
-                            <span
-                              className={`px-2 py-0.5 rounded-md border text-[10px] font-extrabold uppercase ${elStyle}`}
-                            >
-                              {tpl.element}
-                            </span>
+                            <ElementBadge element={tpl.element} />
                             {tpl.secondaryElements.map((sec) => (
-                              <span
-                                key={sec}
-                                className="px-1.5 py-0.5 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-[10px] font-semibold"
-                              >
+                              <ElementBadge key={sec} element={sec}>
                                 +{sec}
-                              </span>
+                              </ElementBadge>
                             ))}
                             {tpl.hasEnigmaOfFear && (
-                              <span className="px-2 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-700/70 text-[10px] font-bold">
-                                🧩 Enigma de Medo
-                              </span>
+                              <ElementBadge element="Medo" showIcon={false}>
+                                <Icon name="puzzle" size={12} /> Enigma de Medo
+                              </ElementBadge>
                             )}
                             {diffBadge && (
                               <span
@@ -1375,7 +1364,7 @@ export function BestiaryManager({
                             )}
                           </div>
 
-                          <h4 className="text-base font-extrabold text-white leading-tight">
+                          <h4 className="text-xl trpg-display text-zinc-100 leading-tight">
                             {tpl.name}
                           </h4>
                           <span className="text-[11px] text-zinc-400">
@@ -1397,25 +1386,25 @@ export function BestiaryManager({
                               : 'bg-zinc-900 hover:bg-zinc-800 text-amber-400 border-zinc-700'
                           }`}
                         >
-                          {isExpanded ? '🔼 Recolher' : '🔍 Ver Ficha'}
+                          {isExpanded ? 'Recolher' : 'Ver Ficha'}
                         </button>
                       </div>
 
                       {/* RESUMO TÁTICO */}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
                         <span className="text-red-400 font-bold">
-                          ❤️ PV: {tpl.hpMax}{' '}
+                          <Icon name="heart" /> PV: {tpl.hpMax}{' '}
                           <span className="text-zinc-500 font-normal">
                             (Mach. {tpl.machucadoHp})
                           </span>
                         </span>
                         <span className="text-amber-400 font-bold">
-                          🛡️ DEF: {tpl.defense > 0 ? tpl.defense : '—'}
+                          <Icon name="shield" /> DEF: {tpl.defense > 0 ? tpl.defense : '—'}
                         </span>
                         <span className="text-zinc-300">
-                          ⚡ INI: {formatD20Pool(tpl.initiativeDice, tpl.initiativeBonus)}
+                          <Icon name="zap" /> INI: {formatD20Pool(tpl.initiativeDice, tpl.initiativeBonus)}
                         </span>
-                        <span className="text-zinc-400">🏃 {tpl.displacement}</span>
+                        <span className="text-zinc-400"><Icon name="footprints" /> {tpl.displacement}</span>
                       </div>
 
                       {/* DEFESAS PASSIVAS (RD / IMUNIDADES / VULNERABILIDADES) */}
@@ -1423,18 +1412,18 @@ export function BestiaryManager({
                         <div className="flex flex-col gap-1 bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-2.5 text-[11px]">
                           {tpl.resistances && (
                             <div className="text-zinc-300">
-                              <strong className="text-amber-400">🛡️ RD:</strong> {tpl.resistances}
+                              <strong className="text-amber-400"><Icon name="shield" /> RD:</strong> {tpl.resistances}
                             </div>
                           )}
                           {tpl.immunities && (
                             <div className="text-zinc-300">
-                              <strong className="text-cyan-300">✨ Imunidades:</strong>{' '}
+                              <strong className="text-cyan-300"><Icon name="sparkles" /> Imunidades:</strong>{' '}
                               {tpl.immunities}
                             </div>
                           )}
                           {tpl.vulnerabilities && (
                             <div className="text-zinc-300">
-                              <strong className="text-rose-400">💔 Vulnerável:</strong>{' '}
+                              <strong className="text-rose-400"><Icon name="heart-crack" /> Vulnerável:</strong>{' '}
                               {tpl.vulnerabilities}
                             </div>
                           )}
@@ -1449,7 +1438,7 @@ export function BestiaryManager({
                               key={atk.id}
                               className="px-2 py-0.5 bg-zinc-900 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-300"
                             >
-                              ⚔️ {atk.name}
+                              <Icon name="swords" /> {atk.name}
                               {atk.multiAttack ? ` ${atk.multiAttack}` : ''} ({atk.damageFormula}{' '}
                               {atk.damageType || ''})
                             </span>
@@ -1462,7 +1451,7 @@ export function BestiaryManager({
                         <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80">
                           {tpl.senses && (
                             <div className="text-[11px] text-zinc-300">
-                              <strong className="text-zinc-400 uppercase">👁️ Sentidos:</strong>{' '}
+                              <strong className="text-zinc-400 uppercase"><Icon name="conhecimento" /> Sentidos:</strong>{' '}
                               {tpl.senses}
                             </div>
                           )}
@@ -1511,7 +1500,7 @@ export function BestiaryManager({
                                   }
                                   className="px-2.5 py-1 bg-zinc-900 hover:bg-amber-600 text-amber-300 hover:text-white border border-zinc-700 rounded-lg text-xs font-mono font-bold transition cursor-pointer"
                                 >
-                                  🎲 {sk.name} ({formatD20Pool(sk.diceCount, sk.bonus)})
+                                  <Icon name="d20" /> {sk.name} ({formatD20Pool(sk.diceCount, sk.bonus)})
                                 </button>
                               ))}
                             </div>
@@ -1521,7 +1510,7 @@ export function BestiaryManager({
                           {tpl.attacks.length > 0 && (
                             <div className="flex flex-col gap-1.5">
                               <span className="text-[10px] font-extrabold uppercase tracking-wider text-red-400">
-                                ⚔️ Ataques ({tpl.attacks.length})
+                                <Icon name="swords" /> Ataques ({tpl.attacks.length})
                               </span>
                               {tpl.attacks.map((atk) => renderAttackRow(tpl.name, atk))}
                             </div>
@@ -1531,7 +1520,7 @@ export function BestiaryManager({
                           {tpl.specialAbilities.length > 0 && (
                             <div className="flex flex-col gap-1.5">
                               <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-300">
-                                ✨ Habilidades & Ações ({tpl.specialAbilities.length})
+                                <Icon name="sparkles" /> Habilidades & Ações ({tpl.specialAbilities.length})
                               </span>
                               {tpl.specialAbilities.map((ab) =>
                                 renderSpecialAbilityCard(tpl.name, ab)
@@ -1543,7 +1532,7 @@ export function BestiaryManager({
                           {tpl.enigmaOfFear && (
                             <div className="bg-cyan-950/25 border border-cyan-700/60 rounded-xl p-3">
                               <span className="block text-[10px] font-extrabold uppercase tracking-wider text-cyan-300 mb-1">
-                                🧩 Enigma de Medo
+                                <Icon name="puzzle" /> Enigma de Medo
                               </span>
                               <p className="text-[11px] text-cyan-100/90 leading-relaxed">
                                 {tpl.enigmaOfFear}
@@ -1584,7 +1573,7 @@ export function BestiaryManager({
                         onClick={() => handleSendTemplateToCombat(tpl)}
                         className="flex-1 py-2 px-3 bg-red-700 hover:bg-red-600 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow"
                       >
-                        ⚔️ Enviar {qty > 1 ? `${qty}x ` : ''}ao Combate
+                        <Icon name="swords" /> Enviar {qty > 1 ? `${qty}x ` : ''}ao Combate
                       </button>
 
                       <button
@@ -1597,7 +1586,7 @@ export function BestiaryManager({
                         }`}
                         title="Salvar cópia editável (com foto/token personalizado e controle de Enigma) nas Ameaças da Mesa"
                       >
-                        {savedFeedbackId === tpl.id ? '✅ Salva!' : '📥 Salvar na Mesa'}
+                        {savedFeedbackId === tpl.id ? 'Salva!' : 'Salvar na Mesa'}
                       </button>
                     </div>
                   </div>
@@ -1622,7 +1611,7 @@ export function BestiaryManager({
                   onClick={() => setActiveSubTab('catalog')}
                   className="px-3.5 py-1.5 bg-zinc-800 hover:bg-red-700 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
                 >
-                  📖 Explorar Catálogo Oficial Cap. 7 (67 Ameaças)
+                  <Icon name="book" /> Explorar Catálogo Oficial Cap. 7 (67 Ameaças)
                 </button>
               )}
             </div>
@@ -1633,9 +1622,6 @@ export function BestiaryManager({
                 const qty = savedQtyById[threat.id] || 1;
                 const isProjected = activeProjectionId === threat.id;
                 const isExpanded = expandedSavedIds[threat.id] ?? true;
-                const elStyle = threat.element
-                  ? ELEMENT_BADGE_STYLES[threat.element] || ELEMENT_BADGE_STYLES.Realidade
-                  : '';
 
                 return (
                   <div
@@ -1653,7 +1639,7 @@ export function BestiaryManager({
                             />
                           ) : (
                             <div className="w-16 h-16 rounded-2xl bg-red-950/50 border border-red-800/70 flex items-center justify-center text-2xl shrink-0">
-                              👹
+                              <Icon name="ghost" />
                             </div>
                           )}
                           <div className="min-w-0">
@@ -1664,11 +1650,7 @@ export function BestiaryManager({
                                 </span>
                               )}
                               {threat.element && (
-                                <span
-                                  className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase ${elStyle}`}
-                                >
-                                  {threat.element}
-                                </span>
+                                <ElementBadge element={threat.element} />
                               )}
                               {threat.size && (
                                 <span className="text-[10px] text-zinc-400">
@@ -1682,13 +1664,13 @@ export function BestiaryManager({
                             </h4>
                             <div className="flex flex-wrap items-center gap-2.5 mt-1 text-xs font-mono">
                               <span className="text-red-400 font-bold">
-                                ❤️ PV: {threat.hpMax} (Mach. {Math.floor(threat.hpMax / 2)})
+                                <Icon name="heart" /> PV: {threat.hpMax} (Mach. {Math.floor(threat.hpMax / 2)})
                               </span>
                               <span className="text-amber-400 font-bold">
-                                🛡️ DEF: {threat.defense}
+                                <Icon name="shield" /> DEF: {threat.defense}
                               </span>
                               <span className="text-zinc-400">
-                                ⚡ INI:{' '}
+                                <Icon name="zap" /> INI:{' '}
                                 {formatD20Pool(threat.initiativeDice, threat.initiativeBonus)}
                               </span>
                             </div>
@@ -1717,7 +1699,7 @@ export function BestiaryManager({
                             }`}
                             title="Exibir ou ocultar destaque desta Ameaça no 2º Monitor"
                           >
-                            {isProjected ? '🖥️ Na TV' : '🖥️ TV'}
+                            {isProjected ? 'Na TV' : 'TV'}
                           </button>
 
                           <button
@@ -1731,7 +1713,7 @@ export function BestiaryManager({
                             className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg text-xs border border-zinc-700 cursor-pointer"
                             title="Expandir ou recolher detalhes"
                           >
-                            {isExpanded ? '🔼' : '🔽'}
+                            <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} />
                           </button>
 
                           <button
@@ -1740,7 +1722,7 @@ export function BestiaryManager({
                             className="px-2 py-1 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition cursor-pointer"
                             title="Editar ameaça"
                           >
-                            ✏️
+                            <Icon name="pencil" />
                           </button>
                           <button
                             type="button"
@@ -1759,19 +1741,19 @@ export function BestiaryManager({
                         <div className="flex flex-col gap-1 bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-2.5 text-[11px]">
                           {threat.resistances && (
                             <div className="text-zinc-300">
-                              <strong className="text-amber-400">🛡️ RD:</strong>{' '}
+                              <strong className="text-amber-400"><Icon name="shield" /> RD:</strong>{' '}
                               {threat.resistances}
                             </div>
                           )}
                           {threat.immunities && (
                             <div className="text-zinc-300">
-                              <strong className="text-cyan-300">✨ Imunidades:</strong>{' '}
+                              <strong className="text-cyan-300"><Icon name="sparkles" /> Imunidades:</strong>{' '}
                               {threat.immunities}
                             </div>
                           )}
                           {threat.vulnerabilities && (
                             <div className="text-zinc-300">
-                              <strong className="text-rose-400">💔 Vulnerável:</strong>{' '}
+                              <strong className="text-rose-400"><Icon name="heart-crack" /> Vulnerável:</strong>{' '}
                               {threat.vulnerabilities}
                             </div>
                           )}
@@ -1822,7 +1804,7 @@ export function BestiaryManager({
                                   }
                                   className="px-2.5 py-1 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold transition cursor-pointer"
                                 >
-                                  🎲 {sk.name} ({formatD20Pool(sk.diceCount, sk.bonus)})
+                                  <Icon name="d20" /> {sk.name} ({formatD20Pool(sk.diceCount, sk.bonus)})
                                 </button>
                               ))}
                             </div>
@@ -1857,8 +1839,8 @@ export function BestiaryManager({
                                   }`}
                                 >
                                   {threat.enigmaSolved
-                                    ? '🔓 Enigma de Medo Resolvido!'
-                                    : '🧩 Enigma de Medo Ativo'}
+                                    ? 'Enigma de Medo Resolvido!'
+                                    : 'Enigma de Medo Ativo'}
                                 </span>
                                 <button
                                   type="button"
@@ -1870,8 +1852,8 @@ export function BestiaryManager({
                                   }`}
                                 >
                                   {threat.enigmaSolved
-                                    ? '🔒 Reativar Enigma'
-                                    : '🔓 Marcar Resolvido'}
+                                    ? 'Reativar Enigma'
+                                    : 'Marcar Resolvido'}
                                 </button>
                               </div>
                               <p className="text-[11px] text-zinc-200 leading-relaxed">
@@ -1929,7 +1911,7 @@ export function BestiaryManager({
                           }}
                           className="flex-1 py-2 bg-purple-800 hover:bg-purple-700 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow"
                         >
-                          👁️ Rolar Iniciativa & Enviar {qty > 1 ? `(${qty}x)` : ''}
+                          <Icon name="conhecimento" /> Rolar Iniciativa & Enviar {qty > 1 ? `(${qty}x)` : ''}
                         </button>
                       </div>
 
@@ -1956,7 +1938,7 @@ export function BestiaryManager({
                           }}
                           className="flex-1 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-bold transition cursor-pointer"
                         >
-                          📥 Adicionar Manualmente {qty > 1 ? `(${qty}x)` : ''}
+                          <Icon name="package" /> Adicionar Manualmente {qty > 1 ? `(${qty}x)` : ''}
                         </button>
                       </div>
                     </div>
