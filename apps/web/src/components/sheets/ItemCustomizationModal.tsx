@@ -17,6 +17,7 @@ import {
   inferOrdemItemKind,
 } from '@totalrpg/shared';
 
+import { Icon } from '../ui/Icon';
 interface ItemCustomizationModalProps {
   item: RPGItem;
   compendiumEntries: CompendiumEntryData[];
@@ -25,18 +26,18 @@ interface ItemCustomizationModalProps {
 }
 
 const KIND_LABELS: Record<string, string> = {
-  weapon_melee: '⚔️ Arma Corpo a Corpo',
-  weapon_ranged: '🏹 Arma de Disparo',
-  weapon_firearm: '🔫 Arma de Fogo',
-  ammo: '🎯 Munição',
-  protection_light: '🛡️ Proteção Leve',
-  protection_heavy: '🛡️ Proteção Pesada',
-  shield: '🛡️ Escudo',
-  accessory: '🧰 Acessório',
-  explosive: '💣 Explosivo',
-  operational: '🔧 Item Operacional',
-  paranormal: '🔮 Item Paranormal',
-  cursed_special: '👁️ Item Amaldiçoado Especial',
+  weapon_melee: 'Arma Corpo a Corpo',
+  weapon_ranged: 'Arma de Disparo',
+  weapon_firearm: 'Arma de Fogo',
+  ammo: 'Munição',
+  protection_light: 'Proteção Leve',
+  protection_heavy: 'Proteção Pesada',
+  shield: 'Escudo',
+  accessory: 'Acessório',
+  explosive: 'Explosivo',
+  operational: 'Item Operacional',
+  paranormal: 'Item Paranormal',
+  cursed_special: 'Item Amaldiçoado Especial',
 };
 
 const CAT_ROMAN = ['0', 'I', 'II', 'III', 'IV', 'V', 'VI'];
@@ -190,7 +191,7 @@ export function ItemCustomizationModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+      className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -200,8 +201,8 @@ export function ItemCustomizationModal({
         <div className="flex justify-between items-start gap-3 border-b border-zinc-800 pb-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-extrabold text-amber-400">
-                ⚙️ Customizar Equipamento: {draft.name}
+              <h3 className="text-base font-semibold text-zinc-100">
+                <Icon name="settings" /> Customizar Equipamento: {draft.name}
               </h3>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-zinc-950 border border-zinc-700 text-zinc-300">
                 {KIND_LABELS[itemKind] || itemKind}
@@ -217,12 +218,12 @@ export function ItemCustomizationModal({
               </span>
               {(draft.modifications || []).length > 0 && (
                 <span className="px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/70">
-                  🛠️ {(draft.modifications || []).length} Mod.
+                  <Icon name="hammer" /> {(draft.modifications || []).length} Mod.
                 </span>
               )}
               {(draft.curses || []).length > 0 && (
                 <span className="px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-700/70">
-                  👁️ {(draft.curses || []).length} Maldiç{(draft.curses || []).length > 1 ? 'ões' : 'ão'}
+                  <Icon name="conhecimento" /> {(draft.curses || []).length} Maldiç{(draft.curses || []).length > 1 ? 'ões' : 'ão'}
                 </span>
               )}
             </div>
@@ -242,7 +243,7 @@ export function ItemCustomizationModal({
             {isAccessory && (
               <>
                 <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400">
-                  🧰 Configuração de Acessório (Cap. 3, p. 63–64)
+                  <Icon name="briefcase" /> Configuração de Acessório (Cap. 3, p. 63–64)
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
@@ -346,7 +347,7 @@ export function ItemCustomizationModal({
             {isSelo && (
               <>
                 <span className="text-[11px] font-black uppercase tracking-wider text-purple-300">
-                  🔮 Ritual Armazenado no Selo Paranormal (Cat. = Círculo)
+                  <Icon name="sigil" /> Ritual Armazenado no Selo Paranormal (Cat. = Círculo)
                 </span>
                 <select
                   value={draft.storedRitualName || ''}
@@ -420,7 +421,7 @@ export function ItemCustomizationModal({
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            🛠️ Modificações Normais (+I Cat.) [{(draft.modifications || []).length}]
+            <Icon name="hammer" /> Modificações Normais (+I Cat.) [{(draft.modifications || []).length}]
           </button>
           <button
             type="button"
@@ -431,7 +432,7 @@ export function ItemCustomizationModal({
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            👁️ Maldições Paranormais (+II 1ª / +I) [{(draft.curses || []).length}]
+            <Icon name="conhecimento" /> Maldições Paranormais (+II 1ª / +I) [{(draft.curses || []).length}]
           </button>
         </div>
 
@@ -470,7 +471,7 @@ export function ItemCustomizationModal({
                       <p className="text-[11px] text-zinc-400 mt-0.5">{mod.description}</p>
                       {!isApplied && !check.allowed && check.reason && (
                         <span className="inline-block mt-1 text-[10px] font-bold text-red-400">
-                          🔒 {check.reason}
+                          <Icon name="lock" /> {check.reason}
                         </span>
                       )}
                     </div>
@@ -496,7 +497,7 @@ export function ItemCustomizationModal({
             <>
               <div className="bg-purple-950/30 border border-purple-800/50 rounded-xl px-3 py-2 text-[11px] text-purple-200 space-y-1">
                 <p>
-                  👁️ <strong>Regra de Maldições (Cap. 6, p. 144–145):</strong> A 1ª maldição aumenta a categoria em <strong>+II</strong>; cada maldição extra aumenta em <strong>+I</strong>. Elementos opressores não podem coexistir no mesmo item.
+                  <Icon name="conhecimento" /> <strong>Regra de Maldições (Cap. 6, p. 144–145):</strong> A 1ª maldição aumenta a categoria em <strong>+II</strong>; cada maldição extra aumenta em <strong>+I</strong>. Elementos opressores não podem coexistir no mesmo item.
                 </p>
                 <p className="text-[10px] text-purple-300/90">
                   <strong>O Preço da Maldição:</strong> Conhecimento (falha INT) • Energia (falha AGI) • Morte (falha PRE) • Sangue (falha FOR/VIG) → <strong>-2 SAN por maldição</strong>.
@@ -558,14 +559,14 @@ export function ItemCustomizationModal({
                             </span>
                             {appliedObj?.chosenRitualName && (
                               <span className="text-[10px] font-bold text-cyan-300">
-                                🔮 {appliedObj.chosenRitualName}
+                                <Icon name="sigil" /> {appliedObj.chosenRitualName}
                               </span>
                             )}
                           </div>
                           <p className="text-[11px] text-zinc-400 mt-0.5">{curse.description}</p>
                           {!isApplied && !check.allowed && check.reason && (
                             <span className="inline-block mt-1 text-[10px] font-bold text-red-400">
-                              🔒 {check.reason}
+                              <Icon name="lock" /> {check.reason}
                             </span>
                           )}
                         </div>

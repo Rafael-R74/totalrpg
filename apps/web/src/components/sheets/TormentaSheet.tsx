@@ -8,6 +8,7 @@ import {
   SystemSkillDefinition,
 } from '@totalrpg/shared';
 
+import { Icon } from '../ui/Icon';
 interface TormentaSheetProps {
   data: T20SheetData;
   bonuses: ComputedBonuses;
@@ -142,7 +143,7 @@ export function TormentaSheet({
         </div>
 
         <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 flex flex-col justify-center items-center">
-          <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold">🛡️ Defesa</span>
+          <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold"><Icon name="shield" /> Defesa</span>
           <div className="flex items-baseline gap-1">
             <span className="text-xl font-extrabold font-mono text-red-400">{totalDefense}</span>
             {bonuses.defense !== 0 && (
@@ -156,7 +157,7 @@ export function TormentaSheet({
         {/* Painel de Proficiências (Tormenta 20) */}
         <div className="col-span-2 md:col-span-6 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
           <span className="text-[10px] uppercase tracking-wider text-red-400 font-black">
-            🎖️ Proficiências:
+            <Icon name="award" /> Proficiências:
           </span>
           {(safeData.proficiencies || []).length === 0 ? (
             <span className="text-xs text-zinc-500">Nenhuma proficiência listada</span>
@@ -225,7 +226,7 @@ export function TormentaSheet({
       {/* Atributos de T20 com Modificadores */}
       <div className="bg-zinc-900 p-5 rounded-xl border border-zinc-800">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-red-500">
+          <h3 className="text-base font-semibold text-zinc-100">
             Atributos (Tormenta 20)
           </h3>
           <span className="text-xs text-zinc-500">
@@ -287,7 +288,7 @@ export function TormentaSheet({
       {/* Perícias de T20 com Modificadores Automáticos */}
       <div className="bg-zinc-900 p-5 rounded-xl border border-zinc-800">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-red-500">
+          <h3 className="text-base font-semibold text-zinc-100">
             Perícias ({safeData.skills.length})
           </h3>
           <span className="text-xs font-mono text-zinc-400">
@@ -314,7 +315,7 @@ export function TormentaSheet({
                     onClick={() => onRoll(`Perícia: ${skill.name}`, 1, 20, totalModifier)}
                     className="px-2.5 py-1 bg-zinc-900 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold transition cursor-pointer"
                   >
-                    🎲 1d20{totalModifier >= 0 ? `+${totalModifier}` : totalModifier}
+                    <Icon name="d20" /> 1d20{totalModifier >= 0 ? `+${totalModifier}` : totalModifier}
                   </button>
                   <div>
                     <p className="text-sm font-semibold text-zinc-200">{skill.name}</p>

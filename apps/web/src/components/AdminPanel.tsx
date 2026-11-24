@@ -21,13 +21,14 @@ import {
   importContentPack,
 } from '../services/api';
 
+import { Icon } from './ui/Icon';
 const CATEGORY_LABELS: Record<CompendiumCategory, string> = {
-  power: '✨ Poderes de Classe / Gerais',
-  paranormal_power: '👁️ Poderes Paranormais',
-  spell: '🔮 Rituais & Magias',
-  item: '⚔️ Armas & Equipamentos',
-  origin: '📜 Origens',
-  condition: '🩸 Condições (Buff/Debuff)',
+  power: 'Poderes de Classe / Gerais',
+  paranormal_power: 'Poderes Paranormais',
+  spell: 'Rituais & Magias',
+  item: 'Armas & Equipamentos',
+  origin: 'Origens',
+  condition: 'Condições (Buff/Debuff)',
 };
 
 const TARGET_TYPE_LABELS: Record<ModifierTargetType, string> = {
@@ -242,8 +243,8 @@ export function AdminPanel() {
       {/* Cabeçalho do Painel Admin */}
       <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-wrap justify-between items-center gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-amber-500">
-            ⚙️ Motor de Regras & Compêndio (Admin)
+          <h2 className="text-xl font-semibold text-zinc-100">
+            <Icon name="settings" /> Motor de Regras & Compêndio (Admin)
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
             Cadastre poderes, rituais, magias, armas, condições e perícias com modificadores automáticos.
@@ -256,7 +257,7 @@ export function AdminPanel() {
             onClick={handleSeed}
             className="px-3 py-2 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 rounded-lg text-xs font-bold transition cursor-pointer"
           >
-            ⚡ Ativar Admin & Carregar Pacote Inicial
+            <Icon name="zap" /> Ativar Admin & Carregar Pacote Inicial
           </button>
 
           <select
@@ -275,15 +276,15 @@ export function AdminPanel() {
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="text-xs font-extrabold text-zinc-200 uppercase tracking-wider">
-              📦 Pacote de Conteúdo Local (BYOC)
+              <Icon name="package" /> Pacote de Conteúdo Local (BYOC)
             </span>
             {packLoaded ? (
               <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-700/60 text-emerald-300">
-                ✅ Pack local ativo — {packStats?.totalApplied ?? 0} descrições carregadas
+                <Icon name="check-circle" /> Pack local ativo — {packStats?.totalApplied ?? 0} descrições carregadas
               </span>
             ) : (
               <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">
-                ℹ️ Modo Base sem pack local
+                <Icon name="info" /> Modo Base sem pack local
               </span>
             )}
           </div>
@@ -316,7 +317,7 @@ export function AdminPanel() {
             onClick={() => packFileInputRef.current?.click()}
             className="px-3 py-2 bg-amber-900/40 hover:bg-amber-800/60 disabled:opacity-50 text-amber-200 border border-amber-700/60 rounded-lg text-xs font-bold transition cursor-pointer"
           >
-            {packImporting ? 'Importando...' : '📥 Importar Content Pack (.json)'}
+            {packImporting ? 'Importando...' : 'Importar Content Pack (.json)'}
           </button>
         </div>
       </div>
@@ -347,7 +348,7 @@ export function AdminPanel() {
               : 'border-transparent text-zinc-400 hover:text-zinc-200'
           }`}
         >
-          🎯 Perícias do Sistema ({skills.length})
+          <Icon name="target" /> Perícias do Sistema ({skills.length})
         </button>
       </div>
 
@@ -358,7 +359,7 @@ export function AdminPanel() {
             onSubmit={handleSaveSkill}
             className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4 h-fit"
           >
-            <h3 className="font-bold text-sm text-amber-500">
+            <h3 className="font-semibold text-base text-zinc-100">
               + Adicionar / Editar Perícia ({selectedSystem})
             </h3>
 
@@ -497,7 +498,7 @@ export function AdminPanel() {
             onSubmit={handleCreateEntry}
             className="lg:col-span-5 bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col gap-4"
           >
-            <h3 className="font-bold text-sm text-amber-500">
+            <h3 className="font-semibold text-base text-zinc-100">
               + Cadastrar em {CATEGORY_LABELS[activeSection]}
             </h3>
 
@@ -510,7 +511,7 @@ export function AdminPanel() {
                     !itemIsParanormal ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  🎒 Normal
+                  <Icon name="backpack" /> Normal
                 </button>
                 <button
                   type="button"
@@ -519,7 +520,7 @@ export function AdminPanel() {
                     itemIsParanormal ? 'bg-purple-700 text-white' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  👁️ Paranormal / Amaldiçoado
+                  <Icon name="conhecimento" /> Paranormal / Amaldiçoado
                 </button>
               </div>
             )}
@@ -659,7 +660,7 @@ export function AdminPanel() {
             <div className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex flex-col gap-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-amber-400">
-                  ⚡ Efeitos Mecânicos Automáticos ({modifiers.length})
+                  <Icon name="zap" /> Efeitos Mecânicos Automáticos ({modifiers.length})
                 </span>
                 <button
                   type="button"
@@ -759,7 +760,7 @@ export function AdminPanel() {
                 type="text"
                 value={adminSearch}
                 onChange={(e) => setAdminSearch(e.target.value)}
-                placeholder="🔎 Pesquisar no catálogo..."
+                placeholder="Pesquisar no catálogo..."
                 className="px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white"
               />
             </div>
@@ -775,7 +776,7 @@ export function AdminPanel() {
                       : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  🎒 Equipamentos Normais
+                  <Icon name="backpack" /> Equipamentos Normais
                 </button>
                 <button
                   type="button"
@@ -786,7 +787,7 @@ export function AdminPanel() {
                       : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  👁️ Equipamentos Paranormais & Amaldiçoados
+                  <Icon name="conhecimento" /> Equipamentos Paranormais & Amaldiçoados
                 </button>
               </div>
             )}
@@ -797,7 +798,7 @@ export function AdminPanel() {
                   Nenhum registro nesta categoria ainda.
                 </p>
                 <p className="text-zinc-500 text-[11px] mt-1">
-                  Clique no botão verde &quot;⚡ Ativar Admin & Carregar Pacote Inicial&quot; no topo para popular exemplos prontos!
+                  Clique no botão verde &quot;<Icon name="zap" /> Ativar Admin & Carregar Pacote Inicial&quot; no topo para popular exemplos prontos!
                 </p>
               </div>
             ) : (
@@ -817,7 +818,7 @@ export function AdminPanel() {
                         )}
                         {entry.metadata?.damageFormula && (
                           <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded">
-                            🎲 {entry.metadata.damageFormula}
+                            <Icon name="d20" /> {entry.metadata.damageFormula}
                           </span>
                         )}
                       </div>
@@ -831,7 +832,7 @@ export function AdminPanel() {
                               key={m.id}
                               className="text-[10px] font-mono bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 px-2 py-0.5 rounded"
                             >
-                              ⚡ {m.targetType} [{m.targetKey}]: {m.value >= 0 ? `+${m.value}` : m.value}
+                              <Icon name="zap" /> {m.targetType} [{m.targetKey}]: {m.value >= 0 ? `+${m.value}` : m.value}
                               {m.scaleWithLevel ? ' (x Nível)' : ''}
                             </span>
                           ))}

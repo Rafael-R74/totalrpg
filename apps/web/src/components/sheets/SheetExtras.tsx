@@ -53,6 +53,7 @@ import { InventoryItemActionBar } from './InventoryItemActionBar';
 import { CharacterPersonalTab } from './CharacterPersonalTab';
 import { applyCampaignSceneEffect, fetchCampaignTradeTargets } from '../../services/api';
 
+import { Icon, stripEmoji } from '../ui/Icon';
 interface SheetExtrasProps {
   system: SystemId;
   ordemSheetData?: OrdemSheetData;
@@ -202,7 +203,7 @@ function rollRitualWeaponDamageExtras(
         sum += Math.floor(Math.random() * 6) + 1;
       }
       totalBonus += sum;
-      labels.push(`🔮 Amaldiçoar Arma +${dice}d6: +${sum}`);
+      labels.push(`Amaldiçoar Arma +${dice}d6: +${sum}`);
     } else if (
       isMelee &&
       lowerName.includes('chamas do caos') &&
@@ -210,7 +211,7 @@ function rollRitualWeaponDamageExtras(
     ) {
       const roll = Math.floor(Math.random() * 6) + 1;
       totalBonus += roll;
-      labels.push(`🔥 Chamas do Caos +1d6: +${roll}`);
+      labels.push(`Chamas do Caos +1d6: +${roll}`);
     } else if (
       isMelee &&
       lowerName.includes('descarnar') &&
@@ -221,7 +222,7 @@ function rollRitualWeaponDamageExtras(
         sum += Math.floor(Math.random() * 8) + 1;
       }
       totalBonus += sum;
-      labels.push(`🩸 Descarnar (Verd.) +4d8: +${sum}`);
+      labels.push(`Descarnar (Verd.) +4d8: +${sum}`);
     }
   }
 
@@ -776,7 +777,7 @@ export function SheetExtras({
           : a
       )
     );
-    setAbilityUseFeedback(`📢 Discurso Motivador ativado (-${pe} PE): +${dice}d20 em todas as perícias na cena!`);
+    setAbilityUseFeedback(`Discurso Motivador ativado (-${pe} PE): +${dice}d20 em todas as perícias na cena!`);
   }
 
   async function handleConfirmDiscursoInCampaign() {
@@ -840,7 +841,7 @@ export function SheetExtras({
 
     setIsDiscursoModalOpen(false);
     setAbilityUseFeedback(
-      `📢 Discurso Motivador ativado para ${chosenIds.length} personagem(ns) (+${discursoBonusDice}d20 em perícias até o fim da cena)!`
+      `Discurso Motivador ativado para ${chosenIds.length} personagem(ns) (+${discursoBonusDice}d20 em perícias até o fim da cena)!`
     );
   }
 
@@ -864,7 +865,7 @@ export function SheetExtras({
     onUpdateAbilities(
       abilities.map((a) => (a.id === abId ? { ...a, isActive: false } : a))
     );
-    setAbilityUseFeedback('📢 Discurso Motivador encerrado.');
+    setAbilityUseFeedback('Discurso Motivador encerrado.');
   }
 
   // Sincroniza passo de Segurar o Gatilho usado dentro do modal de lote
@@ -1208,7 +1209,7 @@ export function SheetExtras({
       onRoll(`${ab.name} (Efeito)`, parsed.count, parsed.sides, parsed.modifier, true);
       onLogActivity?.({
         category: 'ability',
-        summary: `✨ Usou ${ab.name} (${ab.damageFormula})`,
+        summary: `Usou ${ab.name} (${ab.damageFormula})`,
         costText: ab.cost > 0 ? `-${ab.cost} ${resourceLabel}` : undefined,
         tone: 'info',
       });
@@ -1220,7 +1221,7 @@ export function SheetExtras({
         );
       }
       setAbilityUseFeedback(
-        `✨ ${ab.name} ativado${ab.cost > 0 ? ` (-${ab.cost} ${resourceLabel} descontado)` : ''}!`
+        `${ab.name} ativado${ab.cost > 0 ? ` (-${ab.cost} ${resourceLabel} descontado)` : ''}!`
       );
       setTimeout(() => setAbilityUseFeedback(''), 4000);
     }
@@ -1406,11 +1407,11 @@ export function SheetExtras({
           <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[85vh]">
             <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
               <div>
-                <h3 className="text-lg font-extrabold text-amber-500">
-                  {activeSubTab === 'powers' && '📚 Adicionar Poder à Ficha'}
-                  {activeSubTab === 'spells' && `🔮 Adicionar ${spellLabel} à Ficha`}
-                  {activeSubTab === 'inventory' && '🎒 Adicionar Item ou Arma'}
-                  {activeSubTab === 'combat' && '⚔️ Criar Ataque Personalizado'}
+                <h3 className="text-lg font-semibold text-zinc-100">
+                  {activeSubTab === 'powers' && 'Adicionar Poder à Ficha'}
+                  {activeSubTab === 'spells' && `Adicionar ${spellLabel} à Ficha`}
+                  {activeSubTab === 'inventory' && 'Adicionar Item ou Arma'}
+                  {activeSubTab === 'combat' && 'Criar Ataque Personalizado'}
                 </h3>
                 <p className="text-xs text-zinc-400">
                   {modalMode === 'compendium'
@@ -1436,7 +1437,7 @@ export function SheetExtras({
                     modalMode === 'compendium' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  📚 Catálogo do Compêndio
+                  <Icon name="library" /> Catálogo do Compêndio
                 </button>
                 <button
                   type="button"
@@ -1445,7 +1446,7 @@ export function SheetExtras({
                     modalMode === 'custom' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  🛠️ Criar Personalizado (Mestre/Admin)
+                  <Icon name="hammer" /> Criar Personalizado (Mestre/Admin)
                 </button>
               </div>
             )}
@@ -1457,7 +1458,7 @@ export function SheetExtras({
                   autoFocus
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="🔍 Digite o nome, elemento ou efeito para filtrar..."
+                  placeholder="Digite o nome, elemento ou efeito para filtrar..."
                   className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
                 />
 
@@ -1466,8 +1467,8 @@ export function SheetExtras({
                     <div className="flex flex-wrap gap-1.5">
                       {[
                         { id: 'ALL', label: 'Todos' },
-                        { id: 'power', label: '⚔️ Poderes de Classe' },
-                        { id: 'paranormal_power', label: '👁️ Poderes Paranormais' },
+                        { id: 'power', label: 'Poderes de Classe' },
+                        { id: 'paranormal_power', label: 'Poderes Paranormais' },
                       ].map((tab) => (
                         <button
                           key={tab.id}
@@ -1557,7 +1558,7 @@ export function SheetExtras({
                             : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
-                        🎒 Equipamentos Normais
+                        <Icon name="backpack" /> Equipamentos Normais
                       </button>
                       <button
                         type="button"
@@ -1571,7 +1572,7 @@ export function SheetExtras({
                             : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
-                        👁️ Equipamentos Paranormais & Amaldiçoados
+                        <Icon name="conhecimento" /> Equipamentos Paranormais & Amaldiçoados
                       </button>
                     </div>
 
@@ -1579,12 +1580,12 @@ export function SheetExtras({
                       <div className="flex flex-wrap gap-1">
                         {[
                           { id: 'ALL', label: 'Todos' },
-                          { id: 'weapons', label: '⚔️ Armas' },
-                          { id: 'ammo', label: '🎯 Munições' },
-                          { id: 'protections', label: '🛡️ Proteções' },
-                          { id: 'accessory', label: '🧰 Acessórios' },
-                          { id: 'explosive', label: '💣 Explosivos' },
-                          { id: 'operational', label: '🔧 Operacionais' },
+                          { id: 'weapons', label: 'Armas' },
+                          { id: 'ammo', label: 'Munições' },
+                          { id: 'protections', label: 'Proteções' },
+                          { id: 'accessory', label: 'Acessórios' },
+                          { id: 'explosive', label: 'Explosivos' },
+                          { id: 'operational', label: 'Operacionais' },
                         ].map((sub) => (
                           <button
                             key={sub.id}
@@ -1604,12 +1605,12 @@ export function SheetExtras({
                       <div className="flex flex-wrap gap-1">
                         {[
                           { id: 'ALL', label: 'Todos Paranormais' },
-                          { id: 'geral', label: '🔮 Itens Paranormais (Cap. 3)' },
-                          { id: 'Sangue', label: '🩸 Sangue' },
-                          { id: 'Morte', label: '💀 Morte' },
-                          { id: 'Conhecimento', label: '👁️ Conhecimento' },
-                          { id: 'Energia', label: '⚡ Energia' },
-                          { id: 'Medo', label: '🌫️ Medo' },
+                          { id: 'geral', label: 'Itens Paranormais (Cap. 3)' },
+                          { id: 'Sangue', label: 'Sangue' },
+                          { id: 'Morte', label: 'Morte' },
+                          { id: 'Conhecimento', label: 'Conhecimento' },
+                          { id: 'Energia', label: 'Energia' },
+                          { id: 'Medo', label: 'Medo' },
                         ].map((el) => (
                           <button
                             key={el.id}
@@ -1665,7 +1666,7 @@ export function SheetExtras({
                               <span className="text-sm font-bold text-white">{entry.name}</span>
                               {entry.category === 'paranormal_power' && (
                                 <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
-                                  👁️ Paranormal {entry.metadata?.element ? `• ${entry.metadata.element}` : ''}
+                                  <Icon name="conhecimento" /> Paranormal {entry.metadata?.element ? `• ${entry.metadata.element}` : ''}
                                 </span>
                               )}
                               {entry.category === 'spell' && entry.metadata?.circle && (
@@ -1680,7 +1681,7 @@ export function SheetExtras({
                               )}
                               {entry.metadata?.damageFormula && (
                                 <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded">
-                                  🎲 {entry.metadata.damageFormula}
+                                  <Icon name="d20" /> {entry.metadata.damageFormula}
                                 </span>
                               )}
                               {entry.category === 'item' && (
@@ -1698,7 +1699,7 @@ export function SheetExtras({
                                 >
                                   {reqCheck.met
                                     ? `✓ Req: ${entry.metadata.requirements}`
-                                    : `🔒 Faltam: ${reqCheck.missing.join(', ')}`}
+                                    : `Faltam: ${reqCheck.missing.join(', ')}`}
                                 </span>
                               )}
                             </div>
@@ -1748,7 +1749,7 @@ export function SheetExtras({
                               {alreadyOwned
                                 ? '✓ Já possui'
                                 : !reqCheck.met && !canCreateCustom
-                                ? '🔒 Requisito'
+                                ? 'Requisito'
                                 : '+ Adicionar'}
                             </button>
                           )}
@@ -1889,7 +1890,7 @@ export function SheetExtras({
                               : 'text-zinc-400 hover:text-white'
                           }`}
                         >
-                          🎒 Equipamento Normal
+                          <Icon name="backpack" /> Equipamento Normal
                         </button>
                         <button
                           type="button"
@@ -1900,7 +1901,7 @@ export function SheetExtras({
                               : 'text-zinc-400 hover:text-white'
                           }`}
                         >
-                          👁️ Equipamento Paranormal
+                          <Icon name="conhecimento" /> Equipamento Paranormal
                         </button>
                       </div>
                     )}
@@ -1980,7 +1981,7 @@ export function SheetExtras({
                   Trilha: Negociador • Alcance Curto
                 </span>
                 <h3 className="text-lg font-black text-white flex items-center gap-2">
-                  📢 Discurso Motivador (+{discursoBonusDice}d20)
+                  <Icon name="megaphone" /> Discurso Motivador (+{discursoBonusDice}d20)
                 </h3>
               </div>
               <button
@@ -2092,7 +2093,7 @@ export function SheetExtras({
                 onClick={handleConfirmDiscursoInCampaign}
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black cursor-pointer shadow-lg shadow-amber-950/50"
               >
-                📢 Confirmar Discurso (-{discursoPeCost} PE)
+                <Icon name="megaphone" /> Confirmar Discurso (-{discursoPeCost} PE)
               </button>
             </div>
           </div>
@@ -2100,66 +2101,56 @@ export function SheetExtras({
       )}
 
       {/* BARRA DE SUB-ABAS COM BOTÃO DE ADICIONAR NA EXTREMA DIREITA */}
-      <div className="flex flex-wrap justify-between items-center border-b border-zinc-800 gap-4 pb-2">
-        <div className="flex flex-wrap gap-6">
+      <div className="flex flex-wrap justify-between items-center border-b border-zinc-800 gap-x-4 gap-y-2">
+        <div role="tablist" aria-label="Seções da ficha" className="trpg-tabs border-b-0! flex-1 min-w-0 -mx-1">
           <button
             type="button"
             onClick={() => setActiveSubTab('combat')}
-            className={`pb-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer border-b-2 ${
-              activeSubTab === 'combat'
-                ? 'border-amber-500 text-amber-500'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
+            role="tab"
+            aria-selected={activeSubTab === 'combat'}
+            className="trpg-tab"
           >
-            ⚔️ Ataques ({attacks.filter((a) => !isHealingConsumableItem(a.name)).length})
+            <Icon name="swords" /> Ataques ({attacks.filter((a) => !isHealingConsumableItem(a.name)).length})
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('powers')}
-            className={`pb-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer border-b-2 ${
-              activeSubTab === 'powers'
-                ? 'border-amber-500 text-amber-500'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
+            role="tab"
+            aria-selected={activeSubTab === 'powers'}
+            className="trpg-tab"
           >
-            ✨ Poderes ({powerList.length})
+            <Icon name="sparkles" /> Poderes ({powerList.length})
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('spells')}
-            className={`pb-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer border-b-2 ${
-              activeSubTab === 'spells'
-                ? 'border-amber-500 text-amber-500'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
+            role="tab"
+            aria-selected={activeSubTab === 'spells'}
+            className="trpg-tab"
           >
-            🔮 {spellPluralLabel} ({spellList.length})
+            <Icon name="sigil" /> {spellPluralLabel} ({spellList.length})
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('inventory')}
-            className={`pb-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer border-b-2 ${
-              activeSubTab === 'inventory'
-                ? 'border-amber-500 text-amber-500'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
+            role="tab"
+            aria-selected={activeSubTab === 'inventory'}
+            className="trpg-tab"
           >
-            🎒 Inventário ({currentLoad}/{effectiveMaxSlots})
+            <Icon name="backpack" /> Inventário ({currentLoad}/{effectiveMaxSlots})
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('personal')}
-            className={`pb-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer border-b-2 ${
-              activeSubTab === 'personal'
-                ? 'border-amber-500 text-amber-500'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
+            role="tab"
+            aria-selected={activeSubTab === 'personal'}
+            className="trpg-tab"
           >
-            👤 Pessoal & História
+            <Icon name="user" /> Pessoal & História
           </button>
         </div>
 
@@ -2242,8 +2233,8 @@ export function SheetExtras({
                         title="Quando ativo: +5 na Defesa e -1d20 nos ataques (dura até o seu próximo turno)"
                       >
                         {combateDefensivoAb.isActive !== false
-                          ? '🛡️ Combate Defensivo ATIVO (+5 Def, -1d20 Atq)'
-                          : '🛡️ Ativar Combate Defensivo (+5 Def, -1d20 Atq)'}
+                          ? 'Combate Defensivo ATIVO (+5 Def, -1d20 Atq)'
+                          : 'Ativar Combate Defensivo (+5 Def, -1d20 Atq)'}
                       </button>
                     )}
 
@@ -2259,8 +2250,8 @@ export function SheetExtras({
                         title="Quando ativo: faz 2 ataques sofrendo -1d20 nos testes de ataque"
                       >
                         {duasArmasAb.isActive !== false
-                          ? '⚔️ Combater c/ Duas Armas ATIVO (-1d20 Atq)'
-                          : '⚔️ Ativar Combater c/ Duas Armas (-1d20 Atq)'}
+                          ? 'Combater c/ Duas Armas ATIVO (-1d20 Atq)'
+                          : 'Ativar Combater c/ Duas Armas (-1d20 Atq)'}
                       </button>
                     )}
 
@@ -2281,8 +2272,8 @@ export function SheetExtras({
                         title="Quebrar / atacar objeto: gasta 1 PE para somar +2 dados de dano extra na próxima rolagem de dano"
                       >
                         {armedGolpeDemolidor
-                          ? '🔨 Golpe Demolidor ARMADO (-1 PE → +2 dados no próx. dano)'
-                          : '🔨 Armar Golpe Demolidor (-1 PE → +2 dados vs Objeto)'}
+                          ? 'Golpe Demolidor ARMADO (-1 PE → +2 dados no próx. dano)'
+                          : 'Armar Golpe Demolidor (-1 PE → +2 dados vs Objeto)'}
                       </button>
                     )}
 
@@ -2303,8 +2294,8 @@ export function SheetExtras({
                         title="1x/rodada contra alvo desprevenido ou flanqueado: gasta 1 PE para somar +Xd6 no próximo dano"
                       >
                         {armedAtaqueFurtivo
-                          ? `🥷 Ataque Furtivo ARMADO (-1 PE → +${effectiveFurtivoDice}d6 no próx. Dano)`
-                          : `🥷 Ataque Furtivo (-1 PE → +${effectiveFurtivoDice}d6 no próx. Dano)`}
+                          ? `Ataque Furtivo ARMADO (-1 PE → +${effectiveFurtivoDice}d6 no próx. Dano)`
+                          : `Ataque Furtivo (-1 PE → +${effectiveFurtivoDice}d6 no próx. Dano)`}
                       </button>
                     )}
 
@@ -2331,8 +2322,8 @@ export function SheetExtras({
                         title="Analisa o alvo (ação de movimento, 3 PE): dobra os dados do Ataque Furtivo e exige Fortitude (DT Agi)"
                       >
                         {armedAssassinar
-                          ? `🗡️ Assassinar ARMADO (-3 PE → Furtivo ${furtivoBaseDice * 2}d6 + Fortitude DT ${10 + peTurnLimit + effAgi})`
-                          : `🗡️ Assassinar (-3 PE → Dobra Furtivo + Fortitude DT ${10 + peTurnLimit + effAgi})`}
+                          ? `Assassinar ARMADO (-3 PE → Furtivo ${furtivoBaseDice * 2}d6 + Fortitude DT ${10 + peTurnLimit + effAgi})`
+                          : `Assassinar (-3 PE → Dobra Furtivo + Fortitude DT ${10 + peTurnLimit + effAgi})`}
                       </button>
                     )}
 
@@ -2361,7 +2352,7 @@ export function SheetExtras({
                         }}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-emerald-950/70 hover:bg-emerald-800 text-emerald-200 border-emerald-700 transition cursor-pointer"
                       >
-                        🥋 + Adicionar Ataque Desarmado (1d{unarmedDieSides})
+                        + Adicionar Ataque Desarmado (1d{unarmedDieSides})
                       </button>
                     )}
 
@@ -2377,8 +2368,8 @@ export function SheetExtras({
                         title="Usa Ocultismo (INT) nos testes de ataque com armas afetadas por Amaldiçoar Arma"
                       >
                         {useLaminaMaldita
-                          ? '🗡️ Lâmina Maldita ATIVA (Ocultismo / INT)'
-                          : '🗡️ Ativar Lâmina Maldita (Ocultismo / INT)'}
+                          ? 'Lâmina Maldita ATIVA (Ocultismo / INT)'
+                          : 'Ativar Lâmina Maldita (Ocultismo / INT)'}
                       </button>
                     )}
 
@@ -2390,13 +2381,13 @@ export function SheetExtras({
                             onGrantTempPe(2, 'Gladiador Paranormal');
                           }
                           setCombatTabFeedback(
-                            '⚡ Gladiador Paranormal: +2 PE temporários adicionados por acerto corpo a corpo!'
+                            'Gladiador Paranormal: +2 PE temporários adicionados por acerto corpo a corpo!'
                           );
                         }}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-amber-950/70 hover:bg-amber-800 text-amber-200 border-amber-700 transition cursor-pointer"
                         title="Sempre que acerta um ataque corpo a corpo em um inimigo, ganha +2 PE temporários (máx. Limite de PE na cena)"
                       >
-                        ⚡ Gladiador Paranormal (+2 PE Temp)
+                        <Icon name="zap" /> Gladiador Paranormal (+2 PE Temp)
                       </button>
                     )}
 
@@ -2406,13 +2397,13 @@ export function SheetExtras({
                         onClick={() => {
                           if (!onSpendResource(2)) return;
                           setCombatTabFeedback(
-                            '⚔️ Conjuração Marcial (-2 PE): 1 ataque corpo a corpo como ação livre liberado nesta rodada! Role abaixo.'
+                            'Conjuração Marcial (-2 PE): 1 ataque corpo a corpo como ação livre liberado nesta rodada! Role abaixo.'
                           );
                         }}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-rose-950/70 hover:bg-rose-800 text-rose-200 border-rose-700 transition cursor-pointer"
                         title="1x/rodada após conjurar ritual de ação padrão: gasta 2 PE para fazer um ataque corpo a corpo como ação livre"
                       >
-                        ⚔️ Conjuração Marcial (-2 PE • Atq. Livre)
+                        <Icon name="swords" /> Conjuração Marcial (-2 PE • Atq. Livre)
                       </button>
                     )}
 
@@ -2451,12 +2442,12 @@ export function SheetExtras({
                                   },
                                 ]);
                                 setCombatTabFeedback(
-                                  `🩸 Arma de Sangue manifestada (-2 PE): dano ${armaSangueDmg} de Sangue adicionada aos ataques!`
+                                  `Arma de Sangue manifestada (-2 PE): dano ${armaSangueDmg} de Sangue adicionada aos ataques!`
                                 );
                               }}
                               className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-red-950/80 hover:bg-red-800 text-red-200 border-red-700 transition cursor-pointer"
                             >
-                              🩸 Manifestar Arma de Sangue (-2 PE • {armaSangueDmg})
+                              <Icon name="sangue" /> Manifestar Arma de Sangue (-2 PE • {armaSangueDmg})
                             </button>
                           )}
                           <button
@@ -2502,7 +2493,7 @@ export function SheetExtras({
                             className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-red-900/70 hover:bg-red-700 text-red-100 border-red-600 transition cursor-pointer"
                             title="1x/turno após agredir com outra arma: realiza ataque adicional com a Arma de Sangue"
                           >
-                            🩸 Atq. Extra Arma de Sangue ({extraAtkCost === 0 ? '0 PE • Afin.' : '-1 PE'})
+                            <Icon name="sangue" /> Atq. Extra Arma de Sangue ({extraAtkCost === 0 ? '0 PE • Afin.' : '-1 PE'})
                           </button>
                         </>
                       );
@@ -2516,7 +2507,7 @@ export function SheetExtras({
             const combatAttacks = attacks.filter((atk) => !isHealingConsumableItem(atk.name));
             return combatAttacks.length === 0 ? (
               <p className="text-xs text-zinc-500 text-center py-4">
-                Nenhum ataque preparado. Adicione uma arma na aba &quot;🎒 Inventário&quot; para gerar seu ataque automaticamente!
+                Nenhum ataque preparado. Adicione uma arma na aba &quot;<Icon name="backpack" /> Inventário&quot; para gerar seu ataque automaticamente!
               </p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3022,10 +3013,10 @@ export function SheetExtras({
                     }
                     dmgModToUse += furtivoSum;
                     const assassinarSuffix = armedAssassinar
-                      ? ` • 🗡️ Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
+                      ? ` • Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
                       : '';
                     suffixParts.push(
-                      `🥷 Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
+                      `Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
                     );
                     setArmedAtaqueFurtivo(false);
                     setArmedAssassinar(false);
@@ -3041,7 +3032,7 @@ export function SheetExtras({
                   }
 
                   if (isCrit && isAtirarParaMatarActive) {
-                    suffixParts.push('💀 Atirar para Matar (Dano Máx.)');
+                    suffixParts.push('Atirar para Matar (Dano Máx.)');
                   }
 
                   if (isAniqFav && hasTecnicaSublime && secPerfurante) {
@@ -3078,7 +3069,7 @@ export function SheetExtras({
                   const labelSuffix =
                     suffixParts.length > 0 ? ` [${suffixParts.join(' • ')}]` : '';
                   onRoll(
-                    `${isCrit ? '💥 Dano Crítico' : 'Dano'}: ${atk.name}${labelSuffix}`,
+                    `${isCrit ? 'Dano Crítico' : 'Dano'}: ${atk.name}${labelSuffix}`,
                     dmgDiceToUse,
                     effectiveDamageSides,
                     dmgModToUse,
@@ -3122,62 +3113,62 @@ export function SheetExtras({
                           <h4 className="font-bold text-sm text-white">{atk.name}</h4>
                           {isAniqFav && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-700">
-                              🗡️ A Favorita
+                              <Icon name="sword" /> A Favorita
                             </span>
                           )}
                           {isMotosserra && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700">
-                              🪚 -1d20 Atq • 6 explode
+                              <Icon name="hammer" /> -1d20 Atq • 6 explode
                             </span>
                           )}
                           {isUnarmed && soqueiraEquipped && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-amber-300 border border-amber-700/60">
-                              🥊 {soqueiraEquipped.name}
+                              {soqueiraEquipped.name}
                             </span>
                           )}
                           {golpePesadoExtraDice > 0 && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700">
-                              💪 Golpe Pesado (+1 dado)
+                              Golpe Pesado (+1 dado)
                             </span>
                           )}
                           {hasTecnicaLetal && isMelee && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-amber-300 border border-amber-700/60">
-                              ⚔️ Técnica Letal (+2 Crít)
+                              <Icon name="swords" /> Técnica Letal (+2 Crít)
                             </span>
                           )}
                           {tiroCerteiroBonus !== 0 && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
-                              🏹 Tiro Certeiro (+{tiroCerteiroBonus})
+                              Tiro Certeiro (+{tiroCerteiroBonus})
                             </span>
                           )}
                           {miraDeEliteBonus > 0 && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700">
-                              🎯 Mira de Elite (+{miraDeEliteBonus} Dano)
+                              <Icon name="target" /> Mira de Elite (+{miraDeEliteBonus} Dano)
                             </span>
                           )}
                           {ninjaUrbanoBonus > 0 && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
-                              🥷 Ninja Urbano (+2 Dano)
+                              <Icon name="mask" /> Ninja Urbano (+2 Dano)
                             </span>
                           )}
                           {isAtirarParaMatarActive && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-200 border border-red-600">
-                              💀 Atirar p/ Matar (Crít. Máx.)
+                              <Icon name="skull" /> Atirar p/ Matar (Crít. Máx.)
                             </span>
                           )}
                           {hasSegurarGatilho && isFirearm && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700/70">
-                              🔥 Segurar o Gatilho
+                              <Icon name="flame" /> Segurar o Gatilho
                             </span>
                           )}
                           {isAimingFuzil && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-600">
-                              🎯 Mirando (+5 Crít)
+                              <Icon name="target" /> Mirando (+5 Crít)
                             </span>
                           )}
                           {isDisparoLetalArmed && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-600">
-                              🎯 Disparo Letal (+2 Crít)
+                              <Icon name="target" /> Disparo Letal (+2 Crít)
                             </span>
                           )}
                           {!weaponProfCheck.proficient && (
@@ -3185,7 +3176,7 @@ export function SheetExtras({
                               className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-200 border border-red-700"
                               title={`Exige proficiência: ${weaponProfCheck.requiredLabel} (p. 54: -2d20 nos testes de ataque)`}
                             >
-                              ⚠️ Sem Proficiência (-2d20 Atq • {weaponProfCheck.requiredLabel})
+                              <Icon name="warning" /> Sem Proficiência (-2d20 Atq • {weaponProfCheck.requiredLabel})
                             </span>
                           )}
                           {weaponMods.badges.map((b, bIdx) => (
@@ -3197,7 +3188,7 @@ export function SheetExtras({
                                   : 'bg-zinc-900 text-amber-200 border-zinc-700'
                               }`}
                             >
-                              {b}
+                              {stripEmoji(b)}
                             </span>
                           ))}
                         </div>
@@ -3206,7 +3197,7 @@ export function SheetExtras({
                           {effectiveCritRange !== atk.critRange ? ` (base ${atk.critRange})` : ''}
                           {weaponMods.ritualisticaStored && (
                             <span className="ml-2 text-purple-300">
-                              • 🔮 Ritualística: {weaponMods.ritualisticaStored}
+                              • <Icon name="sigil" /> Ritualística: {weaponMods.ritualisticaStored}
                             </span>
                           )}
                         </span>
@@ -3231,7 +3222,7 @@ export function SheetExtras({
                             }}
                             className="block mt-1 text-[10px] font-bold text-red-400 hover:underline cursor-pointer"
                           >
-                            🗡️ Definir como A Favorita (Aniquilador)
+                            <Icon name="sword" /> Definir como A Favorita (Aniquilador)
                           </button>
                         )}
                       </div>
@@ -3259,7 +3250,7 @@ export function SheetExtras({
                               readOnly
                               className="pointer-events-none accent-emerald-300 w-3.5 h-3.5"
                             />
-                            🎯 Mirar (+5 Crít)
+                            <Icon name="target" /> Mirar (+5 Crít)
                           </button>
                         )}
 
@@ -3285,7 +3276,7 @@ export function SheetExtras({
                               readOnly
                               className="pointer-events-none accent-cyan-300 w-3.5 h-3.5"
                             />
-                            🎯 Disparo Letal (-1 PE → +2 Crít)
+                            <Icon name="target" /> Disparo Letal (-1 PE → +2 Crít)
                           </button>
                         )}
 
@@ -3296,19 +3287,19 @@ export function SheetExtras({
                             const dmgSuffixParts: string[] = [];
 
                             if (isAimingFuzil) {
-                              suffixParts.push('🎯 Mirando (+5 Crít)');
+                              suffixParts.push('Mirando (+5 Crít)');
                             }
                             if (!weaponProfCheck.proficient) {
-                              suffixParts.push('⚠️ Sem Proficiência -2d20');
+                              suffixParts.push('Sem Proficiência -2d20');
                             }
                             if (isDisparoLetalArmed) {
-                              suffixParts.push('🎯 Disparo Letal (+2 Crít)');
+                              suffixParts.push('Disparo Letal (+2 Crít)');
                             }
                             if (isRajadaActive) {
-                              suffixParts.push('🔫 Rajada (+1 dado)');
+                              suffixParts.push('Rajada (+1 dado)');
                             }
                             if (isEmpuxoThrown) {
-                              suffixParts.push('🪃 Empuxo Arremesso (+1 dado)');
+                              suffixParts.push('Empuxo Arremesso (+1 dado)');
                             }
                             if (activeAmmoMod === 'dumdum') {
                               suffixParts.push('Dum-Dum (+1x Crít)');
@@ -3337,7 +3328,7 @@ export function SheetExtras({
                             if (totalAttackPe > 0) {
                               if (isOrdemSystem && totalAttackPe > peTurnLimit) {
                                 setCombatTabFeedback(
-                                  `⚠️ Custo do ataque (${totalAttackPe} PE) excede seu limite de ${peTurnLimit} PE/turno!`
+                                  `Custo do ataque (${totalAttackPe} PE) excede seu limite de ${peTurnLimit} PE/turno!`
                                 );
                                 return;
                               }
@@ -3350,8 +3341,8 @@ export function SheetExtras({
 
                             if (armedGolpeDemolidor) {
                               extraDiceFromGolpe = 2;
-                              dmgSuffixParts.push('🔨 Golpe Demolidor +2 dados');
-                              suffixParts.push('🔨 Golpe Demolidor +2 dados');
+                              dmgSuffixParts.push('Golpe Demolidor +2 dados');
+                              suffixParts.push('Golpe Demolidor +2 dados');
                               setArmedGolpeDemolidor(false);
                             }
 
@@ -3365,24 +3356,24 @@ export function SheetExtras({
                               }
                               extraDmgFromFurtivo = furtivoSum;
                               const assassinarSuffix = armedAssassinar
-                                ? ` • 🗡️ Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
+                                ? ` • Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
                                 : '';
                               dmgSuffixParts.push(
-                                `🥷 Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
+                                `Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
                               );
                               suffixParts.push(
-                                `🥷 Ataque Furtivo +${furtivoDiceCount}d6 (+${furtivoSum})`
+                                `Ataque Furtivo +${furtivoDiceCount}d6 (+${furtivoSum})`
                               );
                               setArmedAtaqueFurtivo(false);
                               setArmedAssassinar(false);
                             }
 
                             if (isEnergeticaActive) {
-                              suffixParts.push('⚡ Energética (+5 Atq, Energia)');
+                              suffixParts.push('Energética (+5 Atq, Energia)');
                               dmgSuffixParts.push('Energética: Energia / Ignora RD');
                             }
                             if (isAntielementoActive && weaponMods.antielementoChosen) {
-                              suffixParts.push(`🧿 Antielemento ${weaponMods.antielementoChosen}`);
+                              suffixParts.push(`Antielemento ${weaponMods.antielementoChosen}`);
                               dmgSuffixParts.push(`Antielemento (${weaponMods.antielementoChosen})`);
                             }
                             if (isMotosserra) {
@@ -3448,7 +3439,7 @@ export function SheetExtras({
                           className="px-2.5 py-1.5 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold transition cursor-pointer"
                           title="Rolar Teste de Acerto"
                         >
-                          🎯{' '}
+                          <Icon name="target" />{' '}
                           {finalAttackDice <= 0
                             ? '2d20(menor)'
                             : `${finalAttackDice}d20`}
@@ -3480,7 +3471,7 @@ export function SheetExtras({
                             }`}
                             title="Abrir controles de Ataque Especial para este ataque"
                           >
-                            ⚡ Ataque Especial
+                            <Icon name="zap" /> Ataque Especial
                           </button>
                         )}
 
@@ -3490,7 +3481,7 @@ export function SheetExtras({
                           className="px-2.5 py-1.5 bg-zinc-900 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold transition cursor-pointer"
                           title="Rolar Dano Normal"
                         >
-                          🩸 {displayedDmgDice}d{effectiveDamageSides}
+                          <Icon name="sangue" /> {displayedDmgDice}d{effectiveDamageSides}
                           {displayedDmgMod !== 0
                             ? displayedDmgMod > 0
                               ? `+${displayedDmgMod}`
@@ -3505,7 +3496,7 @@ export function SheetExtras({
                           className="px-2 py-1.5 bg-amber-950/70 hover:bg-amber-600 text-amber-300 hover:text-white border border-amber-700/70 rounded text-xs font-mono font-bold transition cursor-pointer"
                           title={`Rolar Dano Crítico (${effectiveCritRange})`}
                         >
-                          💥 {displayedCritDmgDice}d{effectiveDamageSides}
+                          <Icon name="burst" /> {displayedCritDmgDice}d{effectiveDamageSides}
                           {displayedDmgMod !== 0
                             ? displayedDmgMod > 0
                               ? `+${displayedDmgMod}`
@@ -3559,12 +3550,12 @@ export function SheetExtras({
                                   [atk.id]: nextSides,
                                 }));
                                 setCombatTabFeedback(
-                                  `🎲 Arcabuz dos Moretti rolou ${d6} no 1d6 → dano definido como 2d${nextSides} de Energia!`
+                                  `Arcabuz dos Moretti rolou ${d6} no 1d6 → dano definido como 2d${nextSides} de Energia!`
                                 );
                               }}
                               className="px-2 py-0.5 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded font-bold cursor-pointer"
                             >
-                              🎲 Arcabuz 1d6 (Atual: 2d{arcabuzSides})
+                              <Icon name="d20" /> Arcabuz 1d6 (Atual: 2d{arcabuzSides})
                             </button>
                           )}
 
@@ -3580,7 +3571,7 @@ export function SheetExtras({
                                   }))
                                 }
                               />
-                              🔫 Rajada (+1 dado{weaponMods.hasCompensador ? ', Compensador' : ', -1d20'})
+                              <Icon name="crosshair" /> Rajada (+1 dado{weaponMods.hasCompensador ? ', Compensador' : ', -1d20'})
                             </label>
                           )}
 
@@ -3616,7 +3607,7 @@ export function SheetExtras({
                                   }))
                                 }
                               />
-                              ⚡ Energética (-2 PE: +5 Atq, Energia, Ignora RD)
+                              <Icon name="zap" /> Energética (-2 PE: +5 Atq, Energia, Ignora RD)
                             </label>
                           )}
 
@@ -3632,7 +3623,7 @@ export function SheetExtras({
                                   }))
                                 }
                               />
-                              🧿 Antielemento {weaponMods.antielementoChosen} (-2 PE: +4d8)
+                              Antielemento {weaponMods.antielementoChosen} (-2 PE: +4d8)
                             </label>
                           )}
 
@@ -3648,7 +3639,7 @@ export function SheetExtras({
                                   }))
                                 }
                               />
-                              🪃 Arremesso Empuxo (+1 dado, retorna)
+                              Arremesso Empuxo (+1 dado, retorna)
                             </label>
                           )}
 
@@ -3658,12 +3649,12 @@ export function SheetExtras({
                               onClick={() => {
                                 if (!onSpendResource(2)) return;
                                 setCombatTabFeedback(
-                                  `⚡ Vibrante (${atk.name}): -2 PE gastos — você pode realizar 1 ataque adicional nesta ação Agredir!`
+                                  `Vibrante (${atk.name}): -2 PE gastos — você pode realizar 1 ataque adicional nesta ação Agredir!`
                                 );
                               }}
                               className="px-2 py-0.5 bg-purple-950/70 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded font-bold cursor-pointer"
                             >
-                              ⚡ Vibrante: Ataque Extra (-2 PE)
+                              <Icon name="zap" /> Vibrante: Ataque Extra (-2 PE)
                             </button>
                           )}
 
@@ -3673,12 +3664,12 @@ export function SheetExtras({
                               onClick={() => {
                                 if (!onSpendResource(2)) return;
                                 setCombatTabFeedback(
-                                  `🧠 Senciente (${atk.name}): -2 PE gastos — a arma flutua e ataca sozinha (1 PE/rodada para manter)!`
+                                  `Senciente (${atk.name}): -2 PE gastos — a arma flutua e ataca sozinha (1 PE/rodada para manter)!`
                                 );
                               }}
                               className="px-2 py-0.5 bg-purple-950/70 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded font-bold cursor-pointer"
                             >
-                              🧠 Senciente: Ativar (-2 PE)
+                              <Icon name="brain" /> Senciente: Ativar (-2 PE)
                             </button>
                           )}
 
@@ -3701,12 +3692,12 @@ export function SheetExtras({
                                 };
                                 if (!onSpendResource(2, eff)) return;
                                 setCombatTabFeedback(
-                                  `🛡️ Repulsora (${atk.name}): -2 PE gastos → +5 na Defesa aplicado na cena!`
+                                  `Repulsora (${atk.name}): -2 PE gastos → +5 na Defesa aplicado na cena!`
                                 );
                               }}
                               className="px-2 py-0.5 bg-cyan-950/70 hover:bg-cyan-800 text-cyan-200 border border-cyan-700 rounded font-bold cursor-pointer"
                             >
-                              🛡️ Repulsora: +5 Def (-2 PE)
+                              <Icon name="shield" /> Repulsora: +5 Def (-2 PE)
                             </button>
                           )}
 
@@ -3716,7 +3707,7 @@ export function SheetExtras({
                               onClick={() => {
                                 if (!onSpendResource(2)) return;
                                 onRoll(
-                                  `⏳ Erosiva (${atk.name}): +2d4 Morte (1d4 rodadas)`,
+                                  `Erosiva (${atk.name}): +2d4 Morte (1d4 rodadas)`,
                                   2,
                                   4,
                                   0,
@@ -3725,7 +3716,7 @@ export function SheetExtras({
                               }}
                               className="px-2 py-0.5 bg-zinc-900 hover:bg-purple-900 text-purple-200 border border-purple-700/70 rounded font-bold cursor-pointer"
                             >
-                              ⏳ Erosiva: +2d4 Morte (-2 PE)
+                              <Icon name="hourglass" /> Erosiva: +2d4 Morte (-2 PE)
                             </button>
                           )}
 
@@ -3735,12 +3726,12 @@ export function SheetExtras({
                               onClick={() => {
                                 if (!onSpendResource(2)) return;
                                 setCombatTabFeedback(
-                                  `🖤 Consumidora (${atk.name}): -2 PE gastos — alvo atingido fica IMÓVEL por 1 rodada!`
+                                  `Consumidora (${atk.name}): -2 PE gastos — alvo atingido fica IMÓVEL por 1 rodada!`
                                 );
                               }}
                               className="px-2 py-0.5 bg-zinc-900 hover:bg-purple-900 text-purple-200 border border-purple-700/70 rounded font-bold cursor-pointer"
                             >
-                              🖤 Consumidora: Imóvel (-2 PE)
+                              <Icon name="heart-crack" /> Consumidora: Imóvel (-2 PE)
                             </button>
                           )}
                         </div>
@@ -3752,19 +3743,19 @@ export function SheetExtras({
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="text-[11px] font-black uppercase tracking-wider text-red-400">
-                              ⚡ Ataque Especial
+                              <Icon name="zap" /> Ataque Especial
                             </span>
                             <span className="text-[10px] font-mono text-zinc-400">
                               (Máx. +{maxAeTotalBonus} • Distribuído: +{aeTotalInvested})
                             </span>
                             {aeMult > 1 && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700">
-                                💥 Potência Máxima 2x
+                                <Icon name="burst" /> Potência Máxima 2x
                               </span>
                             )}
                           </div>
                           <span className="text-[11px] font-mono font-extrabold text-amber-300 bg-zinc-950 border border-amber-700/50 px-2 py-0.5 rounded">
-                            ⚡ Custo: {totalAeConfirmPe} PE
+                            <Icon name="zap" /> Custo: {totalAeConfirmPe} PE
                             {tecnicaSecretaCost > 0
                               ? ` (${aePeCostCalculated} AE + ${tecnicaSecretaCost} Téc.)`
                               : ''}
@@ -3773,7 +3764,7 @@ export function SheetExtras({
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
-                            <span className="text-xs font-bold text-amber-300">🎯 Acerto</span>
+                            <span className="text-xs font-bold text-amber-300"><Icon name="target" /> Acerto</span>
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
@@ -3801,7 +3792,7 @@ export function SheetExtras({
                           </div>
 
                           <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
-                            <span className="text-xs font-bold text-red-300">🩸 Dano</span>
+                            <span className="text-xs font-bold text-red-300"><Icon name="sangue" /> Dano</span>
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
@@ -3832,7 +3823,7 @@ export function SheetExtras({
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="text-[11px] font-mono text-zinc-400">
                             {aeTotalInvested <= 0
-                              ? '⚠️ Escolha ao menos +5 em Acerto ou Dano.'
+                              ? 'Escolha ao menos +5 em Acerto ou Dano.'
                               : `Resultado: ${finalAttackDice <= 0 ? '2d20(menor)' : `${finalAttackDice}d20`}${
                                   finalAttackBonus + appliedAeAtk >= 0
                                     ? `+${finalAttackBonus + appliedAeAtk}`
@@ -3864,7 +3855,7 @@ export function SheetExtras({
 
                                 if (isOrdemSystem && totalAeConfirmPeWithExtras > peTurnLimit) {
                                   setCombatTabFeedback(
-                                    `⚠️ Custo total (${totalAeConfirmPeWithExtras} PE) excede seu limite de ${peTurnLimit} PE/turno!`
+                                    `Custo total (${totalAeConfirmPeWithExtras} PE) excede seu limite de ${peTurnLimit} PE/turno!`
                                   );
                                   return;
                                 }
@@ -3882,13 +3873,13 @@ export function SheetExtras({
                                   `Ataque Especial${aeMult > 1 ? ' [Potência Máxima 2x]' : ''} (${aeBonusDesc})`,
                                 ];
                                 if (isAimingFuzil) {
-                                  suffixParts.push('🎯 Mirando (+5 Crít)');
+                                  suffixParts.push('Mirando (+5 Crít)');
                                 }
                                 if (!weaponProfCheck.proficient) {
-                                  suffixParts.push('⚠️ Sem Proficiência -2d20');
+                                  suffixParts.push('Sem Proficiência -2d20');
                                 }
                                 if (isDisparoLetalArmed) {
-                                  suffixParts.push('🎯 Disparo Letal (+2 Crít)');
+                                  suffixParts.push('Disparo Letal (+2 Crít)');
                                 }
                                 const dmgSuffixParts: string[] = [];
 
@@ -3900,8 +3891,8 @@ export function SheetExtras({
 
                                 if (armedGolpeDemolidor) {
                                   extraDiceFromGolpe = 2;
-                                  dmgSuffixParts.push('🔨 Golpe Demolidor +2 dados');
-                                  suffixParts.push('🔨 Golpe Demolidor +2 dados');
+                                  dmgSuffixParts.push('Golpe Demolidor +2 dados');
+                                  suffixParts.push('Golpe Demolidor +2 dados');
                                   setArmedGolpeDemolidor(false);
                                 }
 
@@ -3915,13 +3906,13 @@ export function SheetExtras({
                                   }
                                   extraDmgFromFurtivo = furtivoSum;
                                   const assassinarSuffix = armedAssassinar
-                                    ? ` • 🗡️ Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
+                                    ? ` • Assassinar (Fortitude DT ${10 + peTurnLimit + effAgi})`
                                     : '';
                                   dmgSuffixParts.push(
-                                    `🥷 Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
+                                    `Ataque Furtivo +${furtivoDiceCount}d6: +${furtivoSum}${assassinarSuffix}`
                                   );
                                   suffixParts.push(
-                                    `🥷 Ataque Furtivo +${furtivoDiceCount}d6 (+${furtivoSum})`
+                                    `Ataque Furtivo +${furtivoDiceCount}d6 (+${furtivoSum})`
                                   );
                                   setArmedAtaqueFurtivo(false);
                                   setArmedAssassinar(false);
@@ -3938,14 +3929,14 @@ export function SheetExtras({
 
                                 const tsLabel = buildTecnicaSecretaLabels(dmgSuffixParts);
                                 if (tsLabel) suffixParts.push(tsLabel);
-                                if (isRajadaActive) suffixParts.push('🔫 Rajada (+1 dado)');
-                                if (isEmpuxoThrown) suffixParts.push('🪃 Empuxo (+1 dado)');
+                                if (isRajadaActive) suffixParts.push('Rajada (+1 dado)');
+                                if (isEmpuxoThrown) suffixParts.push('Empuxo (+1 dado)');
                                 if (isEnergeticaActive) {
-                                  suffixParts.push('⚡ Energética (+5 Atq)');
+                                  suffixParts.push('Energética (+5 Atq)');
                                   dmgSuffixParts.push('Energética: Energia / Ignora RD');
                                 }
                                 if (isAntielementoActive && weaponMods.antielementoChosen) {
-                                  suffixParts.push(`🧿 Antielemento ${weaponMods.antielementoChosen}`);
+                                  suffixParts.push(`Antielemento ${weaponMods.antielementoChosen}`);
                                   dmgSuffixParts.push(`Antielemento (${weaponMods.antielementoChosen})`);
                                 }
                                 if (isMotosserra) dmgSuffixParts.push('Motosserra: 6 explode');
@@ -4009,7 +4000,7 @@ export function SheetExtras({
                               }}
                               className="px-3 py-1 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-lg text-xs font-extrabold cursor-pointer shadow"
                             >
-                              ⚡ Confirmar Ataque (-{totalAeConfirmPe} PE)
+                              <Icon name="zap" /> Confirmar Ataque (-{totalAeConfirmPe} PE)
                             </button>
                           </div>
                         </div>
@@ -4020,7 +4011,7 @@ export function SheetExtras({
                     {isAniqFav && hasTecnicaSecreta && (
                       <div className="pt-2 border-t border-zinc-800/80 flex flex-wrap items-center gap-2 text-[11px]">
                         <span className="font-bold text-red-400">
-                          🗡️ Técnica Secreta (-2 PE/efeito):
+                          <Icon name="sword" /> Técnica Secreta (-2 PE/efeito):
                         </span>
                         <label className="flex items-center gap-1 text-zinc-300 cursor-pointer">
                           <input
@@ -4170,7 +4161,7 @@ export function SheetExtras({
               <div className="bg-purple-950/30 border border-purple-800/50 px-3.5 py-2.5 rounded-xl text-[11px] text-purple-200 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
-                    👁️ <strong>O Custo do Paranormal:</strong> Conjurar desconta PE, aplica efeitos na cena e rola <strong>Ocultismo (DT 20 + PE gasto)</strong> (exceto Medo).
+                    <Icon name="conhecimento" /> <strong>O Custo do Paranormal:</strong> Conjurar desconta PE, aplica efeitos na cena e rola <strong>Ocultismo (DT 20 + PE gasto)</strong> (exceto Medo).
                   </span>
                   {ordemSheetData && (
                     <div className="flex flex-wrap items-center gap-2 font-mono font-bold text-purple-300">
@@ -4189,7 +4180,7 @@ export function SheetExtras({
                           onClick={() => {
                             const cost = activeSustainedRituals.length;
                             if (onSpendResource(cost)) {
-                              setAbilityUseFeedback(`🔄 Sustentação paga (-${cost} PE) para ${activeSustainedRituals.map((s) => s.name).join(', ')}.`);
+                              setAbilityUseFeedback(`Sustentação paga (-${cost} PE) para ${activeSustainedRituals.map((s) => s.name).join(', ')}.`);
                             }
                           }}
                           className="px-2 py-0.5 rounded bg-indigo-700 hover:bg-indigo-600 text-white font-sans text-[10px] font-bold cursor-pointer"
@@ -4214,7 +4205,7 @@ export function SheetExtras({
                             : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
                         }`}
                       >
-                        🎭 Camuflar Ocultismo (+2 PE)
+                        <Icon name="drama" /> Camuflar Ocultismo (+2 PE)
                       </button>
                     )}
                     {hasAmpliarPower && (
@@ -4227,7 +4218,7 @@ export function SheetExtras({
                             : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
                         }`}
                       >
-                        📏 Ampliar Ritual (+2 PE)
+                        Ampliar Ritual (+2 PE)
                       </button>
                     )}
                     {hasAcelerarPower && (
@@ -4240,7 +4231,7 @@ export function SheetExtras({
                             : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
                         }`}
                       >
-                        ⚡ Acelerar Ritual (+4 PE)
+                        <Icon name="zap" /> Acelerar Ritual (+4 PE)
                       </button>
                     )}
                     {hasFlageloPower && (
@@ -4253,12 +4244,12 @@ export function SheetExtras({
                             : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-red-500'
                         }`}
                       >
-                        🩸 Poder do Flagelo (2 PV / 1 PE)
+                        <Icon name="sangue" /> Poder do Flagelo (2 PV / 1 PE)
                       </button>
                     )}
                     {hasLaminaMalditaPower && (
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900/70 border border-zinc-700 text-amber-300">
-                        🗡️ Lâmina Maldita: Amaldiçoar Arma custa -1 PE (mín. 1) na ficha
+                        <Icon name="sword" /> Lâmina Maldita: Amaldiçoar Arma custa -1 PE (mín. 1) na ficha
                       </span>
                     )}
                   </div>
@@ -4269,7 +4260,7 @@ export function SheetExtras({
                 <div className="bg-indigo-950/35 border border-indigo-600/60 px-3.5 py-2.5 rounded-xl space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-black uppercase tracking-wider text-indigo-300">
-                      🔄 Rituais Sustentados & Efeitos por Rodada Ativos
+                      <Icon name="refresh" /> Rituais Sustentados & Efeitos por Rodada Ativos
                     </span>
                     <span className="text-[10px] text-indigo-200/80">
                       Role os dados por turno sem gastar PE de conjuração
@@ -4315,7 +4306,7 @@ export function SheetExtras({
                               }}
                               className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 rounded-lg text-[11px] font-extrabold transition cursor-pointer"
                             >
-                              🎲 Rolar Efeito da Rodada ({ef.recurringFormula}) [0 PE]
+                              <Icon name="d20" /> Rolar Efeito da Rodada ({ef.recurringFormula}) [0 PE]
                             </button>
                           )}
                           {ef.usesOcultismoManeuver && (
@@ -4324,7 +4315,7 @@ export function SheetExtras({
                               onClick={() => rollOcultismoManeuver(ef.name)}
                               className="px-2.5 py-1 bg-purple-700 hover:bg-purple-600 text-white border border-purple-400 rounded-lg text-[11px] font-bold transition cursor-pointer"
                             >
-                              🐙 Manobra c/ Ocultismo
+                              Manobra c/ Ocultismo
                             </button>
                           )}
                           <button
@@ -4506,7 +4497,7 @@ export function SheetExtras({
                         )}
                         {ab.category === 'poder_paranormal' && (
                           <span className="text-[10px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
-                            👁️ Paranormal
+                            <Icon name="conhecimento" /> Paranormal
                           </span>
                         )}
                         {ab.cost > 0 ? (
@@ -4538,7 +4529,7 @@ export function SheetExtras({
                                 : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-amber-500/60'
                             }`}
                           >
-                            {ab.isFavoriteRitual ? '⭐ Predileto (-1 PE)' : '☆ Marcar Predileto'}
+                            {ab.isFavoriteRitual ? 'Predileto (-1 PE)' : '☆ Marcar Predileto'}
                           </button>
                         )}
                         {isGraduadoGrimoireAvailable && (
@@ -4559,7 +4550,7 @@ export function SheetExtras({
                                 : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-cyan-500/60'
                             }`}
                           >
-                            {ab.isGrimoireRitual ? '📖 No Grimório' : '📖 Pôr no Grimório'}
+                            {ab.isGrimoireRitual ? 'No Grimório' : 'Pôr no Grimório'}
                           </button>
                         )}
                         {isSustainedRitual && (
@@ -4580,7 +4571,7 @@ export function SheetExtras({
                                 : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-indigo-500'
                             }`}
                           >
-                            {ab.isSustainedActive ? '🔄 Sustentando (1 PE/turno)' : '🔄 Sustentar'}
+                            {ab.isSustainedActive ? 'Sustentando (1 PE/turno)' : 'Sustentar'}
                           </button>
                         )}
                         {isAmaldicoarArmaSpell && hasLaminaMalditaSpell && (
@@ -4598,7 +4589,7 @@ export function SheetExtras({
                                 : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-amber-500'
                             }`}
                           >
-                            🗡️ +1 PE (Ação Mov.)
+                            <Icon name="sword" /> +1 PE (Ação Mov.)
                           </button>
                         )}
                         {ab.modifiers &&
@@ -4680,13 +4671,13 @@ export function SheetExtras({
                                     : 'bg-red-950/60 hover:bg-red-700 text-red-300 hover:text-white border-red-700/60'
                                 }`}
                               >
-                                {f.mode === 'normal' && `🔮 Normal (${costText})`}
+                                {f.mode === 'normal' && `Normal (${costText})`}
                                 {f.mode === 'discente' &&
-                                  `🔥 Discente (${costText})${
+                                  `Discente (${costText})${
                                     f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
                                   }${f.requiresAffinity ? ' [Afin.]' : ''}`}
                                 {f.mode === 'verdadeiro' &&
-                                  `👁️ Verdadeiro (${costText})${
+                                  `Verdadeiro (${costText})${
                                     f.requiredCircle > 1 ? ` [${f.requiredCircle}ºC]` : ''
                                   }${f.requiresAffinity ? ' [Afin.]' : ''}`}
                               </button>
@@ -4744,7 +4735,7 @@ export function SheetExtras({
                                 title="Rolar apenas os dados do efeito deste ritual sem gastar PE nem repetir O Custo do Paranormal"
                                 className="px-2.5 py-1.5 rounded-lg text-xs font-bold border bg-zinc-900 hover:bg-zinc-800 text-amber-300 border-zinc-700 hover:border-amber-500/70 transition whitespace-nowrap cursor-pointer"
                               >
-                                🎲 Só Efeito ({formulaText})
+                                <Icon name="d20" /> Só Efeito ({formulaText})
                               </button>
                             );
                           })()}
@@ -4758,7 +4749,7 @@ export function SheetExtras({
                                 onClick={() => onTriggerOriginSpecial('amnesico')}
                                 className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                               >
-                                🧠 Testar Vislumbres (Intelecto DT 10)
+                                <Icon name="brain" /> Testar Vislumbres (Intelecto DT 10)
                               </button>
                               {vislumbresSuccessPending && onRollVislumbresPe && (
                                 <button
@@ -4766,7 +4757,7 @@ export function SheetExtras({
                                   onClick={onRollVislumbresPe}
                                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow-lg animate-pulse"
                                 >
-                                  🎲 Girar 1d4 PE Temporários
+                                  <Icon name="d20" /> Girar 1d4 PE Temporários
                                 </button>
                               )}
                             </div>
@@ -4788,7 +4779,7 @@ export function SheetExtras({
                               }}
                               className="px-3 py-1.5 bg-blue-950/70 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                             >
-                              🙏 Acalentar (1d6 + PRE SAN)
+                              Acalentar (1d6 + PRE SAN)
                             </button>
                           )}
                           {(ab.id === 'ord-pwr-comb-sentido-tatico' ||
@@ -4800,7 +4791,7 @@ export function SheetExtras({
                                 onClick={() => onTriggerOriginSpecial('sentido_tatico')}
                                 className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                               >
-                                🧠 Analisar Ambiente (-2 PE → +INT Def/Resist na Cena)
+                                <Icon name="brain" /> Analisar Ambiente (-2 PE → +INT Def/Resist na Cena)
                               </button>
                             )}
                           {(ab.id === 'ord-pwr-esp-nerd' ||
@@ -4857,7 +4848,7 @@ export function SheetExtras({
                                   }}
                                   className="px-3 py-1.5 bg-blue-950/70 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                 >
-                                  🤓 Testar Atualidades DT 20 (-2 PE{isInCampaign ? ' • 1x/Cena' : ''})
+                                  Testar Atualidades DT 20 (-2 PE{isInCampaign ? ' • 1x/Cena' : ''})
                                 </button>
                               );
                             })()}
@@ -4889,7 +4880,7 @@ export function SheetExtras({
                                       }}
                                       className="px-2.5 py-1.5 bg-emerald-950/70 hover:bg-emerald-700 text-emerald-200 hover:text-white border border-emerald-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                     >
-                                      🚑 Curar {t.dice}d10 PV (-{t.cost} PE)
+                                      Curar {t.dice}d10 PV (-{t.cost} PE)
                                     </button>
                                   ))}
                               </div>
@@ -4904,7 +4895,7 @@ export function SheetExtras({
                                     onClick={() => handleEndDiscursoMotivador(ab.id)}
                                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white border border-amber-300 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow"
                                   >
-                                    📢 Discurso Ativo (+
+                                    <Icon name="megaphone" /> Discurso Ativo (+
                                     {ab.modifiers?.[0]?.value || 1}d20 Perícias) • Encerrar
                                   </button>
                                 ) : (
@@ -4914,7 +4905,7 @@ export function SheetExtras({
                                       onClick={() => handleOpenDiscursoModal(1, 4)}
                                       className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                     >
-                                      📢 Discurso Motivador (+1d20 Perícias • -4 PE)
+                                      <Icon name="megaphone" /> Discurso Motivador (+1d20 Perícias • -4 PE)
                                     </button>
                                     {ordemNex >= 65 && (
                                       <button
@@ -4922,7 +4913,7 @@ export function SheetExtras({
                                         onClick={() => handleOpenDiscursoModal(2, 8)}
                                         className="px-3 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                       >
-                                        📢 Discurso 65%+ (+2d20 Perícias • -8 PE)
+                                        <Icon name="megaphone" /> Discurso 65%+ (+2d20 Perícias • -8 PE)
                                       </button>
                                     )}
                                   </>
@@ -4984,7 +4975,7 @@ export function SheetExtras({
                                     return;
                                   }
                                   setAbilityUseFeedback(
-                                    '👁️ Guiado pelo Paranormal (-2 PE): +1d20 no seu próximo teste de Investigação ou Percepção!'
+                                    'Guiado pelo Paranormal (-2 PE): +1d20 no seu próximo teste de Investigação ou Percepção!'
                                   );
                                 }}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap ${
@@ -4995,7 +4986,7 @@ export function SheetExtras({
                               >
                                 {guiadoUsedInScene
                                   ? '✓ Usado na Cena'
-                                  : '👁️ Guiado (-2 PE → +1d20 Inv/Perc)'}
+                                  : 'Guiado (-2 PE → +1d20 Inv/Perc)'}
                               </button>
                             );
                           })()}
@@ -5047,12 +5038,12 @@ export function SheetExtras({
                                       },
                                     ]);
                                     setAbilityUseFeedback(
-                                      `🧪 Teste de Investigação DT 15 rolado e Componentes de ${improvisarElemento} adicionados à mochila!`
+                                      `Teste de Investigação DT 15 rolado e Componentes de ${improvisarElemento} adicionados à mochila!`
                                     );
                                   }}
                                   className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                 >
-                                  🎲 Investigação (DT 15) + Criar Componentes
+                                  <Icon name="d20" /> Investigação (DT 15) + Criar Componentes
                                 </button>
                               </div>
                             )}
@@ -5085,7 +5076,7 @@ export function SheetExtras({
                                 }}
                                 className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                               >
-                                🔍 Identificar (+10 Ocultismo)
+                                <Icon name="search" /> Identificar (+10 Ocultismo)
                               </button>
                             )}
                           {(ab.id === 'ord-pwr-ocu-criar-selo' ||
@@ -5136,7 +5127,7 @@ export function SheetExtras({
                                         },
                                       ]);
                                       setAbilityUseFeedback(
-                                        `📜 Selo Paranormal de ${chosen.name} fabricado (-${sealCost} PE, Cat. ${circle}) e guardado na mochila!`
+                                        `Selo Paranormal de ${chosen.name} fabricado (-${sealCost} PE, Cat. ${circle}) e guardado na mochila!`
                                       );
                                     }}
                                     className="px-3 py-1.5 bg-indigo-950/70 hover:bg-indigo-700 text-indigo-200 hover:text-white border border-indigo-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
@@ -5151,7 +5142,7 @@ export function SheetExtras({
                                           findOrdemRitualDef(chosen.name)
                                         : undefined;
                                       const c = def?.circle || 1;
-                                      return `📜 Fabricar Selo (-${getOrdemCircleBaseCost(c)} PE • Cat. ${c})`;
+                                      return `Fabricar Selo (-${getOrdemCircleBaseCost(c)} PE • Cat. ${c})`;
                                     })()}
                                   </button>
                                 </>
@@ -5198,7 +5189,7 @@ export function SheetExtras({
                                   }}
                                   className="px-3 py-1.5 bg-purple-950/70 hover:bg-purple-700 text-purple-200 hover:text-white border border-purple-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                                 >
-                                  🚫 Anular (-{anularRitualPe} PE + Ocultismo)
+                                  <Icon name="x-circle" /> Anular (-{anularRitualPe} PE + Ocultismo)
                                 </button>
                               </div>
                             )}
@@ -5215,7 +5206,7 @@ export function SheetExtras({
                                   onClick={() => {
                                     onGrantTempPe?.(val, 'Absorver Agonia');
                                     setAbilityUseFeedback(
-                                      `🩸 Absorver Agonia: +${val} PE temporário adicionado!`
+                                      `Absorver Agonia: +${val} PE temporário adicionado!`
                                     );
                                   }}
                                   className="px-2 py-1 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded text-xs font-bold cursor-pointer"
@@ -5264,14 +5255,14 @@ export function SheetExtras({
                                   return;
                                 }
                                 setAbilityUseFeedback(
-                                  `⚡ Campo Protetor ativado (-1 PE): +5 Defesa${
+                                  `Campo Protetor ativado (-1 PE): +5 Defesa${
                                     hasAff ? ' e +5 Reflexos' : ''
                                   } na cena!`
                                 );
                               }}
                               className="px-3 py-1.5 bg-purple-950/70 hover:bg-purple-700 text-purple-200 hover:text-white border border-purple-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                             >
-                              ⚡ Campo Protetor (-1 PE → +5 Def)
+                              <Icon name="zap" /> Campo Protetor (-1 PE → +5 Def)
                             </button>
                           )}
                           {(ab.id === 'ord-para-mort-surto-temporal' ||
@@ -5308,7 +5299,7 @@ export function SheetExtras({
                                     return;
                                   }
                                   setAbilityUseFeedback(
-                                    `⏳ Surto Temporal ativado (-3 PE): você ganha +1 ação padrão adicional neste turno${
+                                    `Surto Temporal ativado (-3 PE): você ganha +1 ação padrão adicional neste turno${
                                       hasAff ? ' (1x/turno com Afinidade)' : ''
                                     }!`
                                   );
@@ -5321,7 +5312,7 @@ export function SheetExtras({
                               >
                                 {blocked
                                   ? '✓ Surto Usado na Cena'
-                                  : `⏳ Surto Temporal (-3 PE • ${
+                                  : `Surto Temporal (-3 PE • ${
                                       hasAff ? '1x/turno' : '1x/cena'
                                     })`}
                               </button>
@@ -5339,15 +5330,15 @@ export function SheetExtras({
                                 const gain = hasAff ? 3 : 2;
                                 onGrantTempPe?.(gain, 'Potencial Reaproveitado');
                                 setAbilityUseFeedback(
-                                  `💀 Potencial Reaproveitado: +${gain} PE temporários por passar no teste de resistência!`
+                                  `Potencial Reaproveitado: +${gain} PE temporários por passar no teste de resistência!`
                                 );
                               }}
                               className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-600 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                             >
                               {ab.hasAffinityUpgrade ||
                               ab.name.toLowerCase().includes('afinidade')
-                                ? '💀 +3 PE Temp (Resistência)'
-                                : '💀 +2 PE Temp (Resistência)'}
+                                ? '+3 PE Temp (Resistência)'
+                                : '+2 PE Temp (Resistência)'}
                             </button>
                           )}
                           {(ab.id === 'ord-para-sang-anatomia-insana' ||
@@ -5355,7 +5346,7 @@ export function SheetExtras({
                             (ab.hasAffinityUpgrade ||
                             ab.name.toLowerCase().includes('afinidade') ? (
                               <span className="px-2.5 py-1 bg-red-950/70 text-red-200 border border-red-700 rounded-lg text-xs font-bold">
-                                🛡️ Imune a Críticos e Furtivos
+                                <Icon name="shield" /> Imune a Críticos e Furtivos
                               </span>
                             ) : (
                               <button
@@ -5371,7 +5362,7 @@ export function SheetExtras({
                                 }
                                 className="px-3 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                               >
-                                🎲 Ignorar Crítico (1d4 ≥ 3)
+                                <Icon name="d20" /> Ignorar Crítico (1d4 ≥ 3)
                               </button>
                             ))}
                           {!isPassive &&
@@ -5388,7 +5379,7 @@ export function SheetExtras({
                               onClick={() => handleUseAbility(ab)}
                               className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-700/50 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
                             >
-                              ✨ Usar {ab.cost > 0 ? `(-${ab.cost} ${resourceLabel})` : ''}
+                              <Icon name="sparkles" /> Usar {ab.cost > 0 ? `(-${ab.cost} ${resourceLabel})` : ''}
                             </button>
                           )}
                         </>
@@ -5416,11 +5407,11 @@ export function SheetExtras({
       {zoomedItemImage && (
         <div
           onClick={() => setZoomedItemImage(null)}
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 backdrop-blur-md cursor-zoom-out"
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 overflow-y-auto cursor-zoom-out"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-zinc-900 border-2 border-amber-500/80 rounded-3xl p-4 max-w-xl w-full flex flex-col items-center gap-3 shadow-2xl"
+            className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4 max-w-xl w-full flex flex-col items-center gap-3 shadow-2xl"
           >
             <img
               src={zoomedItemImage.url}
@@ -5469,7 +5460,7 @@ export function SheetExtras({
               }
               setCustomizingItemId(null);
               setInventoryFeedback(
-                `⚙️ "${updatedItem.name}" atualizado (Cat. ${
+                `"${updatedItem.name}" atualizado (Cat. ${
                   ['0', 'I', 'II', 'III', 'IV', 'V', 'VI'][
                     getOrdemItemEffectiveCategory(updatedItem)
                   ] || getOrdemItemEffectiveCategory(updatedItem)
@@ -5501,7 +5492,7 @@ export function SheetExtras({
               <span className="text-xs text-zinc-400">Capacidade de Carga:</span>
               {canTrade && (
                 <span className="text-[10px] font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-700 px-2 py-0.5 rounded-full">
-                  🤝 Trocas entre Jogadores Liberadas
+                  <Icon name="handshake" /> Trocas entre Jogadores Liberadas
                 </span>
               )}
               {system === 'ordem-paranormal' && ordemSheetData && (() => {
@@ -5562,7 +5553,7 @@ export function SheetExtras({
               })()}
             </div>
             <span className={`text-xs font-mono font-bold ${isOverloaded ? 'text-red-400' : 'text-emerald-400'}`}>
-              {currentLoad} / {effectiveMaxSlots} Espaços {isOverloaded && '⚠️ SOBRECARGA (-5 Defesa, -3m Desl.)!'}
+              {currentLoad} / {effectiveMaxSlots} Espaços {isOverloaded && 'SOBRECARGA (-5 Defesa, -3m Desl.)!'}
             </span>
           </div>
 
@@ -5589,7 +5580,7 @@ export function SheetExtras({
                       : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-amber-300'
                   }`}
                 >
-                  🎒 Normais ({inventory.filter((it) => !isOrdemItemParanormal(it)).length})
+                  <Icon name="backpack" /> Normais ({inventory.filter((it) => !isOrdemItemParanormal(it)).length})
                 </button>
                 <button
                   type="button"
@@ -5600,7 +5591,7 @@ export function SheetExtras({
                       : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-purple-300'
                   }`}
                 >
-                  👁️ Paranormais & Amaldiçoados ({inventory.filter((it) => isOrdemItemParanormal(it)).length})
+                  <Icon name="conhecimento" /> Paranormais & Amaldiçoados ({inventory.filter((it) => isOrdemItemParanormal(it)).length})
                 </button>
               </div>
               <span className="text-[11px] text-zinc-500">
@@ -5696,7 +5687,7 @@ export function SheetExtras({
                                   : 'bg-zinc-900 border-zinc-800'
                               }`}
                             >
-                              {isPara ? '👁️' : '🎒'}
+                              <Icon name={isPara ? 'conhecimento' : 'backpack'} />
                             </div>
                           )}
 
@@ -5752,7 +5743,7 @@ export function SheetExtras({
                               )}
                               {isPara && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
-                                  👁️ {item.element ? item.element : 'Paranormal'}
+                                  <Icon name="conhecimento" /> {item.element ? item.element : 'Paranormal'}
                                 </span>
                               )}
                               {system === 'ordem-paranormal' &&
@@ -5768,35 +5759,35 @@ export function SheetExtras({
                                       className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-200 border border-red-700"
                                       title={`Exige ${protCheck.requiredLabel} (p. 62: -2d20 em testes de Força e Agilidade)`}
                                     >
-                                      ⚠️ Sem Proficiência (-2d20 FOR/AGI)
+                                      <Icon name="warning" /> Sem Proficiência (-2d20 FOR/AGI)
                                     </span>
                                   );
                                 })()}
                               {item.isFavoriteTool && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
-                                  🔧 Ferramenta Favorita (-1 Cat.)
+                                  <Icon name="wrench" /> Ferramenta Favorita (-1 Cat.)
                                 </span>
                               )}
                               {hasMochilaUtilidades && item.isUtilityBackpackItem && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700">
-                                  🎒 Mochila de Utilidades (-1 Cat., -1 Esp.)
+                                  <Icon name="backpack" /> Mochila de Utilidades (-1 Cat., -1 Esp.)
                                 </span>
                               )}
                               {hasFerramentasParanormais && item.isParanormalTool && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700">
-                                  🔮 Ferramenta Paranormal (-I Cat.)
+                                  <Icon name="sigil" /> Ferramenta Paranormal (-I Cat.)
                                 </span>
                               )}
                               {hasRemendao &&
                                 isGeneralEquipment(item) &&
                                 (item.category || 0) > 0 && (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700">
-                                    🛠️ Remendão (-I Cat.)
+                                    <Icon name="hammer" /> Remendão (-I Cat.)
                                   </span>
                                 )}
                               {item.isAniquiladorFavorite && aniquiladorCatReduction > 0 && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-700">
-                                  🗡️ A Favorita (-{aniquiladorCatReduction} Cat.)
+                                  <Icon name="sword" /> A Favorita (-{aniquiladorCatReduction} Cat.)
                                 </span>
                               )}
                             </div>
@@ -5816,7 +5807,7 @@ export function SheetExtras({
                                         title={def?.description}
                                         className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-200 border border-amber-700/60"
                                       >
-                                        🛠️ {def?.name || modId}
+                                        <Icon name="hammer" /> {def?.name || modId}
                                       </span>
                                     );
                                   })}
@@ -5832,14 +5823,14 @@ export function SheetExtras({
                                         title={def?.description}
                                         className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-200 border border-purple-600/70"
                                       >
-                                        👁️ {def?.name || c.curseId}
+                                        <Icon name="conhecimento" /> {def?.name || c.curseId}
                                         {extra}
                                       </span>
                                     );
                                   })}
                                   {item.accessoryConfig?.primarySkill && (
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-200 border border-cyan-700/60">
-                                      🧰 {accSkillName(item.accessoryConfig.primarySkill)}{' '}
+                                      <Icon name="briefcase" /> {accSkillName(item.accessoryConfig.primarySkill)}{' '}
                                       {(item.modifications || []).includes('mod-aprimorado')
                                         ? '+5'
                                         : '+2'}
@@ -5847,7 +5838,7 @@ export function SheetExtras({
                                   )}
                                   {item.accessoryConfig?.secondarySkill && (
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-200 border border-cyan-700/60">
-                                      🧰 2ª: {accSkillName(item.accessoryConfig.secondarySkill)}{' '}
+                                      <Icon name="briefcase" /> 2ª: {accSkillName(item.accessoryConfig.secondarySkill)}{' '}
                                       {(item.modifications || []).includes('mod-aprimorado-2')
                                         ? '+5'
                                         : '+2'}
@@ -5855,12 +5846,12 @@ export function SheetExtras({
                                   )}
                                   {item.accessoryConfig?.instrumentalSkill && (
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-200 border border-emerald-700/60">
-                                      🔧 Kit: {accSkillName(item.accessoryConfig.instrumentalSkill)}
+                                      <Icon name="wrench" /> Kit: {accSkillName(item.accessoryConfig.instrumentalSkill)}
                                     </span>
                                   )}
                                   {item.storedRitualName && (
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-950/80 text-fuchsia-200 border border-fuchsia-600/70">
-                                      🔮 Selo: {item.storedRitualName}
+                                      <Icon name="sigil" /> Selo: {item.storedRitualName}
                                       {item.storedRitualCircle ? ` (${item.storedRitualCircle}ºC)` : ''}
                                     </span>
                                   )}
@@ -5893,7 +5884,7 @@ export function SheetExtras({
                               className="px-2.5 py-1 bg-zinc-900 hover:bg-purple-900/70 text-amber-300 hover:text-white border border-zinc-700 hover:border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer whitespace-nowrap"
                               title="Aplicar Modificações Normais, Maldições Paranormais ou Configurar Acessório/Selo"
                             >
-                              ⚙️ Modificar / Amaldiçoar
+                              <Icon name="settings" /> Modificar / Amaldiçoar
                             </button>
                           )}
                         </div>
@@ -5957,7 +5948,7 @@ export function SheetExtras({
                                     )
                                   }
                                 />
-                                🔧 Ferramenta Favorita (-1 Cat.)
+                                <Icon name="wrench" /> Ferramenta Favorita (-1 Cat.)
                               </label>
                             )}
 
@@ -5980,7 +5971,7 @@ export function SheetExtras({
                                     )
                                   }
                                 />
-                                🎒 Mochila de Utilidades (-1 Cat., -1 Esp.)
+                                <Icon name="backpack" /> Mochila de Utilidades (-1 Cat., -1 Esp.)
                               </label>
                             )}
 
@@ -6003,7 +5994,7 @@ export function SheetExtras({
                                     )
                                   }
                                 />
-                                🔮 Ferramenta Paranormal (-I Cat.)
+                                <Icon name="sigil" /> Ferramenta Paranormal (-I Cat.)
                               </label>
                             )}
 
@@ -6036,7 +6027,7 @@ export function SheetExtras({
                                     );
                                   }}
                                 />
-                                🗡️ A Favorita (-{aniquiladorCatReduction} Cat.)
+                                <Icon name="sword" /> A Favorita (-{aniquiladorCatReduction} Cat.)
                               </label>
                             )}
 
@@ -6091,7 +6082,7 @@ export function SheetExtras({
                                 className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-400 rounded-lg text-[11px] font-extrabold transition cursor-pointer whitespace-nowrap shadow"
                                 title={`Rolar cura (${displayFormula} PV) e consumir 1 unidade do inventário`}
                               >
-                                💚 Usar ({displayFormula} PV • -1 un.)
+                                <Icon name="heart-pulse" /> Usar ({displayFormula} PV • -1 un.)
                               </button>
                             );
                           })()}
@@ -6102,7 +6093,7 @@ export function SheetExtras({
                               className="px-2.5 py-1 bg-blue-900/60 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700/60 rounded-lg text-[11px] font-bold transition cursor-pointer whitespace-nowrap"
                               title="Entregar este item para outro jogador da mesa"
                             >
-                              🤝 Passar p/ Aliado
+                              <Icon name="handshake" /> Passar p/ Aliado
                             </button>
                           )}
 

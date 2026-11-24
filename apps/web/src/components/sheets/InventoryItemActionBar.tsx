@@ -9,6 +9,7 @@ import {
   getOrdemPeLimit,
 } from '@totalrpg/shared';
 
+import { Icon } from '../ui/Icon';
 interface InventoryItemActionBarProps {
   item: RPGItem;
   ordemSheetData: OrdemSheetData;
@@ -146,13 +147,13 @@ export function InventoryItemActionBar({
         key="use-cicatrizante"
         type="button"
         onClick={() => {
-          onRoll(`💚 ${item.name} (Cura de PV)`, 2, 8, 2, true);
+          onRoll(`${item.name} (Cura de PV)`, 2, 8, 2, true);
           onConsumeUnit(item.id);
-          onFeedback(`💚 ${item.name} usado (2d8+2 PV) — 1 unidade consumida do inventário.`);
+          onFeedback(`${item.name} usado (2d8+2 PV) — 1 unidade consumida do inventário.`);
         }}
         className="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-700 text-emerald-200 hover:text-white border border-emerald-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        💚 Usar Spray (2d8+2 PV • -1 un.)
+        <Icon name="heart-pulse" /> Usar Spray (2d8+2 PV • -1 un.)
       </button>
     );
   }
@@ -167,7 +168,7 @@ export function InventoryItemActionBar({
         type="button"
         onClick={() => {
           onRoll(
-            `💣 Granada de Fragmentação [Raio 6m • Reflexos DT ${grenadeDt} reduz à metade • Perfuração]`,
+            `Granada de Fragmentação [Raio 6m • Reflexos DT ${grenadeDt} reduz à metade • Perfuração]`,
             8,
             6,
             0,
@@ -175,12 +176,12 @@ export function InventoryItemActionBar({
           );
           onConsumeUnit(item.id);
           onFeedback(
-            `💣 Granada de Fragmentação arremessada (8d6 Perfuração • Reflexos DT ${grenadeDt}) — 1 unidade consumida.`
+            `Granada de Fragmentação arremessada (8d6 Perfuração • Reflexos DT ${grenadeDt}) — 1 unidade consumida.`
           );
         }}
         className="px-2.5 py-1 bg-orange-950/80 hover:bg-orange-700 text-orange-200 hover:text-white border border-orange-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        💣 Arremessar (8d6 • Ref DT {grenadeDt} • -1 un.)
+        <Icon name="bomb" /> Arremessar (8d6 • Ref DT {grenadeDt} • -1 un.)
       </button>
     );
   } else if (ln.includes('granada incendiária') || ln.includes('granada incendiaria')) {
@@ -190,7 +191,7 @@ export function InventoryItemActionBar({
         type="button"
         onClick={() => {
           onRoll(
-            `🔥 Granada Incendiária [Raio 6m • Reflexos DT ${grenadeDt} reduz à metade e evita Em Chamas • Fogo]`,
+            `Granada Incendiária [Raio 6m • Reflexos DT ${grenadeDt} reduz à metade e evita Em Chamas • Fogo]`,
             6,
             6,
             0,
@@ -198,12 +199,12 @@ export function InventoryItemActionBar({
           );
           onConsumeUnit(item.id);
           onFeedback(
-            `🔥 Granada Incendiária arremessada (6d6 Fogo + Em Chamas • Reflexos DT ${grenadeDt}) — 1 unidade consumida.`
+            `Granada Incendiária arremessada (6d6 Fogo + Em Chamas • Reflexos DT ${grenadeDt}) — 1 unidade consumida.`
           );
         }}
         className="px-2.5 py-1 bg-red-950/80 hover:bg-red-700 text-red-200 hover:text-white border border-red-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🔥 Arremessar (6d6 Fogo • Ref DT {grenadeDt} • -1 un.)
+        <Icon name="flame" /> Arremessar (6d6 Fogo • Ref DT {grenadeDt} • -1 un.)
       </button>
     );
   } else if (ln.includes('granada de atordoamento')) {
@@ -214,12 +215,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           onConsumeUnit(item.id);
           onFeedback(
-            `⚡ Granada de Atordoamento arremessada (Raio 6m): seres devem passar em Fortitude DT ${grenadeDt} ou ficam Atordoados por 1 rodada (Ofuscados se passarem). -1 unidade.`
+            `Granada de Atordoamento arremessada (Raio 6m): seres devem passar em Fortitude DT ${grenadeDt} ou ficam Atordoados por 1 rodada (Ofuscados se passarem). -1 unidade.`
           );
         }}
         className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ⚡ Arremessar (Atordoar • Fort DT {grenadeDt} • -1 un.)
+        <Icon name="zap" /> Arremessar (Atordoar • Fort DT {grenadeDt} • -1 un.)
       </button>
     );
   } else if (ln.includes('granada de fumaça') || ln.includes('granada de fumaca')) {
@@ -230,12 +231,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           onConsumeUnit(item.id);
           onFeedback(
-            `💨 Granada de Fumaça arremessada (Raio 6m): cria fumaça densa por 2 rodadas — seres na área ficam Cegos e sob Camuflagem Total. -1 unidade.`
+            `Granada de Fumaça arremessada (Raio 6m): cria fumaça densa por 2 rodadas — seres na área ficam Cegos e sob Camuflagem Total. -1 unidade.`
           );
         }}
         className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        💨 Arremessar (Fumaça 2 rod. • -1 un.)
+        <Icon name="wind" /> Arremessar (Fumaça 2 rod. • -1 un.)
       </button>
     );
   } else if (ln.includes('mina antipessoal')) {
@@ -243,17 +244,17 @@ export function InventoryItemActionBar({
       <button
         key="install-mina"
         type="button"
-        onClick={() => rollSkill('tatica', 'int', `🔧 Instalar Mina Antipessoal (Tática DT 15)`)}
+        onClick={() => rollSkill('tatica', 'int', `Instalar Mina Antipessoal (Tática DT 15)`)}
         className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-amber-700/70 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🔧 Instalar (Tática DT 15)
+        <Icon name="wrench" /> Instalar (Tática DT 15)
       </button>,
       <button
         key="detonate-mina"
         type="button"
         onClick={() => {
           onRoll(
-            `💣 Mina Antipessoal [Cone 6m • Reflexos DT ${minaDt} reduz à metade • Perfuração]`,
+            `Mina Antipessoal [Cone 6m • Reflexos DT ${minaDt} reduz à metade • Perfuração]`,
             12,
             6,
             0,
@@ -261,12 +262,12 @@ export function InventoryItemActionBar({
           );
           onConsumeUnit(item.id);
           onFeedback(
-            `💣 Mina Antipessoal detonada (12d6 Perfuração em cone 6m • Reflexos DT ${minaDt}) — 1 unidade consumida.`
+            `Mina Antipessoal detonada (12d6 Perfuração em cone 6m • Reflexos DT ${minaDt}) — 1 unidade consumida.`
           );
         }}
         className="px-2.5 py-1 bg-red-950/80 hover:bg-red-700 text-red-200 hover:text-white border border-red-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        💣 Detonar (12d6 • Ref DT {minaDt} • -1 un.)
+        <Icon name="bomb" /> Detonar (12d6 • Ref DT {minaDt} • -1 un.)
       </button>
     );
   }
@@ -283,7 +284,7 @@ export function InventoryItemActionBar({
           onClick={() => onOpenCustomize(item.id)}
           className="px-2.5 py-1 bg-fuchsia-950/80 hover:bg-fuchsia-800 text-fuchsia-200 border border-fuchsia-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
         >
-          ⚙️ Escolher Ritual do Selo
+          <Icon name="settings" /> Escolher Ritual do Selo
         </button>
       );
     } else {
@@ -309,10 +310,10 @@ export function InventoryItemActionBar({
               rollSkill(
                 'ocultismo',
                 'int',
-                `🔮 Ativar Selo (${item.storedRitualName}) — Ocultismo DT ${20 + peCost}`
+                `Ativar Selo (${item.storedRitualName}) — Ocultismo DT ${20 + peCost}`
               );
               onFeedback(
-                `🔮 Selo "${item.storedRitualName}" ativado (-${peCost} PE, -1 un.)! Como você não conhece este ritual, role Ocultismo DT ${20 + peCost} para conjurá-lo sem perdê-lo.`
+                `Selo "${item.storedRitualName}" ativado (-${peCost} PE, -1 un.)! Como você não conhece este ritual, role Ocultismo DT ${20 + peCost} para conjurá-lo sem perdê-lo.`
               );
             } else {
               const dmg = ritualComp?.metadata?.damageFormula;
@@ -320,7 +321,7 @@ export function InventoryItemActionBar({
                 const m = dmg.toLowerCase().replace(/\s+/g, '').match(/^(\d+)d(\d+)([+-]\d+)?$/);
                 if (m) {
                   onRoll(
-                    `🔮 Selo Paranormal: ${item.storedRitualName}`,
+                    `Selo Paranormal: ${item.storedRitualName}`,
                     parseInt(m[1], 10),
                     parseInt(m[2], 10),
                     m[3] ? parseInt(m[3], 10) : 0,
@@ -329,13 +330,13 @@ export function InventoryItemActionBar({
                 }
               }
               onFeedback(
-                `🔮 Selo "${item.storedRitualName}" ativado com sucesso (-${peCost} PE, sem precisar de componentes ritualísticos) — 1 unidade consumida.`
+                `Selo "${item.storedRitualName}" ativado com sucesso (-${peCost} PE, sem precisar de componentes ritualísticos) — 1 unidade consumida.`
               );
             }
           }}
           className="px-2.5 py-1 bg-fuchsia-950/80 hover:bg-fuchsia-700 text-fuchsia-100 border border-fuchsia-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
         >
-          🔮 Ativar Selo: {item.storedRitualName} (-{peCost} PE • -1 un.)
+          <Icon name="sigil" /> Ativar Selo: {item.storedRitualName} (-{peCost} PE • -1 un.)
         </button>
       );
     }
@@ -354,17 +355,17 @@ export function InventoryItemActionBar({
         onClick={() => {
           useChargeOrConsume(2);
           onRoll(
-            `⚡ Taser [Eletricidade • Fortitude DT ${grenadeDt} ou Atordoado 1 rod.]`,
+            `Taser [Eletricidade • Fortitude DT ${grenadeDt} ou Atordoado 1 rod.]`,
             1,
             6,
             0,
             true
           );
-          onFeedback(`⚡ Taser disparado (1d6 Eletricidade • Fort DT ${grenadeDt}). Cargas restantes: ${Math.max(0, charges - 1)}.`);
+          onFeedback(`Taser disparado (1d6 Eletricidade • Fort DT ${grenadeDt}). Cargas restantes: ${Math.max(0, charges - 1)}.`);
         }}
         className="px-2.5 py-1 bg-cyan-950/80 hover:bg-cyan-700 disabled:opacity-40 text-cyan-200 border border-cyan-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ⚡ Disparar (1d6 • Fort DT {grenadeDt} • {charges}/2 cargas)
+        <Icon name="zap" /> Disparar (1d6 • Fort DT {grenadeDt} • {charges}/2 cargas)
       </button>,
       ...(charges < 2
         ? [
@@ -390,17 +391,17 @@ export function InventoryItemActionBar({
         onClick={() => {
           useChargeOrConsume(2);
           onRoll(
-            `🌶️ Spray de Pimenta [Cego por 1d4 rodadas • Fortitude DT ${grenadeDt} anula]`,
+            `Spray de Pimenta [Cego por 1d4 rodadas • Fortitude DT ${grenadeDt} anula]`,
             1,
             4,
             0,
             true
           );
-          onFeedback(`🌶️ Spray de Pimenta borrifado (Fort DT ${grenadeDt}). Usos restantes: ${Math.max(0, charges - 1)}/2.`);
+          onFeedback(`Spray de Pimenta borrifado (Fort DT ${grenadeDt}). Usos restantes: ${Math.max(0, charges - 1)}/2.`);
         }}
         className="px-2.5 py-1 bg-red-950/80 hover:bg-red-700 disabled:opacity-40 text-red-200 border border-red-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🌶️ Borrifar (1d4 rod. Cego • Fort DT {grenadeDt} • {charges}/2)
+        Borrifar (1d4 rod. Cego • Fort DT {grenadeDt} • {charges}/2)
       </button>
     );
   } else if (ln.includes('lanterna tática') || ln.includes('lanterna tatica')) {
@@ -410,12 +411,12 @@ export function InventoryItemActionBar({
         type="button"
         onClick={() =>
           onFeedback(
-            `🔦 Lanterna Tática (Ação de Movimento): alvo em alcance curto fica Ofuscado por 1 rodada (imune por 1 cena depois).`
+            `Lanterna Tática (Ação de Movimento): alvo em alcance curto fica Ofuscado por 1 rodada (imune por 1 cena depois).`
           )
         }
         className="px-2.5 py-1 bg-amber-950/70 hover:bg-amber-700 text-amber-200 border border-amber-600/70 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🔦 Ofuscar Alvo (Mov.)
+        <Icon name="flashlight" /> Ofuscar Alvo (Mov.)
       </button>
     );
   } else if (ln.includes('pistola de dardos')) {
@@ -428,12 +429,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           useChargeOrConsume(2);
           onFeedback(
-            `🎯 Pistola de Dardos disparada (alcance curto): alvo sofre Fortitude DT ${grenadeDt} ou fica Inconsciente até o fim da cena (Desprevenido 1 rod. se passar). Dardos: ${Math.max(0, charges - 1)}/2.`
+            `Pistola de Dardos disparada (alcance curto): alvo sofre Fortitude DT ${grenadeDt} ou fica Inconsciente até o fim da cena (Desprevenido 1 rod. se passar). Dardos: ${Math.max(0, charges - 1)}/2.`
           );
         }}
         className="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-700 disabled:opacity-40 text-emerald-200 border border-emerald-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🎯 Disparar Dardo (Fort DT {grenadeDt} • {charges}/2)
+        <Icon name="target" /> Disparar Dardo (Fort DT {grenadeDt} • {charges}/2)
       </button>
     );
   } else if (ln.includes('pistola sinalizadora')) {
@@ -445,12 +446,12 @@ export function InventoryItemActionBar({
         disabled={charges <= 0}
         onClick={() => {
           useChargeOrConsume(2);
-          onRoll(`🔥 Pistola Sinalizadora [Fogo • Alcance Curto]`, 2, 6, 0, true);
-          onFeedback(`🔥 Sinalizador disparado (2d6 Fogo). Cargas: ${Math.max(0, charges - 1)}/2.`);
+          onRoll(`Pistola Sinalizadora [Fogo • Alcance Curto]`, 2, 6, 0, true);
+          onFeedback(`Sinalizador disparado (2d6 Fogo). Cargas: ${Math.max(0, charges - 1)}/2.`);
         }}
         className="px-2.5 py-1 bg-orange-950/80 hover:bg-orange-700 disabled:opacity-40 text-orange-200 border border-orange-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🔥 Disparar (2d6 Fogo • {charges}/2)
+        <Icon name="flame" /> Disparar (2d6 Fogo • {charges}/2)
       </button>
     );
   }
@@ -466,12 +467,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(1)) return;
           onFeedback(
-            `⛓️ ${item.name} (-1 PE): laçar criatura de ${item.element || 'elemento oposto'} (manobra Agarrar com +10; imobiliza).`
+            `${item.name} (-1 PE): laçar criatura de ${item.element || 'elemento oposto'} (manobra Agarrar com +10; imobiliza).`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ⛓️ Laçar (-1 PE)
+        <Icon name="link" /> Laçar (-1 PE)
       </button>,
       <button
         key="amarras-armadilha"
@@ -479,12 +480,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(2)) return;
           onFeedback(
-            `⛓️ ${item.name} (-2 PE): armadilha paranormal preparada (Reflexos DT 25 ou fica Paralisado).`
+            `${item.name} (-2 PE): armadilha paranormal preparada (Reflexos DT 25 ou fica Paralisado).`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ⛓️ Armadilha (-2 PE)
+        <Icon name="link" /> Armadilha (-2 PE)
       </button>
     );
   } else if (ln.includes('câmera de aura') || ln.includes('camera de aura')) {
@@ -495,12 +496,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(1)) return;
           onFeedback(
-            `📷 Câmera de Aura Paranormal (-1 PE): fotografia revelada — auras paranormais aparecem coloridas pelo elemento correspondente!`
+            `Câmera de Aura Paranormal (-1 PE): fotografia revelada — auras paranormais aparecem coloridas pelo elemento correspondente!`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        📷 Fotografar Aura (-1 PE)
+        Fotografar Aura (-1 PE)
       </button>
     );
   } else if (ln.includes('emissor de pulsos')) {
@@ -511,12 +512,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(1)) return;
           onFeedback(
-            `📡 Emissor de Pulsos Paranormais (-1 PE): pulso emitido (atrai criaturas do elemento oposto e afasta do mesmo elemento em alcance longo).`
+            `Emissor de Pulsos Paranormais (-1 PE): pulso emitido (atrai criaturas do elemento oposto e afasta do mesmo elemento em alcance longo).`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        📡 Emitir Pulso (-1 PE)
+        <Icon name="radio" /> Emitir Pulso (-1 PE)
       </button>
     );
   } else if (ln.includes('escuta de ruídos') || ln.includes('escuta de ruidos')) {
@@ -527,12 +528,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(2)) return;
           onFeedback(
-            `🎙️ Escuta de Ruídos Paranormais (-2 PE): gravação de ruídos paranormais iniciada (+5 em Ocultismo para identificar fenômenos na área).`
+            `Escuta de Ruídos Paranormais (-2 PE): gravação de ruídos paranormais iniciada (+5 em Ocultismo para identificar fenômenos na área).`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🎙️ Gravar Ruídos (-2 PE)
+        Gravar Ruídos (-2 PE)
       </button>
     );
   } else if (ln.includes('scanner de manifestação') || ln.includes('scanner de manifestacao')) {
@@ -543,12 +544,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(1)) return;
           onFeedback(
-            `📡 Scanner de Manifestação (${item.element || 'Elemento'}) ativado (-1 PE): detecta manifestações em alcance longo até o fim da cena.`
+            `Scanner de Manifestação (${item.element || 'Elemento'}) ativado (-1 PE): detecta manifestações em alcance longo até o fim da cena.`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        📡 Ativar Scanner (-1 PE)
+        <Icon name="radio" /> Ativar Scanner (-1 PE)
       </button>
     );
   } else if (ln.includes('medidor de estabilidade')) {
@@ -558,12 +559,12 @@ export function InventoryItemActionBar({
         type="button"
         onClick={() =>
           onFeedback(
-            `📟 Medidor de Estabilidade da Membrana: leitura realizada — o Mestre informa o estado atual da Membrana (Intacta, Estável, Danificada, Arruinada ou Rompida).`
+            `Medidor de Estabilidade da Membrana: leitura realizada — o Mestre informa o estado atual da Membrana (Intacta, Estável, Danificada, Arruinada ou Rompida).`
           )
         }
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        📟 Medir Membrana
+        Medir Membrana
       </button>
     );
   }
@@ -580,8 +581,8 @@ export function InventoryItemActionBar({
           if (!onSpendResource(5)) return;
           const riskDie = Math.floor(Math.random() * 10) + 1;
           onRoll(
-            `⚡ Peitoral da Segunda Chance (Reanimação 0 PV • Risco 1d10 = ${riskDie}${
-              riskDie === 1 ? ' — ⚠️ QUEBROU!' : ' — OK'
+            `Peitoral da Segunda Chance (Reanimação 0 PV • Risco 1d10 = ${riskDie}${
+              riskDie === 1 ? ' — QUEBROU!' : ' — OK'
             })`,
             4,
             10,
@@ -590,13 +591,13 @@ export function InventoryItemActionBar({
           );
           onFeedback(
             riskDie === 1
-              ? `💥 Peitoral da Segunda Chance (-5 PE): você recuperou 4d10 PV, mas rolou 1 no d10 de risco — o Peitoral se desfez em plasma!`
-              : `⚡ Peitoral da Segunda Chance (-5 PE): você reanimou com 4d10 PV! (Risco 1d10 = ${riskDie}, intacto.)`
+              ? `Peitoral da Segunda Chance (-5 PE): você recuperou 4d10 PV, mas rolou 1 no d10 de risco — o Peitoral se desfez em plasma!`
+              : `Peitoral da Segunda Chance (-5 PE): você reanimou com 4d10 PV! (Risco 1d10 = ${riskDie}, intacto.)`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/90 hover:bg-purple-700 text-purple-100 border border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ⚡ Reanimar 0 PV (-5 PE • 4d10 PV + Risco)
+        <Icon name="zap" /> Reanimar 0 PV (-5 PE • 4d10 PV + Risco)
       </button>
     );
   } else if (ln.includes('crânio espiral') || ln.includes('cranio espiral')) {
@@ -608,14 +609,14 @@ export function InventoryItemActionBar({
         type="button"
         onClick={() => {
           onUpdateItem({ ...item, dailyUses: uses + 1 });
-          rollSkill('vontade', 'pre', `💀 Crânio Espiral (+1 Ação Padrão • Vontade DT ${dt})`);
+          rollSkill('vontade', 'pre', `Crânio Espiral (+1 Ação Padrão • Vontade DT ${dt})`);
           onFeedback(
-            `💀 Crânio Espiral ativado: +1 Ação Padrão neste turno! Em falha em Vontade DT ${dt}, o crânio não funciona mais hoje e você envelhece 1d10 anos.`
+            `Crânio Espiral ativado: +1 Ação Padrão neste turno! Em falha em Vontade DT ${dt}, o crânio não funciona mais hoje e você envelhece 1d10 anos.`
           );
         }}
         className="px-2.5 py-1 bg-zinc-900 hover:bg-purple-900 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        💀 +1 Ação Padrão (Vontade DT {dt})
+        <Icon name="skull" /> +1 Ação Padrão (Vontade DT {dt})
       </button>,
       ...(uses > 0
         ? [
@@ -637,13 +638,13 @@ export function InventoryItemActionBar({
         key="lodo-recente"
         type="button"
         onClick={() => {
-          onRoll(`🖤 Frasco de Lodo (Ferida Recente — Cura de PV)`, 6, 8, 20, true);
+          onRoll(`Frasco de Lodo (Ferida Recente — Cura de PV)`, 6, 8, 20, true);
           onConsumeUnit(item.id);
-          onFeedback(`🖤 Frasco de Lodo aplicado em ferida recente (6d8+20 PV) — 1 unidade consumida.`);
+          onFeedback(`Frasco de Lodo aplicado em ferida recente (6d8+20 PV) — 1 unidade consumida.`);
         }}
         className="px-2.5 py-1 bg-zinc-900 hover:bg-emerald-800 text-emerald-200 border border-emerald-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🖤 Recente (6d8+20 PV • -1 un.)
+        <Icon name="heart-crack" /> Recente (6d8+20 PV • -1 un.)
       </button>,
       <button
         key="lodo-antiga"
@@ -652,7 +653,7 @@ export function InventoryItemActionBar({
           const d6 = Math.floor(Math.random() * 6) + 1;
           const isEven = d6 % 2 === 0;
           onRoll(
-            `🎲 Frasco de Lodo (Ferida Antiga • 1d6 = ${d6} ${
+            `Frasco de Lodo (Ferida Antiga • 1d6 = ${d6} ${
               isEven ? 'PAR → CURA PV' : 'ÍMPAR → DANO DE MORTE'
             })`,
             3,
@@ -663,13 +664,13 @@ export function InventoryItemActionBar({
           onConsumeUnit(item.id);
           onFeedback(
             isEven
-              ? `🖤 Frasco de Lodo (Ferida Antiga • 1d6=${d6} PAR): curou 3d8+10 PV! -1 unidade.`
-              : `💀 Frasco de Lodo (Ferida Antiga • 1d6=${d6} ÍMPAR): causou 3d8+10 de dano de Morte! -1 unidade.`
+              ? `Frasco de Lodo (Ferida Antiga • 1d6=${d6} PAR): curou 3d8+10 PV! -1 unidade.`
+              : `Frasco de Lodo (Ferida Antiga • 1d6=${d6} ÍMPAR): causou 3d8+10 de dano de Morte! -1 unidade.`
           );
         }}
         className="px-2.5 py-1 bg-zinc-900 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🎲 Antiga (3d8+10 Par/Ímpar • -1 un.)
+        <Icon name="d20" /> Antiga (3d8+10 Par/Ímpar • -1 un.)
       </button>
     );
   } else if (ln.includes('pérola de sangue') || ln.includes('perola de sangue')) {
@@ -688,22 +689,22 @@ export function InventoryItemActionBar({
             });
           }
           onFeedback(
-            `🔴 Pérola de Sangue absorvida: +5 em testes de FOR, AGI e VIG até o fim da cena (efeito adicionado na cena)!`
+            `Pérola de Sangue absorvida: +5 em testes de FOR, AGI e VIG até o fim da cena (efeito adicionado na cena)!`
           );
         }}
         className="px-2.5 py-1 bg-red-950/90 hover:bg-red-700 text-red-200 border border-red-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🔴 Absorver (+5 FOR/AGI/VIG Cena)
+        Absorver (+5 FOR/AGI/VIG Cena)
       </button>,
       <button
         key="perola-pos"
         type="button"
         onClick={() =>
-          rollSkill('fortitude', 'vig', `🩸 Pérola de Sangue — Pós-Cena (Fortitude DT 20)`)
+          rollSkill('fortitude', 'vig', `Pérola de Sangue — Pós-Cena (Fortitude DT 20)`)
         }
         className="px-2.5 py-1 bg-zinc-900 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🩸 Pós-Cena (Fort DT 20)
+        <Icon name="sangue" /> Pós-Cena (Fort DT 20)
       </button>
     );
   } else if (ln.includes('coração pulsante') || ln.includes('coracao pulsante')) {
@@ -715,14 +716,14 @@ export function InventoryItemActionBar({
         type="button"
         onClick={() => {
           onUpdateItem({ ...item, dailyUses: uses + 1 });
-          rollSkill('fortitude', 'vig', `❤️ Coração Pulsante (½ Dano • Fortitude DT ${dt})`);
+          rollSkill('fortitude', 'vig', `Coração Pulsante (½ Dano • Fortitude DT ${dt})`);
           onFeedback(
-            `❤️ Coração Pulsante espremido (Reação): reduz dano sofrido pela metade! Se falhar em Fortitude DT ${dt}, o coração se desfaz.`
+            `Coração Pulsante espremido (Reação): reduz dano sofrido pela metade! Se falhar em Fortitude DT ${dt}, o coração se desfaz.`
           );
         }}
         className="px-2.5 py-1 bg-red-950/90 hover:bg-red-700 text-red-200 border border-red-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ❤️ Espremer (½ Dano • Fort DT {dt})
+        <Icon name="heart" /> Espremer (½ Dano • Fort DT {dt})
       </button>,
       ...(uses > 0
         ? [
@@ -749,12 +750,12 @@ export function InventoryItemActionBar({
           if (onTakePvDamage) onTakePvDamage(add, 'Frasco de Vitalidade (armazenar sangue)');
           onUpdateItem({ ...item, storedBloodPv: stored + add });
           onFeedback(
-            `🩸 ${add} PV transferidos para o Frasco de Vitalidade (${stored + add}/20 PV armazenados).`
+            `${add} PV transferidos para o Frasco de Vitalidade (${stored + add}/20 PV armazenados).`
           );
         }}
         className="px-2.5 py-1 bg-red-950/80 hover:bg-red-800 disabled:opacity-40 text-red-200 border border-red-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🩸 Guardar 5 PV ({stored}/20)
+        <Icon name="sangue" /> Guardar 5 PV ({stored}/20)
       </button>,
       <button
         key="vitalidade-beber"
@@ -763,14 +764,14 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (onHealPv) onHealPv(stored, 'Frasco de Vitalidade');
           onUpdateItem({ ...item, storedBloodPv: 0 });
-          rollSkill('fortitude', 'vig', `💚 Frasco de Vitalidade (Beber +${stored} PV • Fortitude DT 20)`);
+          rollSkill('fortitude', 'vig', `Frasco de Vitalidade (Beber +${stored} PV • Fortitude DT 20)`);
           onFeedback(
-            `💚 Você bebeu ${stored} PV do Frasco de Vitalidade! Role Fortitude DT 20 (em falha, fica Enjoado por 1 rodada).`
+            `Você bebeu ${stored} PV do Frasco de Vitalidade! Role Fortitude DT 20 (em falha, fica Enjoado por 1 rodada).`
           );
         }}
         className="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-700 disabled:opacity-40 text-emerald-200 border border-emerald-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        💚 Beber (+{stored} PV)
+        <Icon name="heart-pulse" /> Beber (+{stored} PV)
       </button>
     );
   } else if (ln.includes('pergaminho da pertinácia') || ln.includes('pergaminho da pertinacia')) {
@@ -783,14 +784,14 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (onGrantTempPe) onGrantTempPe(5, 'Pergaminho da Pertinácia');
           onUpdateItem({ ...item, dailyUses: uses + 1 });
-          rollSkill('ocultismo', 'int', `📜 Pergaminho da Pertinácia (+5 PE Temp • Ocultismo DT ${dt})`);
+          rollSkill('ocultismo', 'int', `Pergaminho da Pertinácia (+5 PE Temp • Ocultismo DT ${dt})`);
           onFeedback(
-            `📜 Pergaminho da Pertinácia: +5 PE Temporários concedidos! Se falhar em Ocultismo DT ${dt}, o pergaminho vira cinzas.`
+            `Pergaminho da Pertinácia: +5 PE Temporários concedidos! Se falhar em Ocultismo DT ${dt}, o pergaminho vira cinzas.`
           );
         }}
         className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-700 text-amber-200 border border-amber-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        📜 +5 PE Temp (Ocultismo DT {dt})
+        <Icon name="scroll" /> +5 PE Temp (Ocultismo DT {dt})
       </button>,
       ...(uses > 0
         ? [
@@ -813,17 +814,17 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(3)) return;
           onRoll(
-            `🍀 Talismã da Sorte (-3 PE • 1=Falha+Dano / 2-3=Imune ao dano / 4=Imune+Sorte)`,
+            `Talismã da Sorte (-3 PE • 1=Falha+Dano / 2-3=Imune ao dano / 4=Imune+Sorte)`,
             1,
             4,
             0,
             true
           );
-          onFeedback(`🍀 Talismã da Sorte ativado (-3 PE): role 1d4 para definir o destino!`);
+          onFeedback(`Talismã da Sorte ativado (-3 PE): role 1d4 para definir o destino!`);
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-700 text-purple-200 border border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🍀 Ativar (-3 PE • 1d4)
+        <Icon name="clover" /> Ativar (-3 PE • 1d4)
       </button>
     );
   } else if (ln.includes('relógio de arnaldo') || ln.includes('relogio de arnaldo')) {
@@ -837,12 +838,12 @@ export function InventoryItemActionBar({
           if (!onSpendResource(peCost)) return;
           onUpdateItem({ ...item, dailyUses: uses + 1 });
           onFeedback(
-            `⏱️ Relógio de Arnaldo (-${peCost} PE): você rerrolou um resultado 1 no dado! (Próximo uso nesta cena custará ${peCost + 1} PE.)`
+            `Relógio de Arnaldo (-${peCost} PE): você rerrolou um resultado 1 no dado! (Próximo uso nesta cena custará ${peCost + 1} PE.)`
           );
         }}
         className="px-2.5 py-1 bg-cyan-950/80 hover:bg-cyan-700 text-cyan-200 border border-cyan-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ⏱️ Rerrolar 1 (-{peCost} PE)
+        <Icon name="timer" /> Rerrolar 1 (-{peCost} PE)
       </button>,
       ...(uses > 0
         ? [
@@ -867,14 +868,14 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(2)) return;
           onUpdateItem({ ...item, dailyUses: uses + 1 });
-          rollSkill('ocultismo', 'int', `🔋 Bateria Reversa (-2 PE • Ocultismo DT ${dt})`);
+          rollSkill('ocultismo', 'int', `Bateria Reversa (-2 PE • Ocultismo DT ${dt})`);
           onFeedback(
-            `🔋 Bateria Reversa acionada (-2 PE): drena ou transfere energia de dispositivo eletrônico. Em falha (DT ${dt}), explode causando 12d6 de Energia!`
+            `Bateria Reversa acionada (-2 PE): drena ou transfere energia de dispositivo eletrônico. Em falha (DT ${dt}), explode causando 12d6 de Energia!`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-700 text-purple-200 border border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🔋 Drenar/Transferir (-2 PE • DT {dt})
+        Drenar/Transferir (-2 PE • DT {dt})
       </button>,
       ...(uses > 0
         ? [
@@ -896,12 +897,12 @@ export function InventoryItemActionBar({
         type="button"
         onClick={() => {
           if (!onSpendResource(2)) return;
-          rollSkill('luta', 'for', `⛓️ Amarras Mortais — Manobra Agarrar (+10 Luta)`, 10);
-          onFeedback(`⛓️ Amarras Mortais (-2 PE): manobra Agarrar rolada com +10!`);
+          rollSkill('luta', 'for', `Amarras Mortais — Manobra Agarrar (+10 Luta)`, 10);
+          onFeedback(`Amarras Mortais (-2 PE): manobra Agarrar rolada com +10!`);
         }}
         className="px-2.5 py-1 bg-zinc-900 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        ⛓️ Agarrar +10 (-2 PE)
+        <Icon name="link" /> Agarrar +10 (-2 PE)
       </button>
     );
   } else if (ln.includes('máscara das pessoas nas sombras') || ln.includes('mascara das pessoas nas sombras')) {
@@ -912,12 +913,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(2)) return;
           onFeedback(
-            `👤 Máscara das Pessoas nas Sombras (-2 PE, Ação de Movimento): teleporte instantâneo para outra sombra em alcance médio!`
+            `Máscara das Pessoas nas Sombras (-2 PE, Ação de Movimento): teleporte instantâneo para outra sombra em alcance médio!`
           );
         }}
         className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-700 text-amber-200 border border-amber-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        👤 Teleporte Sombras (-2 PE)
+        <Icon name="user" /> Teleporte Sombras (-2 PE)
       </button>
     );
   } else if (ln.includes('jaqueta de veríssimo') || ln.includes('jaqueta de verissimo')) {
@@ -928,12 +929,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(2)) return;
           onFeedback(
-            `🛡️ Jaqueta de Veríssimo (-2 PE, Reação): você se joga na frente de um aliado adjacente e absorve o dano no lugar dele (com sua RD Paranormal 15)!`
+            `Jaqueta de Veríssimo (-2 PE, Reação): você se joga na frente de um aliado adjacente e absorve o dano no lugar dele (com sua RD Paranormal 15)!`
           );
         }}
         className="px-2.5 py-1 bg-zinc-800 hover:bg-amber-700 text-amber-200 border border-amber-500/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🛡️ Interceptar Dano Aliado (-2 PE)
+        <Icon name="shield" /> Interceptar Dano Aliado (-2 PE)
       </button>
     );
   } else if (ln.includes('lanterna reveladora')) {
@@ -944,12 +945,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(1)) return;
           onFeedback(
-            `🔦 Lanterna Reveladora (-1 PE): feixe de luz paranormal ativo (efeito similar a Terceiro Olho — revela auras, invisíveis e passagens ocultas).`
+            `Lanterna Reveladora (-1 PE): feixe de luz paranormal ativo (efeito similar a Terceiro Olho — revela auras, invisíveis e passagens ocultas).`
           );
         }}
         className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-700 text-amber-200 border border-amber-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        🔦 Revelar / Terceiro Olho (-1 PE)
+        <Icon name="flashlight" /> Revelar / Terceiro Olho (-1 PE)
       </button>
     );
   } else if (ln.includes('tela do pesadelo')) {
@@ -960,12 +961,12 @@ export function InventoryItemActionBar({
         onClick={() => {
           if (!onSpendResource(2)) return;
           onFeedback(
-            `📱 Tela do Pesadelo (-2 PE): quem olhar a tela sofre Vontade DT ${10 + peLimit + (ordemSheetData.attributes.pre || 0)} ou fica Apavorado e sofre 4d6 Mental!`
+            `Tela do Pesadelo (-2 PE): quem olhar a tela sofre Vontade DT ${10 + peLimit + (ordemSheetData.attributes.pre || 0)} ou fica Apavorado e sofre 4d6 Mental!`
           );
         }}
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-700 text-purple-200 border border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        📱 Armar Tela (-2 PE)
+        Armar Tela (-2 PE)
       </button>
     );
   }
@@ -982,12 +983,12 @@ export function InventoryItemActionBar({
           type="button"
           onClick={() => {
             if (!onSpendResource(1)) return;
-            onRoll(`🩸 Proteção Regenerativa (-1 PE • Cura PV)`, 1, 12, 0, true);
-            onFeedback(`🩸 Regenerativa ativada (-1 PE, Ação Livre): role 1d12 para curar PV!`);
+            onRoll(`Proteção Regenerativa (-1 PE • Cura PV)`, 1, 12, 0, true);
+            onFeedback(`Regenerativa ativada (-1 PE, Ação Livre): role 1d12 para curar PV!`);
           }}
           className="px-2.5 py-1 bg-red-950/80 hover:bg-red-700 text-red-200 border border-red-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
         >
-          🩸 Regenerativa (+1d12 PV • -1 PE)
+          <Icon name="sangue" /> Regenerativa (+1d12 PV • -1 PE)
         </button>
       );
     }
@@ -998,12 +999,12 @@ export function InventoryItemActionBar({
           type="button"
           onClick={() => {
             if (!onSpendResource(2)) return;
-            onRoll(`⚡ Proteção Voltaica (-2 PE • 2d6 Eletricidade + Atordoado)`, 2, 6, 0, true);
-            onFeedback(`⚡ Voltaica ativada (-2 PE, Reação): atacante adjacente sofre 2d6 Eletricidade!`);
+            onRoll(`Proteção Voltaica (-2 PE • 2d6 Eletricidade + Atordoado)`, 2, 6, 0, true);
+            onFeedback(`Voltaica ativada (-2 PE, Reação): atacante adjacente sofre 2d6 Eletricidade!`);
           }}
           className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-700 text-purple-200 border border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
         >
-          ⚡ Voltaica (2d6 Eletr. • -2 PE)
+          <Icon name="zap" /> Voltaica (2d6 Eletr. • -2 PE)
         </button>
       );
     }
@@ -1014,12 +1015,12 @@ export function InventoryItemActionBar({
           type="button"
           onClick={() => {
             if (!onSpendResource(2)) return;
-            onRoll(`🖤 Proteção Repulsiva (-2 PE • 2d8 Morte + Empurrão)`, 2, 8, 0, true);
-            onFeedback(`🖤 Repulsiva ativada (-2 PE, Reação): atacante sofre 2d8 de Morte e é empurrado!`);
+            onRoll(`Proteção Repulsiva (-2 PE • 2d8 Morte + Empurrão)`, 2, 8, 0, true);
+            onFeedback(`Repulsiva ativada (-2 PE, Reação): atacante sofre 2d8 de Morte e é empurrado!`);
           }}
           className="px-2.5 py-1 bg-zinc-900 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
         >
-          🖤 Repulsiva (2d8 Morte • -2 PE)
+          <Icon name="heart-crack" /> Repulsiva (2d8 Morte • -2 PE)
         </button>
       );
     }
@@ -1030,11 +1031,11 @@ export function InventoryItemActionBar({
           type="button"
           onClick={() => {
             if (!onSpendResource(2)) return;
-            onFeedback(`👁️ Profética (-2 PE, Reação): você pode rerrolar o teste de resistência que acabou de falhar!`);
+            onFeedback(`Profética (-2 PE, Reação): você pode rerrolar o teste de resistência que acabou de falhar!`);
           }}
           className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-700 text-amber-200 border border-amber-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
         >
-          👁️ Profética: Rerrolar Resist. (-2 PE)
+          <Icon name="conhecimento" /> Profética: Rerrolar Resist. (-2 PE)
         </button>
       );
     }
@@ -1045,11 +1046,11 @@ export function InventoryItemActionBar({
           type="button"
           onClick={() => {
             if (!onSpendResource(2)) return;
-            onFeedback(`💨 Lépida (-2 PE): salto sobrenatural / +10 em Atletismo neste turno!`);
+            onFeedback(`Lépida (-2 PE): salto sobrenatural / +10 em Atletismo neste turno!`);
           }}
           className="px-2.5 py-1 bg-cyan-950/80 hover:bg-cyan-700 text-cyan-200 border border-cyan-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
         >
-          💨 Lépida: Impulso (-2 PE)
+          <Icon name="wind" /> Lépida: Impulso (-2 PE)
         </button>
       );
     }

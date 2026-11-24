@@ -17,7 +17,10 @@ import { DMScreenCampaignData, fetchDMScreenData } from '../services/api';
 import { CombatantEntry } from './DMScreen';
 import { FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
 import { TempVitalBar } from './TempVitalBar';
+import { useTheme } from '../theme/themeEngine';
 
+import { Icon, stripEmoji } from './ui/Icon';
+import { DiceStage } from './dice/DiceStage';
 const monitorSocket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
 
 interface SecondMonitorScreenProps {
@@ -47,7 +50,7 @@ function getNarrativeHealthStatus(current?: number, max?: number): {
 } {
   if (current === undefined || max === undefined || max <= 0) {
     return {
-      label: '👹 Ameaça',
+      label: 'Ameaça',
       colorClass: 'text-zinc-300 border-zinc-700 bg-zinc-900',
       barColor: '#ef4444',
       visualPercent: 100,
@@ -56,7 +59,7 @@ function getNarrativeHealthStatus(current?: number, max?: number): {
   const ratio = Math.max(0, Math.min(1, current / max));
   if (current <= 0) {
     return {
-      label: '💀 Derrotado',
+      label: 'Derrotado',
       colorClass: 'text-zinc-500 border-zinc-800 bg-zinc-950 line-through',
       barColor: '#3f3f46',
       visualPercent: 0,
@@ -64,7 +67,7 @@ function getNarrativeHealthStatus(current?: number, max?: number): {
   }
   if (ratio <= 0.25) {
     return {
-      label: '🔴 Gravemente Ferido',
+      label: 'Gravemente Ferido',
       colorClass: 'text-red-200 border-red-500 bg-red-950/90 animate-pulse',
       barColor: '#dc2626',
       visualPercent: 22,
@@ -72,7 +75,7 @@ function getNarrativeHealthStatus(current?: number, max?: number): {
   }
   if (ratio <= 0.5) {
     return {
-      label: '🟠 Machucado',
+      label: 'Machucado',
       colorClass: 'text-orange-200 border-orange-600 bg-orange-950/80',
       barColor: '#ea580c',
       visualPercent: 48,
@@ -80,14 +83,14 @@ function getNarrativeHealthStatus(current?: number, max?: number): {
   }
   if (ratio < 1) {
     return {
-      label: '🟡 Ferido',
+      label: 'Ferido',
       colorClass: 'text-amber-200 border-amber-600 bg-amber-950/70',
       barColor: '#d97706',
       visualPercent: 75,
     };
   }
   return {
-    label: '🟢 Intacto',
+    label: 'Intacto',
     colorClass: 'text-emerald-200 border-emerald-600 bg-emerald-950/70',
     barColor: '#10b981',
     visualPercent: 100,
@@ -110,6 +113,7 @@ function getTierGridClasses(tier: DensityTier, isSplitHorizontal: boolean): stri
 }
 
 export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
+  const { setActiveSystem } = useTheme();
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
   const [director, setDirector] = useState<MonitorDirectorState>(DEFAULT_DIRECTOR);
   const [combatants, setCombatants] = useState<CombatantEntry[]>([]);
@@ -120,8 +124,6 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
 
   const [publicRolls, setPublicRolls] = useState<DiceRollResult[]>([]);
   const [spotlightRoll, setSpotlightRoll] = useState<DiceRollResult | null>(null);
-  const [isAnimatingRoll, setIsAnimatingRoll] = useState(false);
-  const [fakeRollNumber, setFakeRollNumber] = useState(20);
 
   const [isInitiativeModalOpen, setIsInitiativeModalOpen] = useState(false);
   const [initiativeEntries, setInitiativeEntries] = useState<
@@ -166,6 +168,15 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       console.error('Erro ao buscar personagens no 2º Monitor:', err);
     }
   }
+
+  useEffect(() => {
+    if (campaign?.system) {
+      setActiveSystem(campaign.system);
+    }
+    return () => {
+      setActiveSystem(null);
+    };
+  }, [campaign?.system, setActiveSystem]);
 
   useEffect(() => {
     function handleResize() {
@@ -468,29 +479,15 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
     }
   }, [isInitiativeModalOpen, initiativeEntries, campaign]);
 
-  useEffect(() => {
-    if (!spotlightRoll) return;
-    setIsAnimatingRoll(true);
-
-    const spinInterval = setInterval(() => {
-      setFakeRollNumber(Math.floor(Math.random() * 20) + 1);
-    }, 60);
-
-    const revealTimer = setTimeout(() => {
-      clearInterval(spinInterval);
-      setIsAnimatingRoll(false);
-    }, 750);
-
-    const autoDismissTimer = setTimeout(() => {
-      setSpotlightRoll(null);
-    }, 4500);
-
-    return () => {
-      clearInterval(spinInterval);
-      clearTimeout(revealTimer);
-      clearTimeout(autoDismissTimer);
-    };
-  }, [spotlightRoll]);
+  // O holofote some sozinho alguns segundos depois que o total aparece (ver onSettled do DiceStage).
+  const spotlightTimer = useRef<number>();
+  useEffect(() => () => window.clearTimeout(spotlightTimer.current), []);
+  function handleSpotlightSettled(rollId: string) {
+    window.clearTimeout(spotlightTimer.current);
+    spotlightTimer.current = window.setTimeout(() => {
+      setSpotlightRoll((cur) => (cur && cur.id === rollId ? null : cur));
+    }, 3800);
+  }
 
   function toggleFullScreen() {
     if (!document.fullscreenElement) {
@@ -545,20 +542,20 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       {isInitiativeModalOpen && (
         <div
           onClick={() => setIsInitiativeModalOpen(false)}
-          className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-6 backdrop-blur-md"
+          className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-6 overflow-y-auto"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-zinc-900 border-2 border-amber-500 rounded-3xl max-w-5xl w-full p-8 shadow-2xl flex flex-col gap-6"
+            className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-5xl w-full p-8 shadow-2xl flex flex-col gap-6"
           >
             <div className="text-center">
               <span className="text-xs font-mono uppercase tracking-widest text-amber-400 font-extrabold">
-                ⚔️ Combate Iniciado • Testes de Iniciativa da Mesa
+                <Icon name="swords" /> Combate Iniciado • Testes de Iniciativa da Mesa
               </span>
               <h2 className="text-3xl font-extrabold text-white mt-1">
                 {allRevealedCountdown
-                  ? '✨ Iniciativas Definidas! Preparando Turnos...'
-                  : '🎲 Rolando Iniciativa dos Personagens...'}
+                  ? 'Iniciativas Definidas! Preparando Turnos...'
+                  : 'Rolando Iniciativa dos Personagens...'}
               </h2>
             </div>
 
@@ -588,10 +585,10 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                         <img
                           src={char.portraitUrl}
                           alt={char.name}
-                          className="w-20 h-20 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg"
+                          className="w-20 h-20 rounded-2xl object-cover border border-zinc-700 shadow-lg"
                         />
                       ) : (
-                        <div className="w-20 h-20 rounded-2xl bg-zinc-900 border-2 border-amber-500/50 flex items-center justify-center text-2xl font-extrabold text-amber-400">
+                        <div className="w-20 h-20 rounded-2xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-2xl font-extrabold text-amber-400">
                           {char.name.substring(0, 2).toUpperCase()}
                         </div>
                       )}
@@ -605,14 +602,14 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
 
                     {!entry ? (
                       <div className="py-5 flex flex-col items-center gap-2">
-                        <span className="text-3xl opacity-40 animate-pulse">⏳</span>
+                        <span className="text-3xl opacity-40 animate-pulse"><Icon name="hourglass" /></span>
                         <span className="text-xs font-mono text-zinc-400">
                           Aguardando rolagem...
                         </span>
                       </div>
                     ) : entry.isSpinning ? (
                       <div className="py-4 flex flex-col items-center gap-2">
-                        <span className="text-5xl animate-bounce">🎲</span>
+                        <span className="text-5xl"><Icon name="d20" /></span>
                         <span className="text-xs font-mono text-amber-400 font-bold">
                           Girando dados...
                         </span>
@@ -642,11 +639,11 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
 
       {/* MODAL ESPECIAL 2: PROJEÇÃO UNIVERSAL EM DESTAQUE */}
       {director.activeProjection && !isInitiativeModalOpen && (
-        <div className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-6 backdrop-blur-md">
-          <div className="bg-zinc-900 border-2 border-amber-500 rounded-3xl max-w-5xl w-full p-8 shadow-2xl flex flex-col items-center text-center gap-6">
+        <div className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-6 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-5xl w-full p-8 shadow-2xl flex flex-col items-center text-center gap-6">
             <div>
               <span className="text-xs font-mono uppercase tracking-widest text-amber-400 font-extrabold">
-                {director.activeProjection.subtitle || '🔍 Em Exibição pelo Mestre'}
+                {director.activeProjection.subtitle || 'Em Exibição pelo Mestre'}
               </span>
               <h2 className="text-3xl font-extrabold text-white mt-1">
                 {director.activeProjection.title}
@@ -674,65 +671,26 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
         </div>
       )}
 
-      {/* MODAL ESPECIAL 3: HOLOFOTE DE ROLAGEM PÚBLICA INDIVIDUAL */}
+      {/* HOLOFOTE DE ROLAGEM PÚBLICA: os mesmos dados 3D da ficha, no tamanho da TV */}
       {spotlightRoll && !isInitiativeModalOpen && (
         <div
           onClick={() => setSpotlightRoll(null)}
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6"
         >
-          <div className="bg-zinc-900 border-2 border-amber-500 rounded-3xl max-w-lg w-full p-8 shadow-2xl shadow-amber-950/60 flex flex-col items-center text-center gap-5">
-            <div>
-              <span className="text-sm font-mono uppercase tracking-widest text-amber-400 font-extrabold">
-                🎲 {spotlightRoll.characterName}
-              </span>
-              <h2 className="text-2xl font-extrabold text-white mt-1">{spotlightRoll.label}</h2>
-              <span className="text-xs font-mono text-zinc-400">
-                Fórmula: {spotlightRoll.formula}
-              </span>
-            </div>
-
-            {isAnimatingRoll ? (
-              <div className="py-10 flex flex-col items-center gap-4">
-                <div className="text-7xl animate-bounce">🎲</div>
-                <div className="text-5xl font-extrabold font-mono text-amber-400 animate-pulse">
-                  {fakeRollNumber}
-                </div>
-                <span className="text-xs uppercase tracking-widest text-zinc-400 font-bold">
-                  Sorteando destino...
-                </span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-5 w-full">
-                <div className="w-36 h-36 rounded-3xl bg-zinc-950 border-4 border-amber-500 flex flex-col items-center justify-center shadow-2xl shadow-amber-900/50">
-                  <span className="text-xs uppercase font-bold text-zinc-500">Resultado</span>
-                  <span className="text-6xl font-extrabold font-mono text-white">
-                    {spotlightRoll.total}
-                  </span>
-                </div>
-
-                <div className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-2">
-                  <span className="text-xs uppercase tracking-wider text-zinc-400 font-bold">
-                    Dados Rolados ({spotlightRoll.rolls.length})
-                  </span>
-                  <div className="flex flex-wrap justify-center gap-2.5">
-                    {spotlightRoll.rolls.map((val, idx) => (
-                      <span
-                        key={idx}
-                        className={`w-11 h-11 rounded-xl font-mono font-extrabold text-base flex items-center justify-center border-2 ${
-                          val === 20
-                            ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-lg shadow-amber-500/20'
-                            : val === 1
-                            ? 'bg-red-950/80 border-red-600 text-red-300'
-                            : 'bg-zinc-900 border-zinc-700 text-zinc-200'
-                        }`}
-                      >
-                        {val}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="trpg-card max-w-3xl w-full px-8 pt-8 pb-10 shadow-2xl flex flex-col items-center text-center"
+          >
+            <p className="text-xl text-zinc-400">{spotlightRoll.characterName}</p>
+            <h2 className="text-5xl leading-tight mt-1">{stripEmoji(spotlightRoll.label)}</h2>
+            <p className="text-lg text-zinc-500 trpg-num mt-1">{spotlightRoll.formula}</p>
+            <DiceStage
+              key={spotlightRoll.id}
+              roll={spotlightRoll}
+              size="tv"
+              className="w-full mt-4"
+              onSettled={() => handleSpotlightSettled(spotlightRoll.id)}
+            />
           </div>
         </div>
       )}
@@ -746,17 +704,17 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
         return (
           <div
             onClick={() => setBatchSpotlight(null)}
-            className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-6 backdrop-blur-md"
+            className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-6 overflow-y-auto"
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-zinc-900 border-2 border-orange-500 rounded-3xl max-w-5xl w-full p-8 shadow-2xl flex flex-col gap-6"
+              className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-5xl w-full p-8 shadow-2xl flex flex-col gap-6"
             >
               <div className="text-center">
                 <span className="text-xs font-mono uppercase tracking-widest text-orange-400 font-extrabold">
                   {isDamagePhase
-                    ? `💥 Rolagens de Dano • ${batchSpotlight.characterName}`
-                    : `🔥 Sequência de Disparos • ${batchSpotlight.characterName}`}
+                    ? `Rolagens de Dano • ${batchSpotlight.characterName}`
+                    : `Sequência de Disparos • ${batchSpotlight.characterName}`}
                 </span>
                 <h2 className="text-3xl font-extrabold text-white mt-1">
                   {batchSpotlight.weaponName}
@@ -806,14 +764,14 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                 : 'bg-zinc-800 text-zinc-200 border border-zinc-700'
                             }`}
                           >
-                            {isCrit ? '💥 Crítico!' : isDamagePhase ? '🩸 Dano' : '🎯 Acerto'}
+                            {isCrit ? 'Crítico!' : isDamagePhase ? 'Dano' : 'Acerto'}
                           </span>
                         )}
                       </div>
 
                       {isSpinning ? (
                         <div className="py-5 flex flex-col items-center gap-2">
-                          <span className="text-5xl animate-bounce">🎲</span>
+                          <span className="text-5xl"><Icon name="d20" /></span>
                           <span className="text-xs font-mono text-amber-400 font-bold">
                             Girando dados...
                           </span>
@@ -846,7 +804,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                 <div className="bg-red-950/70 border-2 border-red-500 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xl">
                   <div className="text-center sm:text-left">
                     <span className="text-xs font-mono uppercase tracking-widest text-red-300 font-extrabold block">
-                      💥 Soma Total de {batchSpotlight.damageRolls.length} Disparo(s)
+                      <Icon name="burst" /> Soma Total de {batchSpotlight.damageRolls.length} Disparo(s)
                     </span>
                     <span className="text-sm font-mono text-zinc-200">
                       {batchSpotlight.damageRolls.map((d) => d.total).join(' + ')} = {totalDamageSum}
@@ -937,7 +895,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                       <div className="flex items-center gap-1.5">
                         {isTurn && (
                           <span className="text-[10px] font-extrabold uppercase bg-amber-500 text-zinc-950 px-1.5 py-0.5 rounded shrink-0">
-                            🔥 VEZ
+                            <Icon name="flame" /> VEZ
                           </span>
                         )}
                         <span className="font-extrabold text-sm text-white truncate">
@@ -956,12 +914,12 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                           c.hpCurrent !== undefined &&
                           c.hpMax !== undefined ? (
                           <span className="inline-block truncate text-[10px] font-mono font-bold text-red-400 mt-0.5">
-                            ❤️ {c.hpCurrent} / {c.hpMax} PV
+                            <Icon name="heart" /> {c.hpCurrent} / {c.hpMax} PV
                           </span>
                         ) : null
                       ) : (
                         <span className="inline-block truncate text-[10px] font-mono text-emerald-400 mt-0.5">
-                          🛡️ Jogador
+                          <Icon name="shield" /> Jogador
                         </span>
                       )}
                     </div>
@@ -1057,7 +1015,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                               alt={char.name}
                               className={`${
                                 isUltra ? 'w-14 h-14' : isCompact ? 'w-20 h-20' : 'w-28 h-28'
-                              } rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0`}
+                              } rounded-2xl object-cover border border-zinc-700 shadow-lg shrink-0`}
                             />
                           ) : (
                             <div
@@ -1067,7 +1025,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                   : isCompact
                                   ? 'w-20 h-20 text-xl'
                                   : 'w-28 h-28 text-3xl'
-                              } rounded-2xl bg-zinc-900 border-2 border-amber-500/50 flex items-center justify-center font-extrabold text-amber-400 shrink-0`}
+                              } rounded-2xl bg-zinc-900 border border-zinc-700 flex items-center justify-center trpg-display text-zinc-300 shrink-0`}
                             >
                               {char.name.substring(0, 2).toUpperCase()}
                             </div>
@@ -1075,19 +1033,19 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
 
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] font-mono uppercase text-amber-400 font-bold truncate">
+                              <span className="text-xs text-zinc-500 truncate">
                                 @{char.owner.username}
                               </span>
                               {isMyTurnInCombat && (
                                 <span className="text-[9px] font-extrabold uppercase bg-amber-500 text-zinc-950 px-1.5 py-0.5 rounded shrink-0">
-                                  🔥 Turno
+                                  <Icon name="flame" /> Turno
                                 </span>
                               )}
                             </div>
                             <h3
                               className={`${
-                                isUltra ? 'text-xs' : isCompact ? 'text-sm' : 'text-base'
-                              } font-extrabold text-white truncate`}
+                                isUltra ? 'text-sm' : isCompact ? 'text-lg' : 'text-2xl'
+                              } trpg-display text-zinc-100 truncate leading-tight`}
                             >
                               {char.name}
                             </h3>
@@ -1101,30 +1059,18 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                           </div>
                         </div>
 
-                        <div className="bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-xl text-center shrink-0">
-                          <span className="block text-[8px] uppercase text-zinc-500 font-bold">
-                            Defesa
-                          </span>
-                          <span
-                            className={`font-mono ${
-                              isUltra ? 'text-xs' : 'text-sm'
-                            } font-extrabold text-amber-400`}
-                          >
-                            🛡️ {totalDefense}
-                          </span>
-                        </div>
                       </div>
 
                       {(isDying || isBloodied || conditions.length > 0) && (
                         <div className="flex flex-wrap gap-1 overflow-hidden">
                           {isDying && (
                             <span className="px-2 py-0.5 bg-red-600 text-white rounded-full text-[10px] font-extrabold uppercase">
-                              💀 Morrendo
+                              <Icon name="skull" /> Morrendo
                             </span>
                           )}
                           {isBloodied && (
                             <span className="px-2 py-0.5 bg-red-950 border border-red-700 text-red-300 rounded-full text-[10px] font-bold">
-                              🩸 Machucado
+                              <Icon name="sangue" /> Machucado
                             </span>
                           )}
                           {conditions.map((cond) => (
@@ -1132,7 +1078,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                               key={cond.id}
                               className="px-2 py-0.5 bg-red-950/90 border border-red-600 text-red-200 rounded-full text-[10px] font-bold"
                             >
-                              🩸 {cond.name}
+                              <Icon name="sangue" /> {cond.name}
                             </span>
                           ))}
                         </div>
@@ -1183,7 +1129,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                             >
                               <div
                                 className="h-full transition-all duration-200 ease-out"
-                                style={{ width: `${pct}%`, backgroundColor: bar.color }}
+                                style={{ width: `${pct}%`, backgroundColor: bar.id === 'pv' ? 'var(--trpg-pv)' : bar.id === 'san' ? 'var(--trpg-san)' : bar.id === 'pe' ? 'var(--trpg-pe)' : bar.color }}
                               />
                             </div>
                             {(bar.id === 'pv' || bar.id === 'pe') && (
@@ -1278,7 +1224,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                       : 'w-28 h-28 text-4xl'
                                   } rounded-2xl bg-red-950/80 border-2 border-red-800 flex items-center justify-center shrink-0`}
                                 >
-                                  👹
+                                  <Icon name="ghost" />
                                 </div>
                               )}
                               <div className="min-w-0">
@@ -1299,7 +1245,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                               threat.hpCurrent !== undefined &&
                               threat.hpMax !== undefined && (
                                 <span className="text-xs font-mono font-extrabold text-red-400 bg-zinc-900 px-2.5 py-1 rounded-xl border border-zinc-800 shrink-0">
-                                  ❤️ {threat.hpCurrent} / {threat.hpMax} PV
+                                  <Icon name="heart" /> {threat.hpCurrent} / {threat.hpMax} PV
                                 </span>
                               )}
                           </div>
@@ -1335,7 +1281,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                   <div className="bg-gradient-to-r from-amber-950/60 via-zinc-900 to-zinc-950 border border-amber-500/40 rounded-2xl px-4 py-3 flex justify-between items-center gap-3 shrink-0">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-xl bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-xl shrink-0">
-                        🏪
+                        <Icon name="store" />
                       </div>
                       <div className="min-w-0">
                         <span className="block text-[9px] font-mono uppercase tracking-widest text-amber-400 font-extrabold">
@@ -1400,7 +1346,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                     alt={st.item.name}
                                     className={`${
                                       isUltra ? 'w-12 h-12' : isCompact ? 'w-16 h-16' : 'w-24 h-24'
-                                    } rounded-2xl object-cover border-2 border-amber-500/50 shadow-md shrink-0`}
+                                    } rounded-2xl object-cover border border-zinc-700 shadow-md shrink-0`}
                                   />
                                 ) : (
                                   <div
@@ -1416,7 +1362,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                         : 'bg-zinc-900 border-zinc-800 text-amber-400'
                                     }`}
                                   >
-                                    {isWeapon ? '⚔️' : '🎒'}
+                                    <Icon name={isWeapon ? 'swords' : 'backpack'} />
                                   </div>
                                 )}
 
@@ -1448,11 +1394,11 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                               {st.attack && (
                                 <div className="flex items-center gap-2 bg-zinc-900/90 border border-zinc-800/80 px-2.5 py-1 rounded-lg text-[11px] font-mono">
                                   <span className="text-red-400 font-bold">
-                                    🩸 Dano: {st.attack.damageFormula}
+                                    <Icon name="sangue" /> Dano: {st.attack.damageFormula}
                                   </span>
                                   <span className="text-zinc-600">|</span>
                                   <span className="text-amber-400">
-                                    🎯 Crítico: {st.attack.critRange}
+                                    <Icon name="target" /> Crítico: {st.attack.critRange}
                                   </span>
                                 </div>
                               )}
@@ -1473,7 +1419,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                 Valor Unitário
                               </span>
                               <div className="flex items-center gap-1.5 bg-amber-950/90 border border-amber-500/70 px-2.5 py-0.5 rounded-xl shadow">
-                                <span className="text-xs">🪙</span>
+                                <span className="text-xs"><Icon name="coins" /></span>
                                 <span
                                   className={`font-mono ${
                                     isUltra ? 'text-xs' : 'text-sm'
@@ -1498,7 +1444,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       {/* 3. RODAPÉ AO VIVO: ÚLTIMAS ROLAGENS DA MESA */}
       <footer className="px-6 py-2.5 border-t border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md flex items-center gap-4 overflow-x-auto overflow-y-hidden shrink-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <span className="text-xs font-extrabold uppercase tracking-wider text-amber-500 shrink-0">
-          🎲 Últimas Rolagens:
+          <Icon name="d20" /> Últimas Rolagens:
         </span>
 
         {publicRolls.length === 0 ? (

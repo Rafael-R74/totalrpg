@@ -33,7 +33,9 @@ import { LootAndMerchantsManager, CampaignStoredItem } from './dm/LootAndMerchan
 import { NotesAndPostItsManager, FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
 import { MonitorDirectorPanel } from './dm/MonitorPanel';
 import { TempVitalBar } from './TempVitalBar';
+import { useTheme } from '../theme/themeEngine';
 
+import { Icon } from './ui/Icon';
 export interface CombatantEntry {
   id: string;
   characterId?: string;
@@ -123,47 +125,47 @@ const ACTIVITY_CATEGORY_META: Record<
   { icon: string; label: string; badgeClass: string }
 > = {
   ability: {
-    icon: '✨',
+    icon: 'sparkles',
     label: 'Poder / Ritual',
     badgeClass: 'bg-purple-950/70 text-purple-300 border-purple-700/60',
   },
   inventory: {
-    icon: '🎒',
+    icon: 'backpack',
     label: 'Equipamento',
     badgeClass: 'bg-blue-950/70 text-blue-300 border-blue-700/60',
   },
   consumable: {
-    icon: '🧪',
+    icon: 'flask',
     label: 'Consumível',
     badgeClass: 'bg-amber-950/70 text-amber-300 border-amber-700/60',
   },
   transfer: {
-    icon: '🤝',
+    icon: 'handshake',
     label: 'Troca / Entrega',
     badgeClass: 'bg-cyan-950/70 text-cyan-300 border-cyan-700/60',
   },
   vital: {
-    icon: '❤️',
+    icon: 'heart',
     label: 'Vital',
     badgeClass: 'bg-red-950/70 text-red-300 border-red-700/60',
   },
   condition: {
-    icon: '🩸',
+    icon: 'sangue',
     label: 'Condição / Cena',
     badgeClass: 'bg-rose-950/70 text-rose-300 border-rose-700/60',
   },
   interlude: {
-    icon: '🌙',
+    icon: 'moon',
     label: 'Interlúdio',
     badgeClass: 'bg-indigo-950/70 text-indigo-300 border-indigo-700/60',
   },
   progression: {
-    icon: '📈',
+    icon: 'trending',
     label: 'Evolução',
     badgeClass: 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60',
   },
   system: {
-    icon: '🛡️',
+    icon: 'shield',
     label: 'Mesa',
     badgeClass: 'bg-zinc-900 text-zinc-300 border-zinc-700',
   },
@@ -215,6 +217,7 @@ export function DMScreen({
   onSyncSecondMonitor,
   onBroadcastSceneEnd,
 }: DMScreenProps) {
+  const { setActiveSystem } = useTheme();
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
   const [compendiumEntries, setCompendiumEntries] = useState<CompendiumEntryData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -362,6 +365,12 @@ export function DMScreen({
       if (!silent) setIsLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (campaign?.system) {
+      setActiveSystem(campaign.system);
+    }
+  }, [campaign?.system, setActiveSystem]);
 
   useEffect(() => {
     isHydratedRef.current = false;
@@ -569,7 +578,7 @@ export function DMScreen({
       );
       onLogActivity?.({
         characterName: matchedThreat.name,
-        actorLabel: '👑 Mestre',
+        actorLabel: 'Mestre',
         category: 'system',
         summary: `Enviou ameaça ao combate: ${matchedThreat.name} (INI ${lastInitiativeSubmission.initiative})`,
         tone: 'warning',
@@ -670,7 +679,7 @@ export function DMScreen({
     setCombatants((prev) => [...prev, newEntry].sort((a, b) => b.initiative - a.initiative));
     onLogActivity?.({
       characterName: threat.name,
-      actorLabel: '👑 Mestre',
+      actorLabel: 'Mestre',
       category: 'system',
       summary: `Adicionou ameaça ao combate: ${threat.name} (INI ${Number(manualInitiative)})`,
       tone: 'warning',
@@ -730,7 +739,7 @@ export function DMScreen({
 
     onLogActivity?.({
       characterName: baseName,
-      actorLabel: '👑 Mestre',
+      actorLabel: 'Mestre',
       category: 'system',
       summary: `Enviou ${safeCount}x ${baseName} ao combate${
         threat.vd !== undefined ? ` (VD ${threat.vd})` : ''
@@ -738,7 +747,7 @@ export function DMScreen({
       tone: 'warning',
     });
     setInitFeedback(
-      `⚔️ ${safeCount}x ${baseName} adicionado${safeCount > 1 ? 's' : ''} à ordem de iniciativa!`
+      `${safeCount}x ${baseName} adicionado${safeCount > 1 ? 's' : ''} à ordem de iniciativa!`
     );
     setTimeout(() => setInitFeedback(''), 3500);
     setActiveDMTab('table');
@@ -792,7 +801,7 @@ async function handleDeliverItemToCharacter(
     onLogActivity?.({
       characterId: targetChar.id,
       characterName: targetChar.name,
-      actorLabel: fromMerchant ? '🏪 Mercador' : '👑 Mestre',
+      actorLabel: fromMerchant ? 'Mercador' : 'Mestre',
       category: 'transfer',
       summary: `${fromMerchant ? 'Adquiriu no Mercador' : 'Recebeu do Mestre'}: ${
         item.quantity || 1
@@ -805,7 +814,7 @@ async function handleDeliverItemToCharacter(
 
   function handleRequestInitiativeClick() {
     onRequestPlayersInitiative();
-    setInitFeedback('⚡ Pedido de Iniciativa enviado para a tela dos jogadores!');
+    setInitFeedback('Pedido de Iniciativa enviado para a tela dos jogadores!');
     setTimeout(() => setInitFeedback(''), 4000);
   }
 
@@ -1023,7 +1032,7 @@ async function handleDeliverItemToCharacter(
         sceneEffects: [],
       }))
     );
-    setSceneEndToast('🎬 Cena encerrada! Efeitos de cena e quantias temporárias foram encerrados.');
+    setSceneEndToast('Cena encerrada! Efeitos de cena e quantias temporárias foram encerrados.');
     setTimeout(() => setSceneEndToast(''), 3500);
 
     try {
@@ -1033,7 +1042,7 @@ async function handleDeliverItemToCharacter(
       onBroadcastCharacterSync('ALL');
       onBroadcastSceneEnd?.();
       onLogActivity?.({
-        characterName: '👑 Mestre',
+        characterName: 'Mestre',
         category: 'condition',
         summary:
           'Encerrou a cena atual para todos os personagens (efeitos de cena e PV/PE temporários limpos)',
@@ -1091,7 +1100,7 @@ async function handleDeliverItemToCharacter(
       }))
     );
     setIsDMInterludeModalOpen(false);
-    setSceneEndToast('🌙 Cena de Interlúdio liberada para os jogadores!');
+    setSceneEndToast('Cena de Interlúdio liberada para os jogadores!');
     setTimeout(() => setSceneEndToast(''), 3500);
 
     try {
@@ -1100,7 +1109,7 @@ async function handleDeliverItemToCharacter(
       );
       onBroadcastCharacterSync('ALL');
       onLogActivity?.({
-        characterName: '👑 Mestre',
+        characterName: 'Mestre',
         category: 'interlude',
         summary:
           dmInterludeMode === 'all'
@@ -1134,7 +1143,7 @@ async function handleDeliverItemToCharacter(
       }))
     );
     setIsDMInterludeModalOpen(false);
-    setSceneEndToast('🌙 Interlúdios pendentes recolhidos para todos os personagens.');
+    setSceneEndToast('Interlúdios pendentes recolhidos para todos os personagens.');
     setTimeout(() => setSceneEndToast(''), 3500);
 
     try {
@@ -1143,7 +1152,7 @@ async function handleDeliverItemToCharacter(
       );
       onBroadcastCharacterSync('ALL');
       onLogActivity?.({
-        characterName: '👑 Mestre',
+        characterName: 'Mestre',
         category: 'interlude',
         summary: 'Recolheu Interlúdios pendentes para todos os personagens',
         tone: 'warning',
@@ -1234,7 +1243,7 @@ async function handleDeliverItemToCharacter(
     e.preventDefault();
     if (!campaign) return;
     onRollDice(
-      '👑 Mestre',
+      'Mestre',
       campaign.system,
       dmRollLabel.trim() || 'Rolagem do Mestre',
       dmDiceCount,
@@ -1263,7 +1272,7 @@ async function handleDeliverItemToCharacter(
             <span
               className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${meta.badgeClass}`}
             >
-              {meta.icon} {compact ? '' : meta.label}
+              <Icon name={meta.icon} size={14} /> {compact ? '' : meta.label}
             </span>
             <span className="font-bold text-amber-400 text-xs truncate">
               {entry.characterName}
@@ -1317,7 +1326,7 @@ async function handleDeliverItemToCharacter(
   return (
     <div className="flex flex-col gap-6">
       {sceneEndToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-purple-950/95 border border-purple-500 text-purple-100 px-4 py-3 rounded-xl shadow-2xl text-xs font-extrabold flex items-center gap-2 animate-fade-in">
+        <div role="status" className="fixed bottom-6 right-6 z-50 bg-zinc-900 border border-purple-700 text-purple-100 px-4 py-3 rounded-xl shadow-2xl text-sm font-medium flex items-center gap-2">
           <span>{sceneEndToast}</span>
         </div>
       )}
@@ -1349,237 +1358,138 @@ async function handleDeliverItemToCharacter(
         }}
       />
 
-      {/* 1. CABEÇALHO DO ESCUDO + BARRA DE TRAVAS EM TEMPO REAL */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-5 shadow-xl">
-        <div className="flex flex-wrap justify-between items-center gap-4 border-b border-zinc-800 pb-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <span className="text-xs font-mono uppercase bg-amber-950/80 text-amber-400 border border-amber-700/60 px-2.5 py-0.5 rounded-full font-bold">
-                👑 Escudo do Mestre
+      {/* 1. CABEÇALHO DO ESCUDO: campanha, ações de cena, permissões e blocos */}
+      <section className="trpg-card trpg-card-signature p-4 sm:p-5 flex flex-col gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-zinc-400">Escudo do mestre</p>
+            <h1 className="text-3xl sm:text-4xl leading-tight">{campaign.name}</h1>
+            <p className="mt-1.5 text-sm text-zinc-400 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span>
+                Código <span className="trpg-code text-zinc-100">{campaign.inviteCode}</span>
               </span>
-              <span className="text-xs font-mono uppercase bg-zinc-800 text-zinc-300 px-2.5 py-0.5 rounded-full">
-                {campaign.system}
+              <span>
+                <span className="trpg-num text-zinc-100 font-semibold">{campaign.characters.length}</span>{' '}
+                {campaign.characters.length === 1 ? 'jogador' : 'jogadores'}
               </span>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 px-2 py-0.5 rounded-full">
-                💾 Sincronizado no SQLite
-              </span>
-            </div>
-            <h2 className="text-2xl font-extrabold text-white mt-1">{campaign.name}</h2>
+            </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {campaign.system === 'ordem-paranormal' && (
               <button
                 type="button"
                 onClick={handleOpenDMInterludeModal}
-                title="Libera a Cena de Interlúdio para os jogadores, definindo o tipo de descanso para todos ou individualmente"
-                className="px-4 py-2.5 bg-indigo-950/80 hover:bg-indigo-800 border border-indigo-500/60 text-indigo-200 rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-indigo-950/40 flex items-center gap-2"
+                title="Libera a cena de interlúdio para os jogadores, para todos ou um por um"
+                className="trpg-btn-secondary trpg-btn-sm"
               >
-                🌙 Iniciar Interlúdio
+                <Icon name="moon" size={15} /> Interlúdio
               </button>
             )}
-
             <button
               type="button"
               onClick={handleEndSceneForAll}
-              title="Encerra a cena atual para todos os jogadores (limpa PV Temporários e efeitos com duração de 1 cena, como Consumir Manancial e Armadura de Sangue)"
-              className="px-4 py-2.5 bg-purple-950/80 hover:bg-purple-800 border border-purple-500/60 text-purple-200 rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-purple-950/40 flex items-center gap-2"
+              title="Encerra a cena para todos: limpa PV temporários e efeitos que duram uma cena"
+              className="trpg-btn-secondary trpg-btn-sm"
             >
-              🎬 Encerrar Cena
+              <Icon name="clapperboard" size={15} /> Encerrar cena
             </button>
-
-            <div className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 px-4 py-2.5 rounded-xl">
-              <div>
-                <span className="block text-[10px] uppercase text-zinc-500 font-bold">Código de Convite</span>
-                <span className="font-mono text-base font-extrabold text-amber-400">{campaign.inviteCode}</span>
-              </div>
-              <div className="h-8 w-[1px] bg-zinc-800 mx-1" />
-              <div>
-                <span className="block text-[10px] uppercase text-zinc-500 font-bold">Jogadores</span>
-                <span className="font-mono text-base font-extrabold text-white">
-                  {campaign.characters.length} ativos
-                </span>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* BARRA DE TRAVAS (SHEET LOCKDOWN) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        {/* Permissões dos jogadores */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-2 flex flex-col xl:flex-row gap-2">
           <button
             type="button"
+            role="switch"
+            aria-checked={campaign.lockAllSheets}
             onClick={() => handleTogglePermission('lockAllSheets')}
-            className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1 ${
+            className={`shrink-0 rounded-md px-3 py-2 text-left flex items-center gap-3 border transition-colors ${
               campaign.lockAllSheets
-                ? 'bg-red-950/70 border-red-600 text-red-200 shadow-lg shadow-red-950/40'
-                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                ? 'border-red-700 bg-red-950/60 text-red-100'
+                : 'border-transparent text-zinc-300 hover:bg-zinc-800'
             }`}
           >
-            <span className="text-xs font-extrabold uppercase flex items-center justify-between">
-              <span>Trava Mestra</span>
-              <span>{campaign.lockAllSheets ? '🔒 ON' : '🔓 OFF'}</span>
-            </span>
-            <span className="text-[10px] opacity-80">
-              {campaign.lockAllSheets ? 'Fichas congeladas!' : 'Regras individuais'}
+            <Icon name={campaign.lockAllSheets ? 'lock' : 'lock-open'} size={18} />
+            <span className="leading-tight">
+              <span className="block text-sm font-semibold">{campaign.lockAllSheets ? 'Fichas travadas' : 'Travar todas as fichas'}</span>
+              <span className="block text-xs opacity-75">
+                {campaign.lockAllSheets ? 'Ninguém edita nada' : 'Valem as permissões ao lado'}
+              </span>
             </span>
           </button>
-
-          <button
-            type="button"
-            onClick={() => handleTogglePermission('allowEditVitals')}
-            className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1 ${
-              !campaign.lockAllSheets && campaign.allowEditVitals
-                ? 'bg-emerald-950/40 border-emerald-700/70 text-emerald-200'
-                : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-            }`}
-          >
-            <span className="text-xs font-bold uppercase flex items-center justify-between">
-              <span>Barras Vitais</span>
-              <span>{!campaign.lockAllSheets && campaign.allowEditVitals ? '✓ Livre' : '✕ Bloq'}</span>
-            </span>
-            <span className="text-[10px] opacity-80">Dano/Cura pelo jogador</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTogglePermission('allowEditInventory')}
-            className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1 ${
-              !campaign.lockAllSheets && campaign.allowEditInventory
-                ? 'bg-emerald-950/40 border-emerald-700/70 text-emerald-200'
-                : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-            }`}
-          >
-            <span className="text-xs font-bold uppercase flex items-center justify-between">
-              <span>Inventário</span>
-              <span>{!campaign.lockAllSheets && campaign.allowEditInventory ? '✓ Livre' : '✕ Bloq'}</span>
-            </span>
-            <span className="text-[10px] opacity-80">Pegar/Equipar armas</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTogglePermission('allowEditAbilities')}
-            className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1 ${
-              !campaign.lockAllSheets && campaign.allowEditAbilities
-                ? 'bg-emerald-950/40 border-emerald-700/70 text-emerald-200'
-                : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-            }`}
-          >
-            <span className="text-xs font-bold uppercase flex items-center justify-between">
-              <span>Habilidades</span>
-              <span>{!campaign.lockAllSheets && campaign.allowEditAbilities ? '✓ Livre' : '✕ Bloq'}</span>
-            </span>
-            <span className="text-[10px] opacity-80">Treino, poderes e rituais</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTogglePermission('allowEditAttributes')}
-            className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1 ${
-              !campaign.lockAllSheets && campaign.allowEditAttributes
-                ? 'bg-amber-950/50 border-amber-600/80 text-amber-200'
-                : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-            }`}
-          >
-            <span className="text-xs font-bold uppercase flex items-center justify-between">
-              <span>Atributos/Nv</span>
-              <span>{!campaign.lockAllSheets && campaign.allowEditAttributes ? '✓ Livre' : '✕ Bloq'}</span>
-            </span>
-            <span className="text-[10px] opacity-80">Libere ao subir de nível!</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTogglePermission('allowTrade')}
-            className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1 ${
-              !campaign.lockAllSheets && campaign.allowTrade
-                ? 'bg-blue-950/50 border-blue-600/80 text-blue-200'
-                : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-            }`}
-          >
-            <span className="text-xs font-bold uppercase flex items-center justify-between">
-              <span>Comércio</span>
-              <span>{!campaign.lockAllSheets && campaign.allowTrade ? '✓ Aberto' : '✕ Fechado'}</span>
-            </span>
-            <span className="text-[10px] opacity-80">Troca entre jogadores/loja</span>
-          </button>
+          <div className="hidden xl:block w-px bg-zinc-800" aria-hidden="true" />
+          <div className="flex-1 grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-1">
+            {(
+              [
+                { key: 'allowEditVitals', label: 'Vida e recursos', hint: 'Dano, cura e gasto' },
+                { key: 'allowEditInventory', label: 'Inventário', hint: 'Pegar e equipar' },
+                { key: 'allowEditAbilities', label: 'Habilidades', hint: 'Treino, poderes, rituais' },
+                { key: 'allowEditAttributes', label: 'Atributos e nível', hint: 'Libere ao subir de NEX' },
+                { key: 'allowTrade', label: 'Comércio', hint: 'Trocas e lojas' },
+              ] as const
+            ).map((perm) => {
+              const on = !campaign.lockAllSheets && Boolean(campaign[perm.key]);
+              return (
+                <button
+                  key={perm.key}
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  disabled={campaign.lockAllSheets}
+                  onClick={() => handleTogglePermission(perm.key)}
+                  title={perm.hint}
+                  className={`rounded-md px-3 py-2 text-left flex items-center gap-2.5 transition-colors disabled:opacity-45 ${
+                    on ? 'text-zinc-100 hover:bg-zinc-800' : 'text-zinc-500 hover:bg-zinc-800'
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`relative w-8 h-[18px] shrink-0 rounded-full transition-colors ${on ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-zinc-100 transition-transform ${
+                        on ? 'translate-x-3.5' : ''
+                      }`}
+                    />
+                  </span>
+                  <span className="leading-tight min-w-0">
+                    <span className="block text-sm font-medium truncate">{perm.label}</span>
+                    <span className="block text-xs text-zinc-500 truncate">{perm.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* NAVEGADOR DOS 4 BLOCOS DO MESTRE */}
-        <div className="flex flex-wrap border-t border-zinc-800 pt-4 gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveDMTab('table')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-              activeDMTab === 'table'
-                ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30'
-                : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            ⚔️ Mesa
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveDMTab('bestiary')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-              activeDMTab === 'bestiary'
-                ? 'bg-red-700 text-white shadow-lg shadow-red-900/30'
-                : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            👹 Ameaças ({threats.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveDMTab('loot')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-              activeDMTab === 'loot'
-                ? 'bg-emerald-700 text-white shadow-lg shadow-emerald-900/30'
-                : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            🎒 Itens ({campaignItems.length}) & Mercadores ({merchants.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveDMTab('notes')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-              activeDMTab === 'notes'
-                ? 'bg-purple-700 text-white shadow-lg shadow-purple-900/30'
-                : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            🎨 Anotações ({postIts.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveDMTab('monitor')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-              activeDMTab === 'monitor'
-                ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-900/40'
-                : 'bg-zinc-950 text-amber-400 hover:text-white border border-amber-700/60'
-            }`}
-          >
-            🖥️ Diretor do 2º Monitor (TV)
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveDMTab('activity')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-              activeDMTab === 'activity'
-                ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/40'
-                : 'bg-zinc-950 text-cyan-300 hover:text-white border border-cyan-800/60'
-            }`}
-          >
-            📋 Log da Mesa ({sessionActivityLog.length})
-          </button>
+        {/* Blocos do mestre */}
+        <div role="tablist" aria-label="Blocos do escudo" className="trpg-tabs -mx-1 -mb-1">
+          {(
+            [
+              { id: 'table', icon: 'swords', label: 'Mesa', count: undefined },
+              { id: 'bestiary', icon: 'ghost', label: 'Ameaças', count: threats.length },
+              { id: 'loot', icon: 'backpack', label: 'Itens e lojas', count: campaignItems.length + merchants.length },
+              { id: 'notes', icon: 'note', label: 'Anotações', count: postIts.length },
+              { id: 'monitor', icon: 'tv', label: 'Tela da TV', count: undefined },
+              { id: 'activity', icon: 'activity', label: 'Registro', count: sessionActivityLog.length },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeDMTab === tab.id}
+              onClick={() => setActiveDMTab(tab.id)}
+              className="trpg-tab"
+            >
+              <Icon name={tab.icon} size={16} className={activeDMTab === tab.id ? 'text-amber-500' : ''} />
+              {tab.label}
+              {typeof tab.count === 'number' && tab.count > 0 && <span className="trpg-tab-count">{tab.count}</span>}
+            </button>
+          ))}
         </div>
-      </div>
+      </section>
 
       {/* 2. CORPO PRINCIPAL */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1590,8 +1500,8 @@ async function handleDeliverItemToCharacter(
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 shadow-lg">
                 <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
                   <div>
-                    <h3 className="text-sm font-extrabold uppercase tracking-wider text-amber-500 flex items-center gap-2">
-                      <span>⚔️ Rastreador de Combate & Iniciativa</span>
+                    <h3 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
+                      <span><Icon name="swords" /> Rastreador de Combate & Iniciativa</span>
                       {combatants.length > 0 && (
                         <span className="bg-amber-950 text-amber-300 border border-amber-700 px-2 py-0.5 rounded text-xs font-mono">
                           Rodada {roundNumber}
@@ -1611,7 +1521,7 @@ async function handleDeliverItemToCharacter(
                       onClick={handleRequestInitiativeClick}
                       className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-amber-900/30"
                     >
-                      ⚡ Pedir Iniciativa aos Jogadores
+                      <Icon name="zap" /> Pedir Iniciativa aos Jogadores
                     </button>
 
                     <button
@@ -1619,7 +1529,7 @@ async function handleDeliverItemToCharacter(
                       onClick={() => setActiveDMTab('bestiary')}
                       className="px-3 py-2 bg-red-950/60 hover:bg-red-900 text-red-200 border border-red-800 rounded-xl text-xs font-bold transition cursor-pointer"
                     >
-                      👹 Puxar Ameaça do Bloco
+                      <Icon name="ghost" /> Puxar Ameaça do Bloco
                     </button>
 
                     {combatants.length > 0 && (
@@ -1640,7 +1550,7 @@ async function handleDeliverItemToCharacter(
 
                 {combatants.length === 0 ? (
                   <p className="text-xs text-zinc-500 text-center py-4">
-                    Nenhum combate ativo. Peça iniciativa aos jogadores acima ou envie criaturas pelo <strong>"👹 Bloco de Ameaças"</strong>!
+                    Nenhum combate em andamento. Peça iniciativa aos jogadores ou envie criaturas pela aba Ameaças.
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -1654,14 +1564,14 @@ async function handleDeliverItemToCharacter(
                           onClick={handlePrevTurn}
                           className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-xs font-bold cursor-pointer"
                         >
-                          ⬅️ Anterior
+                          <Icon name="arrow-left" size={15} /> Anterior
                         </button>
                         <button
                           type="button"
                           onClick={handleNextTurn}
                           className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold cursor-pointer"
                         >
-                          Próximo Turno ➡️
+                          Próximo turno <Icon name="arrow-left" size={15} className="rotate-180" />
                         </button>
                       </div>
                     </div>
@@ -1701,7 +1611,7 @@ async function handleDeliverItemToCharacter(
                               />
                             ) : (
                               <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-lg font-bold text-amber-400 shrink-0">
-                                {c.isNPC ? '👹' : c.name.substring(0, 2).toUpperCase()}
+                                {c.isNPC ? <Icon name="ghost" size={18} /> : c.name.substring(0, 2).toUpperCase()}
                               </div>
                             )}
 
@@ -1715,7 +1625,7 @@ async function handleDeliverItemToCharacter(
                                       : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                                   }`}
                                 >
-                                  {c.isNPC ? '👹 Ameaça' : '🛡️ Jogador'}
+                                  {c.isNPC ? 'Ameaça' : 'Jogador'}
                                 </span>
                                 {c.isNPC && c.vd !== undefined && (
                                   <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-200 border border-zinc-700">
@@ -1724,7 +1634,7 @@ async function handleDeliverItemToCharacter(
                                 )}
                                 {c.isNPC && c.defense !== undefined && c.defense > 0 && (
                                   <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-amber-400 border border-zinc-700">
-                                    🛡️ DEF {c.defense}
+                                    <Icon name="shield" /> DEF {c.defense}
                                   </span>
                                 )}
                                 {c.isNPC &&
@@ -1733,12 +1643,12 @@ async function handleDeliverItemToCharacter(
                                   c.hpCurrent > 0 &&
                                   c.hpCurrent <= Math.floor(c.hpMax / 2) && (
                                     <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700">
-                                      🟠 Machucado
+                                      Machucado
                                     </span>
                                   )}
                                 {isCurrentTurn && (
                                   <span className="text-[10px] font-extrabold uppercase bg-amber-500 text-zinc-950 px-2 py-0.5 rounded animate-pulse">
-                                    🔥 Turno Atual
+                                    <Icon name="flame" /> Turno Atual
                                   </span>
                                 )}
                               </div>
@@ -1779,7 +1689,7 @@ async function handleDeliverItemToCharacter(
                                   -1
                                 </button>
                                 <span className="text-xs font-mono font-bold text-red-400 px-1">
-                                  ❤️ {c.hpCurrent}/{c.hpMax}
+                                  <Icon name="heart" /> {c.hpCurrent}/{c.hpMax}
                                 </span>
                                 <button
                                   type="button"
@@ -1831,7 +1741,7 @@ async function handleDeliverItemToCharacter(
                                         }
                                         className="px-1.5 py-0.5 bg-zinc-950 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-[11px] font-mono font-bold cursor-pointer"
                                       >
-                                        🎯 +{atk.attackBonus}
+                                        <Icon name="target" /> +{atk.attackBonus}
                                       </button>
                                       <button
                                         type="button"
@@ -1851,7 +1761,7 @@ async function handleDeliverItemToCharacter(
                                         }
                                         className="px-1.5 py-0.5 bg-zinc-950 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded text-[11px] font-mono font-bold cursor-pointer"
                                       >
-                                        🩸 {atk.damageFormula}
+                                        <Icon name="sangue" /> {atk.damageFormula}
                                         {atk.extraDamage?.length
                                           ? `+${atk.extraDamage.map((e) => e.formula).join('+')}`
                                           : ''}
@@ -1879,7 +1789,7 @@ async function handleDeliverItemToCharacter(
                                     }
                                     className="px-2 py-1 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
                                   >
-                                    🎯 +{c.attackBonus}
+                                    <Icon name="target" /> +{c.attackBonus}
                                   </button>
                                   <button
                                     type="button"
@@ -1896,7 +1806,7 @@ async function handleDeliverItemToCharacter(
                                     }
                                     className="px-2 py-1 bg-zinc-900 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
                                   >
-                                    🩸 {c.damageFormula}
+                                    <Icon name="sangue" /> {c.damageFormula}
                                   </button>
                                 </>
                               )
@@ -1920,8 +1830,8 @@ async function handleDeliverItemToCharacter(
               </div>
 
               {/* CARTÕES TÁTICOS DOS JOGADORES */}
-              <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500">
-                🛡️ Grupo de Personagens na Mesa ({campaign.characters.length})
+              <h3 className="text-base font-semibold text-zinc-100">
+                <Icon name="shield" /> Grupo de Personagens na Mesa ({campaign.characters.length})
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1970,30 +1880,28 @@ async function handleDeliverItemToCharacter(
                   return (
                     <div
                       key={char.id}
-                      className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between gap-4 shadow-lg"
+                      className="trpg-card p-4 flex flex-col justify-between gap-4"
                     >
                       <div className="flex flex-col gap-3">
-                        <div className="flex justify-between items-start gap-3">
+                        <div className="flex flex-col gap-3">
                           <div className="flex items-center gap-3.5 min-w-0">
                             {char.portraitUrl ? (
                               <img
                                 src={char.portraitUrl}
                                 alt={char.name}
-                                className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-amber-500/70 shadow-lg shrink-0 bg-zinc-950"
+                                className="w-16 h-16 rounded-lg object-cover border border-zinc-700 shrink-0 bg-zinc-950"
                               />
                             ) : (
-                              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-zinc-950 border-2 border-amber-500/40 flex items-center justify-center text-2xl font-extrabold text-amber-400 shrink-0">
+                              <div className="w-16 h-16 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-2xl trpg-display text-zinc-300 shrink-0">
                                 {char.name.substring(0, 2).toUpperCase()}
                               </div>
                             )}
 
                             <div className="min-w-0">
-                              <span className="text-[10px] font-mono uppercase text-zinc-400 block truncate">
-                                Jogador: <strong className="text-amber-400">@{char.owner.username}</strong>
-                              </span>
-                              <h4 className="text-lg font-extrabold text-white leading-tight truncate">
+                              <h4 className="text-xl trpg-display text-zinc-100 leading-tight truncate">
                                 {char.name}
                               </h4>
+                              <span className="text-xs text-zinc-500 block truncate">@{char.owner.username}</span>
                               <span className="text-xs text-zinc-400 block truncate">
                                 {char.system === 'ordem-paranormal'
                                   ? `${raw.characterClass || 'Combatente'} • NEX ${levelOrNex}%`
@@ -2002,28 +1910,22 @@ async function handleDeliverItemToCharacter(
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            <div className="bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-lg text-center">
-                              <span className="block text-[9px] uppercase text-zinc-500 font-bold">
-                                Defesa
-                              </span>
-                              <span className="font-mono text-sm font-extrabold text-amber-400">
-                                🛡️ {totalDefense}
-                              </span>
+                          <dl className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-1.5">
+                              <dt className="text-zinc-500 flex items-center gap-1">
+                                <Icon name="shield" size={14} /> Defesa
+                              </dt>
+                              <dd className="trpg-num font-semibold text-zinc-100">{totalDefense}</dd>
                             </div>
-                            <div className="bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-lg text-center">
-                              <span className="block text-[9px] uppercase text-zinc-500 font-bold">
-                                Carga
-                              </span>
-                              <span
-                                className={`font-mono text-sm font-extrabold ${
-                                  currentLoad > maxLoad ? 'text-red-400' : 'text-zinc-200'
-                                }`}
-                              >
-                                🎒 {currentLoad}/{maxLoad}
-                              </span>
+                            <div className="flex items-center gap-1.5">
+                              <dt className="text-zinc-500 flex items-center gap-1">
+                                <Icon name="backpack" size={14} /> Carga
+                              </dt>
+                              <dd className={`trpg-num font-semibold ${currentLoad > maxLoad ? 'text-red-300' : 'text-zinc-100'}`}>
+                                {currentLoad}/{maxLoad}
+                              </dd>
                             </div>
-                          </div>
+                          </dl>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
@@ -2032,7 +1934,7 @@ async function handleDeliverItemToCharacter(
                               key={cond.id}
                               className="px-2 py-0.5 bg-red-950/80 border border-red-700 text-red-200 rounded-full text-[11px] font-bold flex items-center gap-1"
                             >
-                              🩸 {cond.name}
+                              <Icon name="sangue" /> {cond.name}
                               <button
                                 type="button"
                                 onClick={() => handleRemoveConditionFromChar(char, cond.id)}
@@ -2134,7 +2036,7 @@ async function handleDeliverItemToCharacter(
                               <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
                                 <div
                                   className="h-full transition-all duration-200 ease-out"
-                                  style={{ width: `${pct}%`, backgroundColor: bar.color }}
+                                  style={{ width: `${pct}%`, backgroundColor: bar.id === 'pv' ? 'var(--trpg-pv)' : bar.id === 'san' ? 'var(--trpg-san)' : bar.id === 'pe' ? 'var(--trpg-pe)' : bar.color }}
                                 />
                               </div>
 
@@ -2157,7 +2059,7 @@ async function handleDeliverItemToCharacter(
                           onClick={() => onInspectCharacter(char.id)}
                           className="flex-1 py-2 bg-zinc-800 hover:bg-amber-600 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
                         >
-                          🔍 Inspecionar / Editar Ficha Completa
+                          <Icon name="search" /> Inspecionar / Editar Ficha Completa
                         </button>
                         <button
                           type="button"
@@ -2179,7 +2081,7 @@ async function handleDeliverItemToCharacter(
                           className="px-3 py-2 bg-zinc-950 hover:bg-red-950 text-zinc-500 hover:text-red-300 border border-zinc-800 rounded-xl text-xs font-bold transition cursor-pointer"
                           title="Remover personagem desta campanha (Devolve ao Cofre)"
                         >
-                          🚪 Remover
+                          <Icon name="logout" /> Remover
                         </button>
                       </div>
                     </div>
@@ -2251,8 +2153,8 @@ async function handleDeliverItemToCharacter(
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 shadow-lg">
               <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
                 <div>
-                  <h3 className="text-base font-extrabold uppercase tracking-wider text-cyan-400">
-                    📋 Log Geral de Atividades da Mesa
+                  <h3 className="text-base font-semibold text-zinc-100">
+                    <Icon name="note" /> Log Geral de Atividades da Mesa
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     Histórico completo de habilidades, rituais, trocas, equipamentos, consumíveis e variações vitais em tempo real.
@@ -2265,7 +2167,7 @@ async function handleDeliverItemToCharacter(
                     onClick={handleClearAllActivityLog}
                     className="px-3 py-1.5 bg-zinc-950 hover:bg-red-950 text-zinc-400 hover:text-red-300 border border-zinc-800 rounded-xl text-xs font-bold transition cursor-pointer"
                   >
-                    🗑️ Limpar Log da Sessão
+                    <Icon name="trash" /> Limpar Log da Sessão
                   </button>
                 )}
               </div>
@@ -2277,19 +2179,19 @@ async function handleDeliverItemToCharacter(
                   <span className="text-lg font-mono font-extrabold text-white">{sessionActivityLog.length}</span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
-                  <span className="block text-[10px] uppercase text-zinc-500 font-bold">❤️ Vitais / Condições</span>
+                  <span className="block text-[10px] uppercase text-zinc-500 font-bold"><Icon name="heart" /> Vitais / Condições</span>
                   <span className="text-lg font-mono font-extrabold text-red-400">
                     {sessionActivityLog.filter((e) => e.category === 'vital' || e.category === 'condition').length}
                   </span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
-                  <span className="block text-[10px] uppercase text-zinc-500 font-bold">✨ Poderes / Rituais</span>
+                  <span className="block text-[10px] uppercase text-zinc-500 font-bold"><Icon name="sparkles" /> Poderes / Rituais</span>
                   <span className="text-lg font-mono font-extrabold text-purple-400">
                     {sessionActivityLog.filter((e) => e.category === 'ability' || e.category === 'interlude').length}
                   </span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
-                  <span className="block text-[10px] uppercase text-zinc-500 font-bold">🎒 Itens & Trocas</span>
+                  <span className="block text-[10px] uppercase text-zinc-500 font-bold"><Icon name="backpack" /> Itens & Trocas</span>
                   <span className="text-lg font-mono font-extrabold text-amber-400">
                     {
                       sessionActivityLog.filter(
@@ -2309,7 +2211,7 @@ async function handleDeliverItemToCharacter(
                   type="text"
                   value={fullLogSearch}
                   onChange={(e) => setFullLogSearch(e.target.value)}
-                  placeholder="🔎 Buscar no log por item, ritual, poder, dano..."
+                  placeholder="Buscar no log por item, ritual, poder, dano..."
                   className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
                 />
                 <select
@@ -2323,8 +2225,8 @@ async function handleDeliverItemToCharacter(
                       {ch.name}
                     </option>
                   ))}
-                  <option value="👑 Mestre">👑 Mestre</option>
-                  <option value="👑 Mesa">👑 Mesa</option>
+                  <option value="Mestre">Mestre</option>
+                  <option value="Mesa">Mesa</option>
                 </select>
               </div>
 
@@ -2354,7 +2256,7 @@ async function handleDeliverItemToCharacter(
                           : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
                       }`}
                     >
-                      {meta.icon} {meta.label} ({count})
+                      <Icon name={meta.icon} size={14} /> {meta.label} ({count})
                     </button>
                   );
                 })}
@@ -2377,8 +2279,8 @@ async function handleDeliverItemToCharacter(
         <div className="lg:col-span-4 flex flex-col gap-5 sticky top-6">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500">
-                🎲 Dados do Mestre
+              <h3 className="text-base font-semibold text-zinc-100">
+                <Icon name="d20" /> Dados do Mestre
               </h3>
 
               <button
@@ -2390,7 +2292,7 @@ async function handleDeliverItemToCharacter(
                     : 'bg-zinc-950 border-zinc-700 text-zinc-400'
                 }`}
               >
-                {isSecretRoll ? '👁️ Modo Secreto (Oculto)' : '📢 Modo Público'}
+                {isSecretRoll ? 'Modo Secreto (Oculto)' : 'Modo Público'}
               </button>
             </div>
 
@@ -2410,7 +2312,7 @@ async function handleDeliverItemToCharacter(
                   type="button"
                   onClick={() =>
                     onRollDice(
-                      '👑 Mestre',
+                      'Mestre',
                       campaign.system,
                       `Rolagem Rápida (${preset.label})`,
                       preset.c,
@@ -2480,7 +2382,7 @@ async function handleDeliverItemToCharacter(
                     : 'bg-amber-600 hover:bg-amber-500 text-white'
                 }`}
               >
-                {isSecretRoll ? '👁️ Rolar em Segredo' : '🎲 Rolar na Mesa'}
+                {isSecretRoll ? 'Rolar em Segredo' : 'Rolar na Mesa'}
               </button>
             </form>
           </div>
@@ -2497,7 +2399,7 @@ async function handleDeliverItemToCharacter(
                       : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
                   }`}
                 >
-                  📋 Atividades ({sessionActivityLog.length})
+                  <Icon name="note" /> Atividades ({sessionActivityLog.length})
                 </button>
                 <button
                   type="button"
@@ -2508,7 +2410,7 @@ async function handleDeliverItemToCharacter(
                       : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
                   }`}
                 >
-                  🎲 Rolagens ({rollHistory.length})
+                  <Icon name="d20" /> Rolagens ({rollHistory.length})
                 </button>
               </div>
 
@@ -2550,9 +2452,9 @@ async function handleDeliverItemToCharacter(
                 <div className="flex flex-wrap gap-1 mb-2.5">
                   {[
                     { id: 'all' as const, label: 'Tudo' },
-                    { id: 'vital' as const, label: '❤️ Vitais' },
-                    { id: 'ability' as const, label: '✨ Poderes/Rituais' },
-                    { id: 'items' as const, label: '🎒 Itens & Trocas' },
+                    { id: 'vital' as const, label: 'Vitais' },
+                    { id: 'ability' as const, label: 'Poderes/Rituais' },
+                    { id: 'items' as const, label: 'Itens & Trocas' },
                   ].map((f) => (
                     <button
                       key={f.id}
@@ -2600,7 +2502,7 @@ async function handleDeliverItemToCharacter(
                           <span className="font-bold text-amber-400 text-xs">{roll.characterName}</span>
                           {roll.isSecret && (
                             <span className="text-[9px] font-mono uppercase bg-purple-950 text-purple-300 border border-purple-700 px-1.5 py-0.5 rounded">
-                              👁️ Secreta
+                              <Icon name="conhecimento" /> Secreta
                             </span>
                           )}
                           <span className="text-[10px] text-zinc-500">{roll.timestamp}</span>
@@ -2630,7 +2532,7 @@ async function handleDeliverItemToCharacter(
             <div className="flex justify-between items-start gap-3">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
-                  👑 Controle do Mestre • Ordem Paranormal
+                  <Icon name="crown" /> Controle do Mestre • Ordem Paranormal
                 </span>
                 <h3 className="text-lg font-black text-white">Liberar Cena de Interlúdio</h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
@@ -2657,7 +2559,7 @@ async function handleDeliverItemToCharacter(
                     : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
                 }`}
               >
-                👥 Mesmo Descanso para Todos
+                <Icon name="users" /> Mesmo Descanso para Todos
               </button>
               <button
                 type="button"
@@ -2668,7 +2570,7 @@ async function handleDeliverItemToCharacter(
                     : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
                 }`}
               >
-                👤 Individual por Personagem
+                <Icon name="user" /> Individual por Personagem
               </button>
             </div>
 
@@ -2720,7 +2622,7 @@ async function handleDeliverItemToCharacter(
                           </span>
                           {hasPending && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700">
-                              🌙 Pendente
+                              <Icon name="moon" /> Pendente
                             </span>
                           )}
                         </div>
@@ -2753,7 +2655,7 @@ async function handleDeliverItemToCharacter(
                 onClick={handleCancelAllPendingInterludes}
                 className="px-3 py-2 rounded-lg bg-red-950/70 hover:bg-red-800 text-red-200 border border-red-700/70 text-xs font-bold cursor-pointer"
               >
-                🚫 Recolher Interlúdios Pendentes
+                <Icon name="x-circle" /> Recolher Interlúdios Pendentes
               </button>
               <div className="flex items-center gap-2 ml-auto">
                 <button
@@ -2768,7 +2670,7 @@ async function handleDeliverItemToCharacter(
                   onClick={handleReleaseInterludeForPlayers}
                   className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black cursor-pointer"
                 >
-                  🌙 Liberar Interlúdio
+                  <Icon name="moon" /> Liberar Interlúdio
                 </button>
               </div>
             </div>

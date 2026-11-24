@@ -13,3 +13,23 @@ apps/server/prisma/dev.db
 # Local Content Packs (BYOC - textos de livros de regras fora do Git)
 data/packs/*.local.json
 data/packs/*.pack.json
+
+# Banco SQLite de desenvolvimento (arquivos temporários do SQLite)
+apps/server/prisma/dev.db-journal
+apps/server/prisma/*.db-wal
+apps/server/prisma/*.db-shm
+
+# Ferramentas locais (Claude Code: launch.json, conta de teste) e editores
+.claude/
+.vscode/
+.idea/
+Thumbs.db
+
+# Caches de build
+.vite/
+*.tsbuildinfo
+
+# Documentos e ferramentas locais do overhaul visual
+OVERHAUL_PROGRESS.md
+DESIGN.md
+apps/web/src/components/dice/DiceLab.tsx

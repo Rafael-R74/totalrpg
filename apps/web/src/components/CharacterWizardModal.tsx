@@ -24,6 +24,7 @@ import {
 import { CharacterData, createCharacter } from '../services/api';
 import { ImageUploadField } from './ImageUploadField';
 
+import { Icon } from './ui/Icon';
 interface CharacterWizardModalProps {
   lockedSystem?: SystemId;
   lockedNex?: number | null;
@@ -642,59 +643,66 @@ export function CharacterWizardModal({
   }, [availableRituals, ritualElementFilter, ritualCircleFilter, ritualSearch]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
-        {/* Cabeçalho do Assistente */}
-        <div className="px-6 py-4 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-              🎲 Assistente Guiado de Criação • Passo {step} de 4
-            </span>
-            <h2 className="text-xl font-black text-white">
-              {step === 1 && '1. Identidade & Origem'}
-              {step === 2 && '2. Distribuição de Atributos'}
-              {step === 3 && '3. Classe, PV/PE/SAN & Rituais Iniciais'}
-              {step === 4 && '4. Treinamento de Perícias & Equipamento de Recruta'}
+    <div className="trpg-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+      <div className="trpg-dialog sm:max-w-5xl h-[calc(100dvh-0.75rem)] sm:h-auto sm:max-h-[92vh] overflow-hidden">
+        {/* Cabeçalho do assistente */}
+        <div className="px-5 sm:px-6 pt-4 pb-3 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-zinc-400">Novo personagem, passo {step} de 4</p>
+            <h2 id="wizard-title" className="text-2xl sm:text-3xl leading-tight">
+              {step === 1 && 'Quem é você'}
+              {step === 2 && 'Atributos'}
+              {step === 3 && 'Classe e recursos'}
+              {step === 4 && 'Perícias e equipamento'}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="text-zinc-400 hover:text-white text-sm font-bold px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700"
-          >
-            ✕ Fechar
+          <button type="button" onClick={onClose} className="trpg-icon-btn -mr-2" aria-label="Fechar o assistente">
+            <Icon name="x" size={20} />
           </button>
         </div>
 
-        {/* Barra de Progresso */}
-        <div className="grid grid-cols-4 bg-zinc-950/60 border-b border-zinc-800 text-xs font-bold">
+        {/* Etapas */}
+        <ol className="grid grid-cols-4 gap-1.5 px-5 sm:px-6 pb-4 border-b border-zinc-800">
           {[
-            { n: 1, label: '1. Origem & Conceito' },
-            { n: 2, label: '2. Atributos' },
-            { n: 3, label: '3. Classe & Poderes' },
-            { n: 4, label: '4. Perícias & Arsenal' },
-          ].map((item) => (
-            <button
-              key={item.n}
-              type="button"
-              onClick={() => setStep(item.n as 1 | 2 | 3 | 4)}
-              className={`py-2.5 text-center border-b-2 transition-colors ${
-                step === item.n
-                  ? 'border-amber-500 text-amber-400 bg-amber-500/10'
-                  : step > item.n
-                  ? 'border-emerald-600 text-emerald-400'
-                  : 'border-transparent text-zinc-500'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+            { n: 1, label: 'Origem' },
+            { n: 2, label: 'Atributos' },
+            { n: 3, label: 'Classe' },
+            { n: 4, label: 'Perícias' },
+          ].map((item) => {
+            const state = step === item.n ? 'current' : step > item.n ? 'done' : 'todo';
+            return (
+              <li key={item.n}>
+                <button
+                  type="button"
+                  onClick={() => setStep(item.n as 1 | 2 | 3 | 4)}
+                  aria-current={state === 'current' ? 'step' : undefined}
+                  className="w-full text-left group"
+                >
+                  <span
+                    className={`block h-1 rounded-full transition-colors ${
+                      state === 'current' ? 'bg-amber-500' : state === 'done' ? 'bg-zinc-400' : 'bg-zinc-800 group-hover:bg-zinc-700'
+                    }`}
+                  />
+                  <span
+                    className={`mt-2 flex items-center gap-1.5 text-xs sm:text-sm ${
+                      state === 'current' ? 'text-zinc-100 font-semibold' : state === 'done' ? 'text-zinc-300' : 'text-zinc-500'
+                    }`}
+                  >
+                    <span className="trpg-num hidden sm:inline">{item.n}.</span>
+                    {item.label}
+                    {state === 'done' && <Icon name="check" size={13} className="text-zinc-400" />}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
 
         {/* Corpo Rolável */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-5 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-6">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-950/60 border border-red-700 text-red-200 text-xs font-bold">
-              ⚠️ {errorMsg}
+            <div role="alert" className="p-3 rounded-lg bg-red-950/50 border border-red-800/80 text-red-200 text-sm flex gap-2">
+              <Icon name="warning" size={16} className="mt-0.5 shrink-0" /> {errorMsg}
             </div>
           )}
 
@@ -727,9 +735,9 @@ export function CharacterWizardModal({
                     onChange={(e) => setSystem(e.target.value as SystemId)}
                     className="w-full px-3 py-2.5 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-sm disabled:opacity-60"
                   >
-                    <option value="ordem-paranormal">🔍 Ordem Paranormal RPG (v1.3)</option>
-                    <option value="tormenta20">⚔️ Tormenta 20 (Jogo do Ano)</option>
-                    <option value="duna">🏜️ Duna (2d20)</option>
+                    <option value="ordem-paranormal">Ordem Paranormal RPG (v1.3)</option>
+                    <option value="tormenta20">Tormenta 20 (Jogo do Ano)</option>
+                    <option value="duna">Duna (2d20)</option>
                   </select>
                 </div>
 
@@ -746,7 +754,7 @@ export function CharacterWizardModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-zinc-950/60 p-4 rounded-xl border border-indigo-500/30">
                   <div>
                     <label className="block text-xs font-bold uppercase text-indigo-300 mb-1">
-                      ⚡ NEX Inicial {typeof lockedNex === 'number' ? '(Definido pelo Mestre)' : ''}
+                      <Icon name="zap" /> NEX Inicial {typeof lockedNex === 'number' ? '(Definido pelo Mestre)' : ''}
                     </label>
                     <select
                       value={ordemNex}
@@ -774,7 +782,7 @@ export function CharacterWizardModal({
 
                   <div>
                     <label className="block text-xs font-bold uppercase text-emerald-300 mb-1">
-                      🎖️ Patente Inicial {lockedPatent ? '(Definida pelo Mestre)' : ''}
+                      <Icon name="award" /> Patente Inicial {lockedPatent ? '(Definida pelo Mestre)' : ''}
                     </label>
                     <select
                       value={ordemPatent}
@@ -801,7 +809,7 @@ export function CharacterWizardModal({
                 <div className="bg-zinc-950/60 p-4 rounded-xl border border-amber-500/30 flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <span className="text-xs font-bold uppercase text-amber-400 block">
-                      ⚔️ Nível Inicial (Tormenta 20)
+                      <Icon name="swords" /> Nível Inicial (Tormenta 20)
                     </span>
                     <span className="text-xs text-zinc-400">
                       PV e PM iniciais serão escalonados automaticamente para o nível escolhido.
@@ -825,8 +833,8 @@ export function CharacterWizardModal({
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <h3 className="text-sm font-black uppercase tracking-wider text-amber-400">
-                        📜 Escolha sua Origem (26 Origens Oficiais v1.3)
+                      <h3 className="text-base font-semibold text-zinc-100">
+                        <Icon name="scroll" /> Escolha sua Origem (26 Origens Oficiais v1.3)
                       </h3>
                       <p className="text-xs text-zinc-400">
                         O que seu personagem fazia antes de conhecer a Ordo Realitas? Concede 2 perícias treinadas e 1 poder exclusivo.
@@ -836,7 +844,7 @@ export function CharacterWizardModal({
                       type="text"
                       value={originSearch}
                       onChange={(e) => setOriginSearch(e.target.value)}
-                      placeholder="🔎 Filtrar origem ou poder..."
+                      placeholder="Filtrar origem ou poder..."
                       className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white"
                     />
                   </div>
@@ -860,14 +868,14 @@ export function CharacterWizardModal({
                               {orig.name}
                             </span>
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-amber-300">
-                              ✨ {orig.powerName}
+                              <Icon name="sparkles" /> {orig.powerName}
                             </span>
                           </div>
                           <p className="text-[11px] text-zinc-400 line-clamp-2 mb-2">
                             {orig.description}
                           </p>
                           <div className="text-[10px] font-bold text-emerald-400">
-                            🎯 Perícias:{' '}
+                            <Icon name="target" /> Perícias:{' '}
                             {orig.skills.length > 0
                               ? orig.skills
                                   .map(
@@ -908,7 +916,7 @@ export function CharacterWizardModal({
                     {selectedOrdemOrigin.id === 'amnesico' && (
                       <div className="pt-2 border-t border-zinc-800">
                         <p className="text-xs font-bold text-amber-300 mb-2">
-                          🧠 Amnésico: Escolha as 2 perícias treinadas pelo seu passado ({amnesicoSkills.length}/2):
+                          <Icon name="brain" /> Amnésico: Escolha as 2 perícias treinadas pelo seu passado ({amnesicoSkills.length}/2):
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                           {ORDEM_SKILLS_METADATA.map((sk) => {
@@ -943,7 +951,7 @@ export function CharacterWizardModal({
                     {selectedOrdemOrigin.grantsParanormalPower && (
                       <div className="pt-2 border-t border-zinc-800 space-y-2">
                         <p className="text-xs font-bold text-purple-300">
-                          👁️ Traços do Outro Lado: Escolha seu 1º Poder Paranormal gratuito (você começa com metade da Sanidade normal da classe):
+                          <Icon name="conhecimento" /> Traços do Outro Lado: Escolha seu 1º Poder Paranormal gratuito (você começa com metade da Sanidade normal da classe):
                         </p>
                         <select
                           value={cultistaPowerId}
@@ -963,7 +971,7 @@ export function CharacterWizardModal({
                     {selectedOrdemOrigin.id === 'engenheiro' && (
                       <div className="pt-2 border-t border-zinc-800 space-y-2">
                         <p className="text-xs font-bold text-emerald-300">
-                          🔧 Ferramenta Favorita (Engenheiro): Escolha um item (exceto armas) para contar como uma Categoria abaixo para você:
+                          <Icon name="wrench" /> Ferramenta Favorita (Engenheiro): Escolha um item (exceto armas) para contar como uma Categoria abaixo para você:
                         </p>
                         <select
                           value={engenheiroFavItemId}
@@ -1050,8 +1058,8 @@ export function CharacterWizardModal({
             <div className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                 <div>
-                  <h3 className="text-sm font-black uppercase text-amber-400">
-                    ⚡ Distribuição de Atributos (Ordem Paranormal v1.3, p. 15)
+                  <h3 className="text-base font-semibold text-zinc-100">
+                    <Icon name="zap" /> Distribuição de Atributos (Ordem Paranormal v1.3, p. 15)
                   </h3>
                   <p className="text-xs text-zinc-400">
                     Todos os atributos começam em <strong>1</strong>. Você recebe{' '}
@@ -1114,7 +1122,7 @@ export function CharacterWizardModal({
                         </button>
                       </div>
                       <span className="text-[10px] text-zinc-400 font-semibold">
-                        {val <= 0 ? '🎲 2d20 (menor)' : `🎲 ${val}d20 (maior)`}
+                        {val <= 0 ? '2d20 (menor)' : `${val}d20 (maior)`}
                       </span>
                     </div>
                   );
@@ -1127,7 +1135,7 @@ export function CharacterWizardModal({
             <div className="space-y-4">
               <div className="flex items-center justify-between bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                 <div>
-                  <h3 className="text-sm font-black uppercase text-amber-400">
+                  <h3 className="text-base font-semibold text-zinc-100">
                     Compra de Atributos (10 Pontos — Tormenta 20)
                   </h3>
                   <p className="text-xs text-zinc-400">
@@ -1259,9 +1267,9 @@ export function CharacterWizardModal({
                       </p>
                       <p className="text-xs text-zinc-400 mb-3">{cls.description}</p>
                       <div className="text-[10px] text-zinc-300 space-y-0.5 border-t border-zinc-800 pt-2">
-                        <div>❤️ PV Base: {cls.basePv} + VIG (+{cls.pvPerNex}/NEX)</div>
-                        <div>⚡ PE Base: {cls.basePe} + PRE (+{cls.pePerNex}/NEX)</div>
-                        <div>🧠 SAN Base: {cls.baseSan} (+{cls.sanPerNex}/NEX)</div>
+                        <div><Icon name="heart" /> PV Base: {cls.basePv} + VIG (+{cls.pvPerNex}/NEX)</div>
+                        <div><Icon name="zap" /> PE Base: {cls.basePe} + PRE (+{cls.pePerNex}/NEX)</div>
+                        <div><Icon name="brain" /> SAN Base: {cls.baseSan} (+{cls.sanPerNex}/NEX)</div>
                       </div>
                     </button>
                   );
@@ -1272,7 +1280,7 @@ export function CharacterWizardModal({
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-red-400">
-                    ❤️ PV (NEX {ordemNex}%)
+                    <Icon name="heart" /> PV (NEX {ordemNex}%)
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.pv}
@@ -1280,7 +1288,7 @@ export function CharacterWizardModal({
                 </div>
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-amber-400">
-                    ⚡ PE (NEX {ordemNex}%)
+                    <Icon name="zap" /> PE (NEX {ordemNex}%)
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.pe}
@@ -1288,7 +1296,7 @@ export function CharacterWizardModal({
                 </div>
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-blue-400">
-                    🧠 SAN (NEX {ordemNex}%)
+                    <Icon name="brain" /> SAN (NEX {ordemNex}%)
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.san}
@@ -1296,7 +1304,7 @@ export function CharacterWizardModal({
                 </div>
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-emerald-400">
-                    🛡️ Defesa Base
+                    <Icon name="shield" /> Defesa Base
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.defense}
@@ -1304,7 +1312,7 @@ export function CharacterWizardModal({
                 </div>
                 <div className="text-center">
                   <span className="text-[10px] font-bold uppercase text-zinc-400">
-                    🎒 Carga Máxima
+                    <Icon name="backpack" /> Carga Máxima
                   </span>
                   <div className="text-2xl font-black text-white">
                     {ordemVitalsPreview.maxSlots} esp.
@@ -1314,8 +1322,8 @@ export function CharacterWizardModal({
 
               {/* Habilidades Iniciais da Classe */}
               <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
-                <h4 className="text-xs font-black uppercase text-amber-400">
-                  ✨ Habilidades Iniciais de {selectedOrdemClass.name} & Proficiências
+                <h4 className="text-sm font-semibold text-zinc-100">
+                  <Icon name="sparkles" /> Habilidades Iniciais de {selectedOrdemClass.name} & Proficiências
                 </h4>
                 <p className="text-xs text-zinc-400">
                   <strong>Proficiências:</strong> {selectedOrdemClass.proficiencies.join(', ')}
@@ -1345,8 +1353,8 @@ export function CharacterWizardModal({
                 <div className="p-4 rounded-xl bg-zinc-950 border border-indigo-500/40 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h4 className="text-xs font-black uppercase text-indigo-300">
-                        🛤️ Trilha de Classe (NEX {ordemNex}%)
+                      <h4 className="text-sm font-semibold text-zinc-100">
+                        <Icon name="route" /> Trilha de Classe (NEX {ordemNex}%)
                       </h4>
                       <p className="text-[11px] text-zinc-400">
                         Escolha sua trilha; todos os poderes desbloqueados até {ordemNex}% NEX serão adicionados automaticamente.
@@ -1394,8 +1402,8 @@ export function CharacterWizardModal({
               {/* Afinidade Elemental & Versatilidade (NEX >= 50%) */}
               {ordemNex >= 50 && ordemClassId !== 'mundano' && (
                 <div className="p-4 rounded-xl bg-zinc-950 border border-purple-500/40 space-y-3">
-                  <h4 className="text-xs font-black uppercase text-purple-300">
-                    👁️ Marcos de NEX 50%: Afinidade Elemental & Versatilidade
+                  <h4 className="text-sm font-semibold text-zinc-100">
+                    <Icon name="conhecimento" /> Marcos de NEX 50%: Afinidade Elemental & Versatilidade
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -1474,8 +1482,8 @@ export function CharacterWizardModal({
                 <div className="p-4 rounded-xl bg-zinc-950 border border-amber-500/40 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h4 className="text-xs font-black uppercase text-amber-400">
-                        ⚡ Poderes de Classe & Transcender Acumulados ({chosenClassPowerIds.length} / {totalClassPowerSlots})
+                      <h4 className="text-sm font-semibold text-zinc-100">
+                        <Icon name="zap" /> Poderes de Classe & Transcender Acumulados ({chosenClassPowerIds.length} / {totalClassPowerSlots})
                       </h4>
                       <p className="text-[11px] text-zinc-400">
                         Marcos 15%, 30%, 45%, 60%, 75%, 90%{ordemNex >= 50 && versatilityMode === 'class_power' ? ' + Versatilidade 50%' : ''}. Poderes Paranormais descontam SAN por Transcender ({transcendedCountPreview} selecionado(s)).
@@ -1485,7 +1493,7 @@ export function CharacterWizardModal({
                       type="text"
                       value={classPowerSearch}
                       onChange={(e) => setClassPowerSearch(e.target.value)}
-                      placeholder="🔎 Filtrar poder..."
+                      placeholder="Filtrar poder..."
                       className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
                     />
                   </div>
@@ -1562,8 +1570,8 @@ export function CharacterWizardModal({
                 <div className="p-4 rounded-xl bg-zinc-950 border-2 border-purple-500/60 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h4 className="text-sm font-black uppercase text-purple-300">
-                        🔮 Escolhido pelo Outro Lado: Selecione seus Rituais ({chosenRitualIds.length}/{maxInitialRituals} máx • mín. 3 • até {maxRitualCircle}º Círculo)
+                      <h4 className="text-sm font-semibold text-zinc-100">
+                        <Icon name="sigil" /> Escolhido pelo Outro Lado: Selecione seus Rituais ({chosenRitualIds.length}/{maxInitialRituals} máx • mín. 3 • até {maxRitualCircle}º Círculo)
                       </h4>
                       <p className="text-xs text-zinc-400">
                         Em NEX {ordemNex}%, você pode escolher até {maxInitialRituals} rituais até o {maxRitualCircle}º Círculo.
@@ -1573,7 +1581,7 @@ export function CharacterWizardModal({
                       type="text"
                       value={ritualSearch}
                       onChange={(e) => setRitualSearch(e.target.value)}
-                      placeholder="🔎 Pesquisar ritual por nome ou efeito..."
+                      placeholder="Pesquisar ritual por nome ou efeito..."
                       className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
                     />
                   </div>
@@ -1624,7 +1632,7 @@ export function CharacterWizardModal({
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="text-[10px] font-black uppercase text-amber-400">
-                            🔮 Escolha Obrigatória do Ritual
+                            <Icon name="sigil" /> Escolha Obrigatória do Ritual
                           </span>
                           <h5 className="text-sm font-black text-white">
                             De qual elemento você quer aprender &quot;Amaldiçoar Arma&quot;?
@@ -1641,10 +1649,10 @@ export function CharacterWizardModal({
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {(
                           [
-                            { el: 'Sangue', icon: '🩸', color: 'bg-red-900/70 hover:bg-red-700 border-red-500 text-red-100' },
-                            { el: 'Morte', icon: '💀', color: 'bg-zinc-900 hover:bg-zinc-700 border-zinc-400 text-zinc-100' },
-                            { el: 'Conhecimento', icon: '👁️', color: 'bg-amber-900/70 hover:bg-amber-700 border-amber-400 text-amber-100' },
-                            { el: 'Energia', icon: '⚡', color: 'bg-purple-900/70 hover:bg-purple-700 border-purple-400 text-purple-100' },
+                            { el: 'Sangue', icon: 'sangue', color: 'bg-red-900/70 hover:bg-red-700 border-red-500 text-red-100' },
+                            { el: 'Morte', icon: 'morte', color: 'bg-zinc-900 hover:bg-zinc-700 border-zinc-400 text-zinc-100' },
+                            { el: 'Conhecimento', icon: 'conhecimento', color: 'bg-yellow-900/70 hover:bg-yellow-700 border-yellow-400 text-yellow-100' },
+                            { el: 'Energia', icon: 'energia', color: 'bg-purple-900/70 hover:bg-purple-700 border-purple-400 text-purple-100' },
                           ] as const
                         ).map((opt) => {
                           const alreadyPicked = chosenRitualIds.includes(
@@ -1657,7 +1665,7 @@ export function CharacterWizardModal({
                               onClick={() => selectAmaldicoarArmaWithElement(opt.el)}
                               className={`py-2.5 px-3 rounded-xl border font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${opt.color}`}
                             >
-                              <span>{opt.icon}</span>
+                              <Icon name={opt.icon} size={16} />
                               <span>{opt.el}</span>
                               {alreadyPicked && <span>(✓)</span>}
                             </button>
@@ -1794,7 +1802,7 @@ export function CharacterWizardModal({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
                   <div>
                     <label className="block text-xs font-bold uppercase text-amber-400 mb-2">
-                      ⚔️ Perícia de Combate (Escolha 1)
+                      <Icon name="swords" /> Perícia de Combate (Escolha 1)
                     </label>
                     <div className="flex gap-2">
                       {(['luta', 'pontaria'] as const).map((sk) => (
@@ -1808,14 +1816,14 @@ export function CharacterWizardModal({
                               : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                           }`}
                         >
-                          {sk === 'luta' ? '🥊 Luta (FOR)' : '🎯 Pontaria (AGI)'}
+                          {sk === 'luta' ? 'Luta (FOR)' : 'Pontaria (AGI)'}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase text-amber-400 mb-2">
-                      🛡️ Perícia de Resistência (Escolha 1)
+                      <Icon name="shield" /> Perícia de Resistência (Escolha 1)
                     </label>
                     <div className="flex gap-2">
                       {(['fortitude', 'reflexos'] as const).map((sk) => (
@@ -1829,7 +1837,7 @@ export function CharacterWizardModal({
                               : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                           }`}
                         >
-                          {sk === 'fortitude' ? '💪 Fortitude (VIG)' : '⚡ Reflexos (AGI)'}
+                          {sk === 'fortitude' ? 'Fortitude (VIG)' : 'Reflexos (AGI)'}
                         </button>
                       ))}
                     </div>
@@ -1841,8 +1849,8 @@ export function CharacterWizardModal({
               <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h4 className="text-sm font-black uppercase text-amber-400">
-                      🎯 Perícias Livres da Classe + Intelecto (
+                    <h4 className="text-sm font-semibold text-zinc-100">
+                      <Icon name="target" /> Perícias Livres da Classe + Intelecto (
                       {
                         ordemFreeSkills.filter((id) => !lockedOrdemSkillIds.has(id))
                           .length
@@ -1898,8 +1906,8 @@ export function CharacterWizardModal({
               {/* Se for Especialista: Escolher as 2 perícias de Perito */}
               {ordemClassId === 'especialista' && (
                 <div className="bg-zinc-950 p-4 rounded-xl border border-blue-500/40 space-y-2">
-                  <h4 className="text-xs font-black uppercase text-blue-400">
-                    🎓 Habilidade Perito (Especialista): Escolha 2 perícias treinadas (exceto Luta e Pontaria) ({peritoSkills.length}/2)
+                  <h4 className="text-sm font-semibold text-zinc-100">
+                    <Icon name="graduation" /> Habilidade Perito (Especialista): Escolha 2 perícias treinadas (exceto Luta e Pontaria) ({peritoSkills.length}/2)
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {allOrdemTrainedList
@@ -1931,8 +1939,8 @@ export function CharacterWizardModal({
                 <div className="bg-zinc-950 p-4 rounded-xl border border-indigo-500/40 space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h4 className="text-xs font-black uppercase text-indigo-300">
-                        🎖️ Graus de Treinamento (Veterano +10{ordemNex >= 70 ? ' / Expert +15' : ''})
+                      <h4 className="text-sm font-semibold text-zinc-100">
+                        <Icon name="award" /> Graus de Treinamento (Veterano +10{ordemNex >= 70 ? ' / Expert +15' : ''})
                       </h4>
                       <p className="text-[11px] text-zinc-400">
                         Promova até{' '}
@@ -2005,8 +2013,8 @@ export function CharacterWizardModal({
               <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h4 className="text-sm font-black uppercase text-amber-400">
-                      🎒 Arsenal & Equipamento Inicial (Patente {ordemPatent} — Ordem Alfabética)
+                    <h4 className="text-sm font-semibold text-zinc-100">
+                      <Icon name="backpack" /> Arsenal & Equipamento Inicial (Patente {ordemPatent} — Ordem Alfabética)
                     </h4>
                     <p className="text-xs text-zinc-400">
                       Limites da patente <strong>{ordemPatent}</strong>: itens de{' '}
@@ -2052,7 +2060,7 @@ export function CharacterWizardModal({
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    🎒 Equipamentos Normais
+                    <Icon name="backpack" /> Equipamentos Normais
                   </button>
                   <button
                     type="button"
@@ -2063,13 +2071,13 @@ export function CharacterWizardModal({
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    👁️ Equipamentos Paranormais
+                    <Icon name="conhecimento" /> Equipamentos Paranormais
                   </button>
                 </div>
 
                 {itemRealmTab === 'paranormal' && !allowsCursedSpecial && (
                   <p className="text-[11px] text-purple-300/90 bg-purple-950/30 border border-purple-800/50 rounded-lg px-3 py-1.5">
-                    👁️ Na patente <strong>{ordemPatent}</strong>, itens amaldiçoados especiais (Cat. II+) só são liberados a partir de <strong>Agente Especial</strong> (p. 144).
+                    <Icon name="conhecimento" /> Na patente <strong>{ordemPatent}</strong>, itens amaldiçoados especiais (Cat. II+) só são liberados a partir de <strong>Agente Especial</strong> (p. 144).
                   </p>
                 )}
 
@@ -2079,7 +2087,7 @@ export function CharacterWizardModal({
                     type="text"
                     value={itemSearch}
                     onChange={(e) => setItemSearch(e.target.value)}
-                    placeholder="🔎 Pesquisar arma, proteção, munição ou equipamento..."
+                    placeholder="Pesquisar arma, proteção, munição ou equipamento..."
                     className="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:border-amber-500 focus:outline-none"
                   />
                   <div className="flex flex-wrap gap-1">
@@ -2158,7 +2166,7 @@ export function CharacterWizardModal({
                           </div>
                           {isEngFav && (
                             <span className="inline-block mb-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
-                              🔧 Ferramenta Favorita (-1 Cat.)
+                              <Icon name="wrench" /> Ferramenta Favorita (-1 Cat.)
                             </span>
                           )}
                           <p className="text-[11px] text-zinc-400 line-clamp-2">
@@ -2202,7 +2210,7 @@ export function CharacterWizardModal({
 
           {step === 4 && system === 'tormenta20' && (
             <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
-              <h4 className="text-sm font-black uppercase text-amber-400">
+              <h4 className="text-sm font-semibold text-zinc-100">
                 Perícias Treinadas (Tormenta 20)
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -2239,13 +2247,14 @@ export function CharacterWizardModal({
         </div>
 
         {/* Rodapé de Navegação */}
-        <div className="px-6 py-4 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between">
+        <div className="px-5 sm:px-6 py-3 bg-zinc-950/40 border-t border-zinc-800 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={() => (step > 1 ? setStep((s) => (s - 1) as 1 | 2 | 3 | 4) : onClose())}
-            className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold"
+            className="trpg-btn-quiet"
           >
-            {step > 1 ? '← Voltar' : 'Cancelar'}
+            {step > 1 && <Icon name="arrow-left" size={16} />}
+            {step > 1 ? 'Voltar' : 'Cancelar'}
           </button>
 
           <div className="flex items-center gap-3">
@@ -2271,18 +2280,20 @@ export function CharacterWizardModal({
                   setErrorMsg('');
                   setStep((s) => (s + 1) as 1 | 2 | 3 | 4);
                 }}
-                className="px-6 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-black uppercase tracking-wider"
+                className="trpg-btn-primary"
               >
-                Avançar para o Passo {step + 1} →
+                Continuar
+                <Icon name="arrow-left" size={16} className="rotate-180" />
               </button>
             ) : (
               <button
                 type="button"
                 disabled={isSaving}
                 onClick={handleFinish}
-                className="px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider shadow-lg"
+                className="trpg-btn-primary"
               >
-                {isSaving ? 'Criando Agente...' : '✅ Concluir e Criar Personagem'}
+                <Icon name="check" size={16} />
+                {isSaving ? 'Criando…' : 'Criar personagem'}
               </button>
             )}
           </div>

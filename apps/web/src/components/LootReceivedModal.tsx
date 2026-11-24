@@ -1,5 +1,6 @@
 import { RPGItem, PreparedAttack } from '@totalrpg/shared';
 
+import { Icon } from './ui/Icon';
 interface LootReceivedModalProps {
   loot: {
     item: RPGItem;
@@ -16,7 +17,7 @@ export function LootReceivedModal({ loot, onClose }: LootReceivedModalProps) {
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+      className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -32,14 +33,14 @@ export function LootReceivedModal({ loot, onClose }: LootReceivedModalProps) {
             />
           </div>
         ) : (
-          <div className="w-24 h-24 rounded-2xl bg-emerald-950/60 border border-emerald-500/60 flex items-center justify-center text-6xl animate-bounce shadow-inner">
-            {attack ? '⚔️' : '🎁'}
+          <div className="w-24 h-24 rounded-2xl bg-emerald-950/60 border border-emerald-500/60 flex items-center justify-center text-6xl shadow-inner">
+            <Icon name={attack ? 'swords' : 'gift'} />
           </div>
         )}
 
         <div>
           <span className="text-[11px] font-mono uppercase tracking-widest text-emerald-400 font-extrabold">
-            ✨ Novo Item Recebido no Inventário!
+            <Icon name="sparkles" /> Novo Item Recebido no Inventário!
           </span>
           <h3 className="text-2xl font-extrabold text-white mt-1">
             {item.quantity > 1 ? `${item.quantity}x ` : ''}
@@ -51,17 +52,17 @@ export function LootReceivedModal({ loot, onClose }: LootReceivedModalProps) {
         <div className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
           <div className="flex justify-center items-center gap-3">
             <span className="text-xs font-mono bg-zinc-900 text-zinc-300 border border-zinc-700 px-2.5 py-1 rounded-lg">
-              🎒 Espaços: <strong>{item.slots * (item.quantity || 1)}</strong>
+              <Icon name="backpack" /> Espaços: <strong>{item.slots * (item.quantity || 1)}</strong>
               {item.quantity > 1 ? ` (${item.slots} cada)` : ''}
             </span>
 
             {attack && (
               <>
                 <span className="text-xs font-mono bg-red-950/80 text-red-300 border border-red-800 px-2.5 py-1 rounded-lg font-bold">
-                  🩸 Dano: {attack.damageFormula}
+                  <Icon name="sangue" /> Dano: {attack.damageFormula}
                 </span>
                 <span className="text-xs font-mono bg-amber-950/80 text-amber-300 border border-amber-800 px-2.5 py-1 rounded-lg">
-                  🎯 Crítico: {attack.critRange}
+                  <Icon name="target" /> Crítico: {attack.critRange}
                 </span>
               </>
             )}

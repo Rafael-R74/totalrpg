@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { StickyPostIt } from '@totalrpg/shared';
 import { DMScreenCharacter } from '../../services/api';
 
+import { Icon } from '../ui/Icon';
 interface NotesAndPostItsManagerProps {
   typedNotes: string;
   onUpdateTypedNotes: (val: string) => void;
@@ -151,8 +152,8 @@ export function NotesAndPostItsManager({
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-5 shadow-lg">
       <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
         <div>
-          <h3 className="text-sm font-extrabold uppercase tracking-wider text-amber-500">
-            🎨 Anotações da Sessão (Texto & Desenho Livre)
+          <h3 className="text-base font-semibold text-zinc-100">
+            <Icon name="palette" /> Anotações da Sessão (Texto & Desenho Livre)
           </h3>
           <p className="text-xs text-zinc-400 mt-0.5">
             Escreva ou desenhe livremente e destaque qualquer anotação como um Post-it flutuante na tela.
@@ -167,7 +168,7 @@ export function NotesAndPostItsManager({
               noteMode === 'text' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'
             }`}
           >
-            📝 Texto Digitado
+            <Icon name="pencil" /> Texto Digitado
           </button>
           <button
             type="button"
@@ -176,7 +177,7 @@ export function NotesAndPostItsManager({
               noteMode === 'draw' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white'
             }`}
           >
-            🖌️ Desenhar (Canvas)
+            Desenhar (Canvas)
           </button>
         </div>
       </div>
@@ -214,7 +215,7 @@ export function NotesAndPostItsManager({
                     : 'bg-zinc-900 text-zinc-400 border-zinc-700'
                 }`}
               >
-                🧽 Borracha
+                Borracha
               </button>
             </div>
 
@@ -257,7 +258,7 @@ export function NotesAndPostItsManager({
       <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 flex-1">
           <span className="text-xs font-bold text-amber-400 whitespace-nowrap">
-            📌 Transformar {noteMode === 'draw' ? 'Desenho Atual' : 'Anotação Atual'} em Post-it:
+            <Icon name="pin" /> Transformar {noteMode === 'draw' ? 'Desenho Atual' : 'Anotação Atual'} em Post-it:
           </span>
 
           <input
@@ -273,11 +274,11 @@ export function NotesAndPostItsManager({
             onChange={(e) => setPostItColor(e.target.value as StickyPostIt['color'])}
             className="bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
           >
-            <option value="amber">🟨 Cor: Amarelo</option>
-            <option value="red">🟥 Cor: Vermelho</option>
-            <option value="blue">🟦 Cor: Azul</option>
-            <option value="emerald">🟩 Cor: Verde</option>
-            <option value="purple">🟪 Cor: Roxo</option>
+            <option value="amber">Cor: Amarelo</option>
+            <option value="red">Cor: Vermelho</option>
+            <option value="blue">Cor: Azul</option>
+            <option value="emerald">Cor: Verde</option>
+            <option value="purple">Cor: Roxo</option>
           </select>
         </div>
 
@@ -286,7 +287,7 @@ export function NotesAndPostItsManager({
           onClick={handleTransformCurrentIntoPostIt}
           className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow whitespace-nowrap"
         >
-          📌 Destacar como Post-it na Tela
+          <Icon name="pin" /> Destacar como Post-it na Tela
         </button>
       </div>
 
@@ -317,7 +318,7 @@ export function NotesAndPostItsManager({
                     post.isPinned ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  {post.isPinned ? '📌 ' : '👁️‍🗨️ '}
+                  <Icon name={post.isPinned ? 'pin' : 'eye'} size={14} />{' '}
                   {post.title}
                   {sharedCount > 0 && (
                     <span className="ml-1 text-[10px] text-emerald-400">
@@ -431,7 +432,7 @@ export function FloatingPostItsLayer({
               className={`${theme.header} px-3 py-2 cursor-move flex justify-between items-center select-none`}
               title="Arraste para mover o Post-it pela sua tela"
             >
-              <span className="text-xs font-extrabold truncate">📌 {post.title}</span>
+              <span className="text-xs font-extrabold truncate"><Icon name="pin" /> {post.title}</span>
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
@@ -478,7 +479,7 @@ export function FloatingPostItsLayer({
               <div className="px-3 py-2 border-t border-white/10 bg-black/40 flex flex-col gap-1.5">
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] text-zinc-300 font-bold">
-                    👁️ Exibir em ({sharedIds.length + (post.sharedOnMonitor ? 1 : 0)}):
+                    <Icon name="conhecimento" /> Exibir em ({sharedIds.length + (post.sharedOnMonitor ? 1 : 0)}):
                   </span>
                   <div className="flex gap-1">
                     <button
@@ -530,7 +531,7 @@ export function FloatingPostItsLayer({
                           : 'bg-zinc-900 border-zinc-700 text-purple-300 hover:text-white'
                       }`}
                     >
-                      {post.sharedOnMonitor ? '✓ 🖥️ 2º Monitor' : '+ 🖥️ 2º Monitor'}
+                      {post.sharedOnMonitor ? '✓ 2º Monitor' : '+ 2º Monitor'}
                     </button>
                   )}
 

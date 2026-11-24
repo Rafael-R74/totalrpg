@@ -1,11 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { AuthScreen } from './components/AuthScreen';
-import { Dashboard } from './components/Dashboard';
+import { LandingPage } from './components/LandingPage';
+import { Dashboard, DashboardTabId } from './components/Dashboard';
 import { SheetContainer } from './components/sheets/SheetContainer';
 import { DMScreen } from './components/DMScreen';
 import { DiceRollModal } from './components/DiceRollModal';
 import { LootReceivedModal } from './components/LootReceivedModal';
 import { FloatingPostItsLayer } from './components/dm/NotesAndPostItsManager';
+import { AppHeader } from './components/AppHeader';
+import { Dialog } from './components/ui/Dialog';
+import { preloadDiceScene } from './components/dice/DiceStage';
+
+// Bancada de dados (?diceLab): arquivo local, fora do Git. Se não existir, o glob volta vazio.
+const diceLabModules = import.meta.glob<{ DiceLab: React.ComponentType }>('./components/dice/DiceLab.tsx');
+const diceLabLoader = Object.values(diceLabModules)[0];
+const DiceLab = diceLabLoader ? lazy(() => diceLabLoader().then((m) => ({ default: m.DiceLab }))) : null;
+import { UserSettingsPanel } from './components/UserSettingsPanel';
+import { ThemeProvider, useTheme } from './theme/themeEngine';
 import { AuthResponse, fetchContentPack } from './services/api';
 import { io, Socket } from 'socket.io-client';
 import { SecondMonitorScreen } from './components/SecondMonitorScreen';
@@ -29,20 +40,37 @@ import {
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
 
+function ActiveSystemBridge({ system }: { system: SystemId | null }) {
+  const { setActiveSystem } = useTheme();
+  useEffect(() => {
+    setActiveSystem(system);
+  }, [system, setActiveSystem]);
+  return null;
+}
+
 export default function App() {
+  useEffect(() => {
+    preloadDiceScene();
+  }, []);
+
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string; email: string } | null>(() => {
     const saved = localStorage.getItem('totalrpg_user');
     return saved ? JSON.parse(saved) : null;
   });
+  const [dedicatedAuthMode, setDedicatedAuthMode] = useState<'login' | 'register' | null>(null);
+  const [dashboardRequestedTab, setDashboardRequestedTab] = useState<DashboardTabId | null>(null);
+  const [isQuickSettingsOpen, setIsQuickSettingsOpen] = useState(false);
 
   const [currentCampaignSession, setCurrentCampaignSession] = useState<{
     campaignId: string;
     role: 'dm' | 'player';
+    system?: SystemId;
   } | null>(null);
 
   const [openedCharacter, setOpenedCharacter] = useState<{
     characterId: string;
     campaignId?: string;
+    system?: SystemId;
   } | null>(null);
 
   const [rollHistory, setRollHistory] = useState<DiceRollResult[]>([]);
@@ -372,22 +400,67 @@ export default function App() {
     });
   }
 
-  if (!currentUser) {
-    return <AuthScreen onLoginSuccess={(authData: AuthResponse) => setCurrentUser(authData.user)} />;
-  }
+  const activeSessionSystem: SystemId | null =
+    openedCharacter?.system || currentCampaignSession?.system || null;
 
-  if (!currentUser) {
-    return <AuthScreen onLoginSuccess={(authData: AuthResponse) => setCurrentUser(authData.user)} />;
+  if (import.meta.env.DEV && DiceLab && new URLSearchParams(window.location.search).has('diceLab')) {
+    return (
+      <ThemeProvider userId={currentUser?.id}>
+        <Suspense fallback={null}>
+          <DiceLab />
+        </Suspense>
+      </ThemeProvider>
+    );
   }
 
   // Se esta janela foi aberta como Tela do 2º Monitor (?monitorCampaignId=...), renderiza em Tela Cheia Limpa!
   const monitorCampaignId = new URLSearchParams(window.location.search).get('monitorCampaignId');
   if (monitorCampaignId) {
-    return <SecondMonitorScreen campaignId={monitorCampaignId} />;
+    return (
+      <ThemeProvider userId={currentUser?.id}>
+        <SecondMonitorScreen campaignId={monitorCampaignId} />
+      </ThemeProvider>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <ThemeProvider userId={null}>
+        {dedicatedAuthMode ? (
+          <AuthScreen
+            initialMode={dedicatedAuthMode}
+            onBackToLanding={() => setDedicatedAuthMode(null)}
+            onLoginSuccess={(authData: AuthResponse) => {
+              setDedicatedAuthMode(null);
+              setCurrentUser(authData.user);
+            }}
+          />
+        ) : (
+          <LandingPage
+            onOpenDedicatedAuth={(mode) => setDedicatedAuthMode(mode)}
+            onLoginSuccess={(authData: AuthResponse) => {
+              setDedicatedAuthMode(null);
+              setCurrentUser(authData.user);
+            }}
+          />
+        )}
+      </ThemeProvider>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-7xl mx-auto flex flex-col gap-6">
+    <ThemeProvider userId={currentUser.id}>
+      <ActiveSystemBridge system={activeSessionSystem} />
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+        <Dialog
+          open={isQuickSettingsOpen}
+          onClose={() => setIsQuickSettingsOpen(false)}
+          title="Aparência"
+          description="Paleta, tipografia e conforto visual. As mudanças são salvas na sua conta."
+          size="xl"
+        >
+          <UserSettingsPanel currentUser={currentUser} embedded />
+        </Dialog>
       <DiceRollModal
         roll={activeRollModal}
         batchRolls={activeBatchRolls}
@@ -496,9 +569,9 @@ export default function App() {
             const suffix = p.damageLabelSuffix || '';
             const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
             const maxCritSuffix =
-              isCrit && p.maximizeCritDamage ? ' [💀 Atirar p/ Matar: Dano Máx.]' : '';
+              isCrit && p.maximizeCritDamage ? ' [Atirar p/ Matar: Dano Máx.]' : '';
             const label = isCrit
-              ? `💥 Dano Crítico (${shotNum}º Disp. • x${p.critMultiplier}): ${p.weaponName}${suffix}${maxCritSuffix}`
+              ? `Dano Crítico (${shotNum}º Disp. • x${p.critMultiplier}): ${p.weaponName}${suffix}${maxCritSuffix}`
               : `Dano (${shotNum}º Disp.): ${p.weaponName}${suffix}`;
             const fixedRolls =
               isCrit && p.maximizeCritDamage
@@ -536,9 +609,9 @@ export default function App() {
           const suffix = p.damageLabelSuffix || '';
           const diceCount = isCrit ? p.critDiceCount : p.normalDiceCount;
           const maxCritSuffix =
-            isCrit && p.maximizeCritDamage ? ' [💀 Atirar p/ Matar: Dano Máx.]' : '';
+            isCrit && p.maximizeCritDamage ? ' [Atirar p/ Matar: Dano Máx.]' : '';
           const label = isCrit
-            ? `💥 Dano Crítico [x${p.critMultiplier}]: ${p.weaponName}${suffix}${maxCritSuffix}`
+            ? `Dano Crítico [x${p.critMultiplier}]: ${p.weaponName}${suffix}${maxCritSuffix}`
             : `Dano: ${p.weaponName}${suffix}`;
           const fixedRolls =
             isCrit && p.maximizeCritDamage
@@ -611,12 +684,12 @@ export default function App() {
           const et = rp.effectType || 'damage';
           const prefix =
             et === 'healing'
-              ? '💚 Cura'
+              ? 'Cura'
               : et === 'temp_hp'
               ? '🛡️ Vida Temporária'
               : et === 'utility'
-              ? '🎲 Efeito'
-              : '💥 Dano';
+              ? 'Efeito'
+              : 'Dano';
           const fixedRolls = rp.maximizeEffect
             ? Array(Math.max(1, count)).fill(sides)
             : undefined;
@@ -720,36 +793,32 @@ export default function App() {
         />
       )}
 
-      {/* Barra de Topo Global */}
-      <header className="border-b border-zinc-800 pb-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-extrabold text-amber-500 tracking-wider">🎲 TotalRPG</h1>
-          {(currentCampaignSession || openedCharacter) && (
-            <button
-              onClick={() => {
-                setOpenedCharacter(null);
-                setCurrentCampaignSession(null);
-              }}
-              className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition cursor-pointer"
-            >
-              ← Voltar ao Dashboard
-            </button>
-          )}
-        </div>
+      <AppHeader
+        username={currentUser.username}
+        system={activeSessionSystem}
+        onHome={() => {
+          setOpenedCharacter(null);
+          setCurrentCampaignSession(null);
+        }}
+        onOpenAppearance={() => setIsQuickSettingsOpen(true)}
+        onLogout={() => {
+          setDedicatedAuthMode(null);
+          handleLogout();
+        }}
+        crumbs={[
+          ...(currentCampaignSession
+            ? [
+                {
+                  label: currentCampaignSession.role === 'dm' ? 'Escudo do mestre' : 'Mesa',
+                  onClick: () => setOpenedCharacter(null),
+                },
+              ]
+            : []),
+          ...(openedCharacter ? [{ label: 'Ficha' }] : []),
+        ]}
+      />
 
-        <div className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-xl">
-          <div className="text-right">
-            <span className="block text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Conta</span>
-            <span className="text-sm font-bold text-amber-400">{currentUser.username}</span>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-3 py-1.5 bg-zinc-800 hover:bg-red-950 hover:text-red-300 text-zinc-400 rounded-lg text-xs font-semibold transition cursor-pointer"
-          >
-            Sair
-          </button>
-        </div>
-      </header>
+      <main className="trpg-wrap pt-5 pb-16 sm:pt-8 flex-1 flex flex-col gap-6">
 
       {/* VISÃO 1: Ficha Completa Aberta */}
       {openedCharacter ? (
@@ -812,6 +881,7 @@ export default function App() {
             setOpenedCharacter({
               characterId: charId,
               campaignId: currentCampaignSession.campaignId,
+              system: currentCampaignSession.system,
             })
           }
           onRollDice={(
@@ -915,15 +985,19 @@ export default function App() {
         /* VISÃO 3: Dashboard Principal */
         <Dashboard
           currentUser={currentUser}
-          onEnterSession={(campaignId, role) => {
+          requestedTab={dashboardRequestedTab}
+          onRequestedTabHandled={() => setDashboardRequestedTab(null)}
+          onEnterSession={(campaignId, role, system) => {
             setRollHistory([]);
-            setCurrentCampaignSession({ campaignId, role });
+            setCurrentCampaignSession({ campaignId, role, system });
           }}
-          onOpenCharacter={(characterId, campaignId) =>
-            setOpenedCharacter({ characterId, campaignId })
+          onOpenCharacter={(characterId, campaignId, system) =>
+            setOpenedCharacter({ characterId, campaignId, system })
           }
         />
       )}
-    </div>
+      </main>
+      </div>
+    </ThemeProvider>
   );
 }
