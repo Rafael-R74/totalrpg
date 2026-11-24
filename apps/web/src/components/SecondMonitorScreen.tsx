@@ -1218,13 +1218,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                 >
                   <div className="flex justify-between items-center border-b border-zinc-800 pb-2.5 shrink-0">
                     <div className="flex items-center gap-2.5">
-                      <span className="w-7 h-7 rounded-xl bg-red-500/10 border border-red-500/40 flex items-center justify-center text-sm">
-                        👹
-                      </span>
                       <div>
-                        <span className="block text-[9px] font-mono uppercase tracking-widest text-red-400 font-bold">
-                          Oponentes Hostis na Cena
-                        </span>
                         <h3 className="text-sm font-extrabold text-white">
                           Ameaças em Combate ({activeThreatsInCombat.length})
                         </h3>
@@ -1296,26 +1290,11 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                                   >
                                     {threat.name}
                                   </h4>
-                                  {isThreatTurn && (
-                                    <span className="text-[9px] font-extrabold uppercase bg-amber-500 text-zinc-950 px-1.5 py-0.5 rounded shrink-0">
-                                      🔥 Agindo
-                                    </span>
-                                  )}
                                 </div>
-                                <span className="text-xs font-mono text-zinc-400 block">
-                                  ⚡ Iniciativa:{' '}
-                                  <strong className="text-amber-400">{threat.initiative}</strong>
-                                </span>
                               </div>
                             </div>
 
-                            {director.enemyHpVisibility === 'narrative' && (
-                              <span
-                                className={`text-xs font-extrabold px-2.5 py-1 rounded-xl border shrink-0 ${narrative.colorClass}`}
-                              >
-                                {narrative.label}
-                              </span>
-                            )}
+
                             {director.enemyHpVisibility === 'exact' &&
                               threat.hpCurrent !== undefined &&
                               threat.hpMax !== undefined && (
