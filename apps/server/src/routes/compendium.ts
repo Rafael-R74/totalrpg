@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
-import { ORDEM_COMPENDIUM_ENTRIES, ORDEM_SKILLS_METADATA } from '@totalrpg/shared';
+import {
+  ORDEM_COMPENDIUM_ENTRIES,
+  ORDEM_SKILLS_METADATA,
+  isContentPackLoaded,
+} from '@totalrpg/shared';
 
 export const compendiumRouter = Router();
 
@@ -11,11 +15,17 @@ compendiumRouter.use(authMiddleware as any);
 let ordemSeedPromise: Promise<void> | null = null;
 let ordemSyncedOnce = false;
 
+export function resetOrdemCompendiumSync(): void {
+  ordemSyncedOnce = false;
+  ordemSeedPromise = null;
+}
+
 async function ensureOrdemCompendiumSynchronized(): Promise<void> {
   if (ordemSyncedOnce) return;
   if (ordemSeedPromise) return ordemSeedPromise;
   ordemSeedPromise = (async () => {
     try {
+      const hasPack = isContentPackLoaded();
       const existingOrdemEntries = await prisma.compendiumEntry.findMany({
         where: { system: 'ordem-paranormal' },
         select: { id: true, name: true },
@@ -48,7 +58,7 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
             where: { id: existingId },
             data: {
               category: item.category,
-              description: item.description,
+              ...(hasPack ? { description: item.description } : {}),
               cost: item.cost,
               modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
               metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
@@ -73,7 +83,7 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
               name: item.name,
             },
             data: {
-              description: item.description,
+              ...(hasPack ? { description: item.description } : {}),
               cost: item.cost,
               modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
               metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,

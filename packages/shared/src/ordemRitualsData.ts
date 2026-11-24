@@ -1,5 +1,5 @@
 // ARQUIVO GERADO a partir do Livro de Regras Ordem Paranormal v1.3 (Cap. 5 — Lista de Rituais, pp. 122–150).
-// Descrições completas são carregadas em runtime via Content Pack local (BYOC).
+// Descrições completas são carregadas em runtime via Content Pack local (BYOC). Mecânicas automatizadas ficam em ordemRituals.ts.
 import type { OrdemRitualDef } from './ordemRituals';
 
 export const ORDEM_RITUALS_DATA: OrdemRitualDef[] = [

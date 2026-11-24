@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   SystemId,
   CompendiumCategory,
@@ -7,6 +7,10 @@ import {
   RuleModifier,
   ModifierTargetType,
   isOrdemCompendiumItemParanormal,
+  applyContentPack,
+  getContentPackStats,
+  isContentPackLoaded,
+  TotalRpgContentPack,
 } from '@totalrpg/shared';
 import {
   fetchCompendium,
@@ -14,6 +18,7 @@ import {
   createCompendiumEntry,
   deleteCompendiumEntry,
   upsertSystemSkill,
+  importContentPack,
 } from '../services/api';
 
 const CATEGORY_LABELS: Record<CompendiumCategory, string> = {
@@ -65,6 +70,41 @@ export function AdminPanel() {
   const [skillAttr, setSkillAttr] = useState('agi');
   const [trainedOnly, setTrainedOnly] = useState(false);
   const [armorPenalty, setArmorPenalty] = useState(false);
+
+  const packFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [packImporting, setPackImporting] = useState(false);
+  const [packFeedback, setPackFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [packLoaded, setPackLoaded] = useState(() => isContentPackLoaded());
+  const [packStats, setPackStats] = useState(() => getContentPackStats());
+
+  async function handleImportPackFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setPackImporting(true);
+    setPackFeedback(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as TotalRpgContentPack;
+      const res = await importContentPack(parsed);
+      const localStats = applyContentPack(parsed);
+      setPackLoaded(true);
+      setPackStats(res.stats || localStats);
+      setPackFeedback({
+        type: 'ok',
+        text: `${res.message} (${(res.stats || localStats).totalApplied} descrições aplicadas)`,
+      });
+      await loadCompendium();
+    } catch (err: any) {
+      setPackFeedback({
+        type: 'err',
+        text: err?.message || 'Erro ao importar arquivo JSON de Content Pack.',
+      });
+    } finally {
+      setPackImporting(false);
+    }
+  }
 
   async function loadCompendium() {
     setIsLoading(true);
@@ -227,6 +267,57 @@ export function AdminPanel() {
             <option value="ordem-paranormal">Sistema: Ordem Paranormal</option>
             <option value="tormenta20">Sistema: Tormenta 20</option>
           </select>
+        </div>
+      </div>
+
+      {/* Pacote de Conteúdo Local (BYOC) */}
+      <div className="bg-zinc-900/70 border border-zinc-800 px-5 py-3.5 rounded-xl flex flex-wrap justify-between items-center gap-3">
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-extrabold text-zinc-200 uppercase tracking-wider">
+              📦 Pacote de Conteúdo Local (BYOC)
+            </span>
+            {packLoaded ? (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-700/60 text-emerald-300">
+                ✅ Pack local ativo — {packStats?.totalApplied ?? 0} descrições carregadas
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">
+                ℹ️ Modo Base sem pack local
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-zinc-400">
+            Importe arquivos <code className="text-zinc-300">.json</code> com descrições completas locais (armazenadas em{' '}
+            <code className="text-zinc-300">data/packs/imported.local.json</code>, fora do Git).
+          </p>
+          {packFeedback && (
+            <p
+              className={`text-xs font-semibold mt-1 ${
+                packFeedback.type === 'ok' ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
+              {packFeedback.text}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            ref={packFileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleImportPackFile}
+            className="hidden"
+          />
+          <button
+            type="button"
+            disabled={packImporting}
+            onClick={() => packFileInputRef.current?.click()}
+            className="px-3 py-2 bg-amber-900/40 hover:bg-amber-800/60 disabled:opacity-50 text-amber-200 border border-amber-700/60 rounded-lg text-xs font-bold transition cursor-pointer"
+          >
+            {packImporting ? 'Importando...' : '📥 Importar Content Pack (.json)'}
+          </button>
         </div>
       </div>
 

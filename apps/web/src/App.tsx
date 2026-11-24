@@ -6,7 +6,7 @@ import { DMScreen } from './components/DMScreen';
 import { DiceRollModal } from './components/DiceRollModal';
 import { LootReceivedModal } from './components/LootReceivedModal';
 import { FloatingPostItsLayer } from './components/dm/NotesAndPostItsManager';
-import { AuthResponse } from './services/api';
+import { AuthResponse, fetchContentPack } from './services/api';
 import { io, Socket } from 'socket.io-client';
 import { SecondMonitorScreen } from './components/SecondMonitorScreen';
 import {
@@ -22,6 +22,7 @@ import {
   PreparedAttack,
   ServerToClientEvents,
   ClientToServerEvents,
+  applyContentPack,
 } from '@totalrpg/shared';
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
@@ -76,6 +77,25 @@ export default function App() {
     timestamp: number;
   } | null>(null);
   const sheetSpendResourceRef = useRef<((amount: number) => boolean) | null>(null);
+  const [, setContentPackVersion] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    fetchContentPack()
+      .then((res) => {
+        if (!active) return;
+        if (res.loaded && res.pack) {
+          applyContentPack(res.pack);
+          setContentPackVersion((v) => v + 1);
+        }
+      })
+      .catch((err) => {
+        console.warn('Não foi possível verificar Content Pack local:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const activeRoomId =
     currentCampaignSession?.campaignId ||

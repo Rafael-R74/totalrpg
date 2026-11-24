@@ -9,3 +9,7 @@ apps/server/uploads/
 *.pdf
 .agents/
 apps/server/prisma/dev.db
+
+# Local Content Packs (BYOC - textos de livros de regras fora do Git)
+data/packs/*.local.json
+data/packs/*.pack.json

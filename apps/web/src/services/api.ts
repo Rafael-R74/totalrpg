@@ -5,6 +5,8 @@ import {
   CompendiumEntryData,
   SystemSkillDefinition,
   SceneEffect,
+  TotalRpgContentPack,
+  ContentPackApplyStats,
 } from '@totalrpg/shared';
 const API_URL = 'http://localhost:3333/api';
 
@@ -297,6 +299,32 @@ export async function seedCompendium(): Promise<{ message: string }> {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao inicializar compêndio.');
+  return data;
+}
+
+export async function fetchContentPack(): Promise<{
+  loaded: boolean;
+  files: string[];
+  stats: ContentPackApplyStats | null;
+  pack: TotalRpgContentPack | null;
+}> {
+  const response = await fetch(`${API_URL}/content-pack`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao buscar Content Pack.');
+  return data;
+}
+
+export async function importContentPack(pack: TotalRpgContentPack): Promise<{
+  message: string;
+  stats: ContentPackApplyStats | null;
+}> {
+  const response = await fetch(`${API_URL}/content-pack/import`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(pack),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao importar Content Pack.');
   return data;
 }
 

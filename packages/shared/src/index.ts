@@ -5,6 +5,7 @@ export * from './ordemEquipmentData';
 export * from './ordemRituals';
 export * from './ordemCompendiumData';
 export * from './characterBuilder';
+export * from './contentPack';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
 

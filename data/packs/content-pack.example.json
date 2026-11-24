@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "name": "Exemplo de Pacote de Conteúdo (BYOC)",
+  "system": "ordem-paranormal",
+  "compendium": {
+    "ord-pwr-exemplo": {
+      "description": "Descrição completa customizada ou do seu livro pessoal."
+    }
+  },
+  "rituals": {
+    "ord-rit-exemplo": {
+      "description": "Descrição completa do ritual.",
+      "discenteText": "Texto da forma Discente.",
+      "verdadeiroText": "Texto da forma Verdadeira."
+    }
+  },
+  "equipmentMods": {
+    "mod-exemplo": {
+      "description": "Descrição completa da modificação."
+    }
+  },
+  "equipmentCurses": {
+    "curse-exemplo": {
+      "description": "Descrição completa da maldição."
+    }
+  },
+  "origins": {
+    "academico": {
+      "description": "Descrição da origem.",
+      "powerDescription": "Descrição completa do poder da origem."
+    }
+  },
+  "classes": {
+    "combatente": {
+      "description": "Descrição da classe.",
+      "initialAbilities": {
+        "Ataque Especial": "Descrição completa da habilidade inicial."
+      }
+    }
+  },
+  "trails": {
+    "aniquilador": {
+      "description": "Descrição da trilha.",
+      "powers": {
+        "10": "Descrição do poder de 10%.",
+        "40": "Descrição do poder de 40%."
+      }
+    }
+  },
+  "insanityEffects": [
+    "1. Efeito de insanidade customizado #1."
+  ],
+  "interludeDishes": {
+    "favorito": {
+      "description": "Descrição completa do prato de interlúdio."
+    }
+  }
+}

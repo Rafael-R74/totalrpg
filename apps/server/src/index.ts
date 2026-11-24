@@ -11,8 +11,12 @@ import { authRouter } from './routes/auth';
 import { campaignsRouter } from './routes/campaigns';
 import { charactersRouter } from './routes/characters';
 import { compendiumRouter } from './routes/compendium'; 
+import { contentPackRouter } from './routes/contentPack';
+import { loadLocalContentPacks } from './contentPackService';
 import path from 'path';
 import uploadsRouter from './routes/uploads';
+
+loadLocalContentPacks();
 
 const app = express();
 
@@ -27,6 +31,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/characters', charactersRouter);
 app.use('/api/compendium', compendiumRouter);
+app.use('/api/content-pack', contentPackRouter);
 app.use('/api/uploads', uploadsRouter);
 // Rota de teste básica da API
 app.get('/api/health', (req, res) => {
