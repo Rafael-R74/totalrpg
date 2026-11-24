@@ -40,6 +40,12 @@ export interface CombatantEntry {
   isNPC: boolean;
   hpCurrent?: number;
   hpMax?: number;
+  vd?: number;
+  element?: string;
+  defense?: number;
+  resistances?: string;
+  vulnerabilities?: string;
+  attacks?: PreparedAttack[];
   attackName?: string;
   attackDice?: number;
   attackBonus?: number;
@@ -67,7 +73,8 @@ interface DMScreenProps {
     modifier: number,
     isSecret?: boolean,
     isInitiativeRoll?: boolean,
-    characterId?: string
+    characterId?: string,
+    extraDice?: Array<{ count: number; sides: number; label: string }>
   ) => void;
   onBroadcastPermissions: (permissions: SheetPermissions) => void;
   onBroadcastCharacterSync: (characterId: string) => void;
@@ -447,13 +454,19 @@ export function DMScreen({
       const newThreatCombatant: CombatantEntry = {
         id: Math.random().toString(36).substring(2, 9),
         name: matchedThreat.name,
-        imageUrl: matchedThreat.imageUrl, 
+        imageUrl: matchedThreat.imageUrl,
         initiative: lastInitiativeSubmission.initiative,
         isNPC: true,
         hpCurrent: matchedThreat.hpMax,
         hpMax: matchedThreat.hpMax,
+        vd: matchedThreat.vd,
+        element: matchedThreat.element,
+        defense: matchedThreat.defense,
+        resistances: matchedThreat.resistances,
+        vulnerabilities: matchedThreat.vulnerabilities,
+        attacks: matchedThreat.attacks,
         attackName: primaryAtk?.name || 'Ataque',
-        attackDice: primaryAtk?.diceCount || 1,
+        attackDice: primaryAtk?.diceCount ?? 1,
         attackBonus: primaryAtk?.attackBonus || 0,
         damageFormula: primaryAtk?.damageFormula || '1d6',
       };
@@ -461,6 +474,13 @@ export function DMScreen({
       setCombatants((prev) =>
         [...prev, newThreatCombatant].sort((a, b) => b.initiative - a.initiative)
       );
+      onLogActivity?.({
+        characterName: matchedThreat.name,
+        actorLabel: '👑 Mestre',
+        category: 'system',
+        summary: `Enviou ameaça ao combate: ${matchedThreat.name} (INI ${lastInitiativeSubmission.initiative})`,
+        tone: 'warning',
+      });
       setActiveDMTab('table');
       return;
     }
@@ -501,6 +521,27 @@ export function DMScreen({
   }
 
   const compendiumConditions = compendiumEntries.filter((e) => e.category === 'condition');
+  const partyTotalNex = campaign.characters.reduce(
+    (acc, ch) => acc + Number((ch.sheetData as any)?.nex ?? 0),
+    0
+  );
+
+  function rollLocalInitiativeForThreat(threat: CampaignThreat): number {
+    if (campaign?.system === 'ordem-paranormal') {
+      const poolCount =
+        threat.initiativeDice <= 0
+          ? 2 + Math.abs(threat.initiativeDice)
+          : threat.initiativeDice;
+      const rolls = Array.from(
+        { length: poolCount },
+        () => Math.floor(Math.random() * 20) + 1
+      );
+      const chosen =
+        threat.initiativeDice <= 0 ? Math.min(...rolls) : Math.max(...rolls);
+      return chosen + (threat.initiativeBonus || 0);
+    }
+    return Math.floor(Math.random() * 20) + 1 + (threat.initiativeBonus || 0);
+  }
 
   function handleToggleProjection(projection: MonitorDirectorState['activeProjection']) {
     if (!projection) return;
@@ -516,18 +557,97 @@ export function DMScreen({
     const newEntry: CombatantEntry = {
       id: Math.random().toString(36).substring(2, 9),
       name: threat.name,
-      imageUrl: threat.imageUrl, // <-- Copia a foto da criatura na iniciativa manual!
+      imageUrl: threat.imageUrl,
       initiative: Number(manualInitiative),
       isNPC: true,
       hpCurrent: threat.hpMax,
       hpMax: threat.hpMax,
+      vd: threat.vd,
+      element: threat.element,
+      defense: threat.defense,
+      resistances: threat.resistances,
+      vulnerabilities: threat.vulnerabilities,
+      attacks: threat.attacks,
       attackName: primaryAtk?.name || 'Ataque',
-      attackDice: primaryAtk?.diceCount || 1,
+      attackDice: primaryAtk?.diceCount ?? 1,
       attackBonus: primaryAtk?.attackBonus || 0,
       damageFormula: primaryAtk?.damageFormula || '1d6',
     };
 
     setCombatants((prev) => [...prev, newEntry].sort((a, b) => b.initiative - a.initiative));
+    onLogActivity?.({
+      characterName: threat.name,
+      actorLabel: '👑 Mestre',
+      category: 'system',
+      summary: `Adicionou ameaça ao combate: ${threat.name} (INI ${Number(manualInitiative)})`,
+      tone: 'warning',
+    });
+    setActiveDMTab('table');
+  }
+
+  function handleSendThreatBatchToCombat(
+    threat: CampaignThreat,
+    count: number,
+    mode: 'roll' | 'manual',
+    manualInit?: number
+  ) {
+    const safeCount = Math.max(1, Math.min(10, count));
+    const baseName = threat.name.replace(/\s*#\d+$/, '').trim();
+
+    setCombatants((prev) => {
+      const existingSameBase = prev.filter(
+        (c) => c.isNPC && c.name.replace(/\s*#\d+$/, '').trim().toLowerCase() === baseName.toLowerCase()
+      ).length;
+      const shouldNumber = safeCount > 1 || existingSameBase > 0;
+      const primaryAtk = threat.attacks[0];
+      const added: CombatantEntry[] = [];
+
+      for (let idx = 0; idx < safeCount; idx++) {
+        const instanceLabel = shouldNumber
+          ? `${baseName} #${existingSameBase + idx + 1}`
+          : baseName;
+        const initVal =
+          mode === 'manual' && manualInit !== undefined
+            ? Number(manualInit)
+            : rollLocalInitiativeForThreat(threat);
+
+        added.push({
+          id: Math.random().toString(36).substring(2, 9),
+          name: instanceLabel,
+          imageUrl: threat.imageUrl,
+          initiative: initVal,
+          isNPC: true,
+          hpCurrent: threat.hpMax,
+          hpMax: threat.hpMax,
+          vd: threat.vd,
+          element: threat.element,
+          defense: threat.defense,
+          resistances: threat.resistances,
+          vulnerabilities: threat.vulnerabilities,
+          attacks: threat.attacks,
+          attackName: primaryAtk?.name || 'Ataque',
+          attackDice: primaryAtk?.diceCount ?? 1,
+          attackBonus: primaryAtk?.attackBonus || 0,
+          damageFormula: primaryAtk?.damageFormula || '1d6',
+        });
+      }
+
+      return [...prev, ...added].sort((a, b) => b.initiative - a.initiative);
+    });
+
+    onLogActivity?.({
+      characterName: baseName,
+      actorLabel: '👑 Mestre',
+      category: 'system',
+      summary: `Enviou ${safeCount}x ${baseName} ao combate${
+        threat.vd !== undefined ? ` (VD ${threat.vd})` : ''
+      }`,
+      tone: 'warning',
+    });
+    setInitFeedback(
+      `⚔️ ${safeCount}x ${baseName} adicionado${safeCount > 1 ? 's' : ''} à ordem de iniciativa!`
+    );
+    setTimeout(() => setInitFeedback(''), 3500);
     setActiveDMTab('table');
   }
 
@@ -1444,7 +1564,7 @@ async function handleDeliverItemToCharacter(
                             )}
 
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <span className="font-bold text-sm text-white">{c.name}</span>
                                 <span
                                   className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
@@ -1455,16 +1575,51 @@ async function handleDeliverItemToCharacter(
                                 >
                                   {c.isNPC ? '👹 Ameaça' : '🛡️ Jogador'}
                                 </span>
+                                {c.isNPC && c.vd !== undefined && (
+                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-200 border border-zinc-700">
+                                    VD {c.vd}
+                                  </span>
+                                )}
+                                {c.isNPC && c.defense !== undefined && c.defense > 0 && (
+                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-amber-400 border border-zinc-700">
+                                    🛡️ DEF {c.defense}
+                                  </span>
+                                )}
+                                {c.isNPC &&
+                                  c.hpCurrent !== undefined &&
+                                  c.hpMax !== undefined &&
+                                  c.hpCurrent > 0 &&
+                                  c.hpCurrent <= Math.floor(c.hpMax / 2) && (
+                                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700">
+                                      🟠 Machucado
+                                    </span>
+                                  )}
                                 {isCurrentTurn && (
                                   <span className="text-[10px] font-extrabold uppercase bg-amber-500 text-zinc-950 px-2 py-0.5 rounded animate-pulse">
                                     🔥 Turno Atual
                                   </span>
                                 )}
                               </div>
+                              {c.isNPC && (c.resistances || c.vulnerabilities) && (
+                                <div className="flex flex-wrap gap-2 mt-0.5 text-[10px] text-zinc-400">
+                                  {c.resistances && (
+                                    <span>
+                                      <strong className="text-amber-400/90">RD:</strong>{' '}
+                                      {c.resistances}
+                                    </span>
+                                  )}
+                                  {c.vulnerabilities && (
+                                    <span>
+                                      <strong className="text-rose-400">Vuln:</strong>{' '}
+                                      {c.vulnerabilities}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             {c.isNPC && c.hpCurrent !== undefined && c.hpMax !== undefined && (
                               <div className="flex items-center gap-1 bg-zinc-900 px-2 py-1 rounded-lg border border-zinc-800">
                                 <button
@@ -1474,9 +1629,23 @@ async function handleDeliverItemToCharacter(
                                 >
                                   -5
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateNPCHp(c.id, -1)}
+                                  className="px-1.5 py-0.5 bg-red-950 text-red-300 rounded text-[10px] font-mono font-bold cursor-pointer"
+                                >
+                                  -1
+                                </button>
                                 <span className="text-xs font-mono font-bold text-red-400 px-1">
                                   ❤️ {c.hpCurrent}/{c.hpMax}
                                 </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateNPCHp(c.id, 1)}
+                                  className="px-1.5 py-0.5 bg-emerald-950 text-emerald-300 rounded text-[10px] font-mono font-bold cursor-pointer"
+                                >
+                                  +1
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleUpdateNPCHp(c.id, 5)}
@@ -1487,43 +1656,108 @@ async function handleDeliverItemToCharacter(
                               </div>
                             )}
 
-                            {c.isNPC && dmgParsed && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onRollDice(
-                                      c.name,
-                                      campaign.system,
-                                      `${c.attackName || 'Ataque'} (${c.name})`,
-                                      c.attackDice || 1,
-                                      20,
-                                      c.attackBonus || 0,
-                                      isSecretRoll
-                                    )
-                                  }
-                                  className="px-2 py-1 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
-                                >
-                                  🎯 +{c.attackBonus}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onRollDice(
-                                      c.name,
-                                      campaign.system,
-                                      `Dano: ${c.attackName || c.name}`,
-                                      dmgParsed.count,
-                                      dmgParsed.sides,
-                                      dmgParsed.modifier,
-                                      isSecretRoll
-                                    )
-                                  }
-                                  className="px-2 py-1 bg-zinc-900 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
-                                >
-                                  🩸 {c.damageFormula}
-                                </button>
-                              </>
+                            {c.isNPC && c.attacks && c.attacks.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {c.attacks.map((atk) => {
+                                  const atkDmg = parseFormula(atk.damageFormula);
+                                  const extraDice = atk.extraDamage?.map((ed) => ({
+                                    count: ed.count,
+                                    sides: ed.sides,
+                                    label: ed.label,
+                                  }));
+                                  return (
+                                    <div
+                                      key={atk.id}
+                                      className="flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 rounded-lg px-1.5 py-1"
+                                    >
+                                      <span className="text-[10px] font-bold text-zinc-300 px-1">
+                                        {atk.name}
+                                        {atk.multiAttack ? ` (${atk.multiAttack})` : ''}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onRollDice(
+                                            c.name,
+                                            campaign.system,
+                                            `${atk.name}${atk.multiAttack ? ` ${atk.multiAttack}` : ''} (${c.name})`,
+                                            atk.diceCount,
+                                            20,
+                                            atk.attackBonus,
+                                            isSecretRoll
+                                          )
+                                        }
+                                        className="px-1.5 py-0.5 bg-zinc-950 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-[11px] font-mono font-bold cursor-pointer"
+                                      >
+                                        🎯 +{atk.attackBonus}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onRollDice(
+                                            c.name,
+                                            campaign.system,
+                                            `Dano: ${atk.name} (${c.name})`,
+                                            atkDmg.count,
+                                            atkDmg.sides,
+                                            atkDmg.modifier,
+                                            isSecretRoll,
+                                            false,
+                                            undefined,
+                                            extraDice
+                                          )
+                                        }
+                                        className="px-1.5 py-0.5 bg-zinc-950 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded text-[11px] font-mono font-bold cursor-pointer"
+                                      >
+                                        🩸 {atk.damageFormula}
+                                        {atk.extraDamage?.length
+                                          ? `+${atk.extraDamage.map((e) => e.formula).join('+')}`
+                                          : ''}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              c.isNPC &&
+                              dmgParsed && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onRollDice(
+                                        c.name,
+                                        campaign.system,
+                                        `${c.attackName || 'Ataque'} (${c.name})`,
+                                        c.attackDice || 1,
+                                        20,
+                                        c.attackBonus || 0,
+                                        isSecretRoll
+                                      )
+                                    }
+                                    className="px-2 py-1 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
+                                  >
+                                    🎯 +{c.attackBonus}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onRollDice(
+                                        c.name,
+                                        campaign.system,
+                                        `Dano: ${c.attackName || c.name}`,
+                                        dmgParsed.count,
+                                        dmgParsed.sides,
+                                        dmgParsed.modifier,
+                                        isSecretRoll
+                                      )
+                                    }
+                                    className="px-2 py-1 bg-zinc-900 hover:bg-red-700 text-red-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold cursor-pointer"
+                                  >
+                                    🩸 {c.damageFormula}
+                                  </button>
+                                </>
+                              )
                             )}
 
                             <button
@@ -1819,11 +2053,13 @@ async function handleDeliverItemToCharacter(
               threats={threats}
               compendiumEntries={compendiumEntries}
               isSecretRoll={isSecretRoll}
+              partyTotalNex={partyTotalNex}
               activeProjectionId={monitorDirector.activeProjection?.id}
               onUpdateThreats={setThreats}
               onToggleProjection={handleToggleProjection}
               onRollDice={onRollDice}
               onSendThreatToCombatManual={handleSendThreatToCombatManual}
+              onSendThreatBatchToCombat={handleSendThreatBatchToCombat}
             />
           )}
 

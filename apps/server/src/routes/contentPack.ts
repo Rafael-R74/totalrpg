@@ -19,6 +19,7 @@ const VALID_PACK_SECTIONS: Array<keyof TotalRpgContentPack> = [
   'trails',
   'insanityEffects',
   'interludeDishes',
+  'bestiary',
 ];
 
 function isValidContentPackBody(body: unknown): body is TotalRpgContentPack {

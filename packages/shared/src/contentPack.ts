@@ -12,6 +12,7 @@ import {
   ORDEM_INSANITY_EFFECTS,
   ORDEM_INTERLUDE_DISHES,
 } from './wizardData';
+import { ORDEM_BESTIARY_THREATS } from './ordemBestiaryData';
 
 export const PLACEHOLDER_RULEBOOK_TEXT =
   'Consulte o Livro de Regras v1.3 para a descrição completa (ou importe um Content Pack local no Painel Admin).';
@@ -38,6 +39,14 @@ export interface TotalRpgContentPack {
   >;
   insanityEffects?: string[];
   interludeDishes?: Record<string, { description: string }>;
+  bestiary?: Record<
+    string,
+    {
+      description?: string;
+      enigmaOfFear?: string;
+      abilities?: Record<string, string>;
+    }
+  >;
 }
 
 export interface ContentPackApplyStats {
@@ -50,6 +59,7 @@ export interface ContentPackApplyStats {
   trails: number;
   insanityEffects: number;
   interludeDishes: number;
+  bestiary: number;
   totalApplied: number;
 }
 
@@ -78,6 +88,7 @@ export function mergeContentPacks(packs: TotalRpgContentPack[]): TotalRpgContent
     trails: {},
     insanityEffects: [],
     interludeDishes: {},
+    bestiary: {},
   };
 
   for (const p of packs) {
@@ -116,6 +127,19 @@ export function mergeContentPacks(packs: TotalRpgContentPack[]): TotalRpgContent
     if (p.interludeDishes) {
       Object.assign(merged.interludeDishes!, p.interludeDishes);
     }
+    if (p.bestiary) {
+      for (const [k, v] of Object.entries(p.bestiary)) {
+        const prev = merged.bestiary![k];
+        merged.bestiary![k] = {
+          description: v.description || prev?.description,
+          enigmaOfFear: v.enigmaOfFear || prev?.enigmaOfFear,
+          abilities: {
+            ...(prev?.abilities || {}),
+            ...(v.abilities || {}),
+          },
+        };
+      }
+    }
   }
 
   return merged;
@@ -132,6 +156,7 @@ export function applyContentPack(pack: TotalRpgContentPack): ContentPackApplySta
     trails: 0,
     insanityEffects: 0,
     interludeDishes: 0,
+    bestiary: 0,
     totalApplied: 0,
   };
 
@@ -269,6 +294,28 @@ export function applyContentPack(pack: TotalRpgContentPack): ContentPackApplySta
     }
   }
 
+  // 9. Bestiário Oficial de Ameaças (Cap. 7)
+  if (pack.bestiary) {
+    for (const threat of ORDEM_BESTIARY_THREATS) {
+      const item = pack.bestiary[threat.id];
+      if (!item) continue;
+      if (item.description) {
+        threat.description = item.description;
+        stats.bestiary += 1;
+      }
+      if (item.enigmaOfFear) {
+        threat.enigmaOfFear = item.enigmaOfFear;
+      }
+      if (item.abilities && threat.specialAbilities) {
+        for (const ab of threat.specialAbilities) {
+          if (item.abilities[ab.id]) {
+            ab.description = item.abilities[ab.id];
+          }
+        }
+      }
+    }
+  }
+
   stats.totalApplied =
     stats.rituals +
     stats.compendium +
@@ -278,7 +325,8 @@ export function applyContentPack(pack: TotalRpgContentPack): ContentPackApplySta
     stats.classes +
     stats.trails +
     stats.insanityEffects +
-    stats.interludeDishes;
+    stats.interludeDishes +
+    stats.bestiary;
 
   if (stats.totalApplied > 0) {
     loadedPackCount += 1;

@@ -789,7 +789,36 @@ export default function App() {
               campaignId: currentCampaignSession.campaignId,
             })
           }
-          onRollDice={triggerRoll}
+          onRollDice={(
+            characterName,
+            system,
+            label,
+            count,
+            sides,
+            modifier,
+            isSecret,
+            isInitiativeRoll,
+            characterId,
+            extraDice
+          ) =>
+            triggerRoll(
+              characterName,
+              system,
+              label,
+              count,
+              sides,
+              modifier,
+              isSecret,
+              isInitiativeRoll,
+              characterId,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              extraDice && extraDice.length > 0 ? { extraDice } : undefined
+            )
+          }
           onBroadcastPermissions={(permissions) =>
             socket.emit('campaign:syncPermissions', {
               campaignId: currentCampaignSession.campaignId,

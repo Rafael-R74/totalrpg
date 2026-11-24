@@ -54,5 +54,14 @@
     "favorito": {
       "description": "Descrição completa do prato de interlúdio."
     }
+  },
+  "bestiary": {
+    "ord-thr-zumbi-de-sangue": {
+      "description": "Descrição completa da criatura no seu livro pessoal.",
+      "enigmaOfFear": "Texto opcional do Enigma de Medo (quando aplicável).",
+      "abilities": {
+        "ord-thr-zumbi-de-sangue-ab-1": "Descrição completa da habilidade ou ação especial."
+      }
+    }
   }
 }

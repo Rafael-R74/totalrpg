@@ -5,6 +5,7 @@ export * from './ordemEquipmentData';
 export * from './ordemRituals';
 export * from './ordemCompendiumData';
 export * from './characterBuilder';
+export * from './ordemBestiaryData';
 export * from './contentPack';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
@@ -37,6 +38,9 @@ export interface PreparedAttack {
   isAniquiladorFavorite?: boolean; // Aniquilador — A Favorita
   isUnarmed?: boolean;             // Artista Marcial — Ataque Desarmado
   linkedItemId?: string;           // ID do item correspondente no inventário (sincroniza modificações e maldições)
+  multiAttack?: string;            // Ex: "x2", "x3" (Bestiário)
+  range?: string;                  // Ex: "Corpo a corpo", "Curto", "Médio", "Extremo"
+  extraDamage?: Array<{ count: number; sides: number; label: string; formula: string }>;
 }
 
 export type OrdemElement = 'Sangue' | 'Morte' | 'Conhecimento' | 'Energia' | 'Medo';
@@ -592,10 +596,41 @@ export interface ThreatSkill {
   bonus: number;
 }
 
-export interface CampaignThreat {
+export type ThreatActionType =
+  | 'Passiva'
+  | 'Livre'
+  | 'Movimento'
+  | 'Padrão'
+  | 'Reação'
+  | 'Completa';
+
+export interface ThreatSpecialAbility {
   id: string;
   name: string;
+  actionType: ThreatActionType;
+  description: string;
+  damageFormula?: string;
+}
+
+export interface CampaignThreat {
+  id: string;
+  templateId?: string;
+  name: string;
   system: SystemId;
+  vd?: number;
+  element?: string;
+  secondaryElements?: string[];
+  subGroup?: string;
+  creatureType?: string;
+  size?: string;
+  senses?: string;
+  displacement?: string;
+  resistances?: string;
+  immunities?: string;
+  vulnerabilities?: string;
+  enigmaOfFear?: string;
+  enigmaSolved?: boolean;
+  specialAbilities?: ThreatSpecialAbility[];
   imageUrl?: string;
   hpMax: number;
   defense: number;
