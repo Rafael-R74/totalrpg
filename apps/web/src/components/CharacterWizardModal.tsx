@@ -450,7 +450,9 @@ export function CharacterWizardModal({
   const handleOrdemAttrChange = (key: keyof OrdemAttributes, delta: number) => {
     setOrdemAttrs((prev) => {
       const nextVal = prev[key] + delta;
-      if (nextVal < 0 || nextVal > maxOrdemAttrCap) return prev;
+      if (nextVal < 0) return prev;
+      // Diminuir é sempre permitido (mesmo acima do teto atual); aumentar respeita o teto.
+      if (delta > 0 && nextVal > maxOrdemAttrCap) return prev;
       if (nextVal === 0 && prev[key] !== 0 && zeroAttrsCount >= 1) return prev;
       if (delta > 0 && remainingOrdemAttrPoints <= 0) return prev;
       return { ...prev, [key]: nextVal };
@@ -793,6 +795,10 @@ export function CharacterWizardModal({
                       disabled={typeof lockedNex === 'number'}
                       onChange={(e) => {
                         const nextN = Number(e.target.value);
+                        if (nextN !== ordemNex) {
+                          // Pontos e teto de atributo dependem do NEX: recomeça a distribuição.
+                          setOrdemAttrs({ agi: 1, for: 1, int: 1, pre: 1, vig: 1 });
+                        }
                         setOrdemNex(nextN);
                         if (nextN === 0) {
                           setOrdemClassId('mundano');

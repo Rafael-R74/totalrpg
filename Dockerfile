@@ -50,6 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=768" \
     TZ=America/Sao_Paulo \
     PORT=3333 \
     DATA_DIR=/app/data \

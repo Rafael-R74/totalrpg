@@ -19,8 +19,8 @@ services:
     volumes:
       # Mapeia a pasta inteira para suportar prod.db + prod.db-wal + prod.db-shm, uploads/ e packs/
       - ./data:/app/data
-    mem_limit: 512m
+    mem_limit: 1024m
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M

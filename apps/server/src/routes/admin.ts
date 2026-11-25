@@ -84,6 +84,30 @@ function resolveSqliteDiskUsageBytes(): number {
   return 0;
 }
 
+function resolveContainerMemoryLimitMb(): number {
+  const cgroupPaths = [
+    '/sys/fs/cgroup/memory.max',
+    '/sys/fs/cgroup/memory/memory.limit_in_bytes',
+  ];
+  for (const p of cgroupPaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf-8').trim();
+        if (raw && raw !== 'max') {
+          const bytes = Number(raw);
+          // Ignora valores gigantescos quando sem limite real (> 64 GB)
+          if (Number.isFinite(bytes) && bytes > 0 && bytes < 68_719_476_736) {
+            return Math.round(bytes / (1024 * 1024));
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return Number(process.env.MEMORY_LIMIT_MB) || 1024;
+}
+
 function resolveUploadsStats(): { count: number; totalBytes: number } {
   try {
     const dir = getUploadsDir();
@@ -360,7 +384,7 @@ adminRouter.get('/overview', async (_req: AuthenticatedRequest, res) => {
         environment: process.env.NODE_ENV || 'development',
         memoryRssMb: Math.round((mem.rss / 1024 / 1024) * 10) / 10,
         memoryHeapMb: Math.round((mem.heapUsed / 1024 / 1024) * 10) / 10,
-        memoryLimitMb: 512,
+        memoryLimitMb: resolveContainerMemoryLimitMb(),
         sqliteBytes,
         uploadsCount: uploadsStats.count,
         uploadsBytes: uploadsStats.totalBytes,

@@ -1,0 +1,878 @@
+/* ============================================================================
+   SEGUNDO MONITOR — tela da mesa, lida de longe.
+   Tudo em em: a base escala com a largura (notebook → TV 4K).
+   Em telas grandes deitadas o conteúdo cabe sem rolagem (modo "palco");
+   abaixo disso a página rola normalmente, sem nada sobreposto.
+   ============================================================================ */
+.mon-root {
+  --mon-gap: 1em;
+  --mon-line: color-mix(in oklab, var(--trpg-border-strong) 75%, transparent);
+  --mon-turn: var(--trpg-ink);
+  --mon-on-turn: var(--trpg-bg);
+  font-size: clamp(15px, 0.45vw + 9.5px, 28px);
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background-color: var(--trpg-bg);
+  background-size: cover;
+  background-position: center;
+  color: var(--trpg-ink);
+  position: relative;
+  user-select: none;
+}
+.mon-scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.mon-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* Cabeçalho */
+.mon-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+  padding: 0.9em clamp(0.9em, 2vw, 2em) 0.75em;
+  border-bottom: 1px solid var(--mon-line);
+  background: color-mix(in oklab, var(--trpg-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  min-width: 0;
+}
+.mon-head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1em;
+}
+.mon-scene {
+  min-width: 0;
+}
+.mon-system {
+  font-size: 0.78em;
+  color: var(--trpg-muted);
+}
+.mon-title {
+  font-family: var(--trpg-font-display);
+  font-weight: var(--trpg-display-weight);
+  letter-spacing: var(--trpg-tracking-display);
+  font-size: clamp(1.45em, 2.2vw, 2.6em);
+  line-height: 1.05;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.mon-subtitle {
+  margin-top: 0.2em;
+  color: var(--trpg-ink-soft);
+  font-size: 0.95em;
+}
+.mon-fs-btn {
+  flex-shrink: 0;
+  width: 2.4em;
+  height: 2.4em;
+  font-size: 1em;
+  border: 1px solid var(--mon-line);
+}
+
+/* Faixa de turnos: a peça memorável. O turno atual vira bloco invertido. */
+.mon-rail {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75em;
+  min-width: 0;
+}
+.mon-round {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.2em 0.9em 0.25em 0;
+  border-right: 1px solid var(--mon-line);
+  line-height: 1;
+}
+.mon-round small {
+  font-size: 0.72em;
+  color: var(--trpg-muted);
+}
+.mon-round strong {
+  font-family: var(--trpg-font-display);
+  font-weight: var(--trpg-display-weight);
+  font-size: 2em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.mon-rail-track {
+  position: relative; /* referência do offsetLeft para centralizar o turno atual */
+  display: flex;
+  gap: 0.5em;
+  flex: 1;
+  min-width: 0;
+  padding-block: 0.15em;
+  padding-inline: 0.75em;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 0.75em, #000 calc(100% - 1.5em), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 0.75em, #000 calc(100% - 1.5em), transparent);
+}
+.mon-rail-item {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  max-width: 15em;
+  padding: 0.35em 0.8em 0.35em 0.35em;
+  border-radius: var(--trpg-r-lg);
+  background: var(--trpg-surface);
+  border: 1px solid var(--mon-line);
+  transition: background-color 300ms var(--trpg-ease), color 300ms var(--trpg-ease),
+    opacity 300ms var(--trpg-ease);
+}
+.mon-rail-item.is-npc {
+  box-shadow: inset 3px 0 0 var(--trpg-pv);
+}
+.mon-rail-item.is-past {
+  opacity: 0.5;
+}
+.mon-rail-item.is-turn {
+  background: var(--mon-turn);
+  border-color: var(--mon-turn);
+  color: var(--mon-on-turn);
+}
+.mon-rail-init {
+  flex-shrink: 0;
+  min-width: 1.9em;
+  height: 1.9em;
+  padding-inline: 0.25em;
+  display: grid;
+  place-items: center;
+  border-radius: var(--trpg-r-sm);
+  background: var(--trpg-bg);
+  color: var(--trpg-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+}
+.mon-rail-item.is-turn .mon-rail-init {
+  background: var(--mon-on-turn);
+  color: var(--mon-turn);
+}
+.mon-rail-avatar {
+  width: 2.3em;
+  height: 2.3em;
+  border-radius: var(--trpg-r-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.mon-rail-text {
+  min-width: 0;
+  line-height: 1.2;
+}
+.mon-rail-name {
+  display: block;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mon-rail-sub {
+  display: block;
+  font-size: 0.74em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--mon-tone, var(--trpg-muted));
+}
+.mon-rail-item.is-turn .mon-rail-sub {
+  color: color-mix(in oklab, var(--mon-on-turn) 72%, transparent);
+}
+
+/* Palco */
+.mon-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mon-gap);
+  padding: var(--mon-gap) clamp(0.9em, 2vw, 2em);
+  width: 100%;
+  max-width: 120em;
+  margin-inline: auto;
+  align-content: start;
+  min-width: 0;
+}
+.mon-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+}
+.mon-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--mon-line);
+  min-width: 0;
+}
+.mon-panel-head h2 {
+  font-family: var(--trpg-font-display);
+  font-weight: var(--trpg-display-weight);
+  font-size: 1.3em;
+  line-height: 1.1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mon-count {
+  flex-shrink: 0;
+  color: var(--trpg-muted);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+.mon-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mon-gap);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Grades que escalam. Densidade 0 (maior) … 4 (mais compacta); 2 é o natural.
+   No modo palco a grade começa grande e desce um degrau por vez até caber. */
+.mon-grid {
+  --mon-min: 21em;
+  display: grid;
+  /* 1fr conta as colunas pelo mínimo; o card limita a própria largura */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--mon-min)), 1fr));
+  align-content: start;
+  gap: 0.8em;
+}
+.mon-grid[data-density='0'] {
+  font-size: 1.3em;
+}
+.mon-grid[data-density='1'] {
+  font-size: 1.14em;
+}
+.mon-grid[data-density='3'] {
+  font-size: 0.86em;
+  --mon-min: 18em;
+}
+.mon-grid[data-density='4'] {
+  font-size: 0.74em;
+  --mon-min: 15.5em;
+  gap: 0.6em;
+}
+.mon-grid.is-threats,
+.mon-grid.is-shop {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--mon-min)), 1fr));
+}
+.mon-grid.is-threats {
+  --mon-min: 14em;
+}
+.mon-grid.is-shop {
+  --mon-min: 19em;
+  gap: 0.5em;
+}
+.mon-grid.is-threats[data-density='3'] {
+  --mon-min: 12.5em;
+}
+.mon-grid.is-threats[data-density='4'] {
+  --mon-min: 11em;
+}
+
+/* Card de personagem */
+.mon-card {
+  min-width: 0;
+  width: 100%;
+  max-width: 36em;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+  padding: 0.85em;
+  border-radius: var(--trpg-r-xl);
+  background: color-mix(in oklab, var(--trpg-surface) 94%, transparent);
+  border: 1px solid var(--mon-line);
+  transition: border-color 300ms var(--trpg-ease), box-shadow 300ms var(--trpg-ease);
+}
+.mon-card.is-bloodied {
+  border-color: color-mix(in oklab, var(--trpg-pv) 55%, var(--trpg-border-strong));
+}
+.mon-card.is-dying {
+  border-color: var(--trpg-pv);
+  background: color-mix(in oklab, var(--trpg-pv) 14%, var(--trpg-surface));
+  animation: mon-dying 2.4s ease-in-out infinite;
+}
+.mon-card.is-turn {
+  border-color: var(--mon-turn);
+  box-shadow: 0 0 0 1px var(--mon-turn),
+    0 0 2.5em -0.6em color-mix(in oklab, var(--mon-turn) 45%, transparent);
+}
+@keyframes mon-dying {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 0.25em color-mix(in oklab, var(--trpg-pv) 35%, transparent);
+  }
+}
+.mon-card-id {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  min-width: 0;
+}
+.mon-card-id > div {
+  min-width: 0;
+}
+.mon-portrait {
+  width: 4.6em;
+  height: 4.6em;
+  flex-shrink: 0;
+  border-radius: var(--trpg-r-lg);
+  object-fit: cover;
+  background: var(--trpg-bg);
+  border: 1px solid var(--mon-line);
+  display: grid;
+  place-items: center;
+  font-family: var(--trpg-font-display);
+  color: var(--trpg-ink-soft);
+}
+.mon-portrait-initials {
+  font-size: 1.6em;
+}
+.mon-card-name {
+  font-family: var(--trpg-font-display);
+  font-weight: var(--trpg-display-weight);
+  font-size: 1.45em;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mon-card-meta {
+  font-size: 0.8em;
+  color: var(--trpg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mon-turn-tag {
+  display: inline-block;
+  margin-bottom: 0.3em;
+  padding: 0.1em 0.5em;
+  border-radius: var(--trpg-r-xs);
+  background: var(--mon-turn);
+  color: var(--mon-on-turn);
+  font-size: 0.72em;
+  font-weight: 700;
+}
+.mon-vitals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+}
+.mon-vital {
+  display: grid;
+  grid-template-columns: 2.6em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.2em 0.6em;
+}
+.mon-vital-label {
+  font-size: 0.78em;
+  font-weight: 700;
+  color: var(--trpg-ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mon-vital .trpg-meter {
+  height: 0.7em;
+}
+.mon-vital-value {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-stretch: 88%;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 4.4em;
+}
+.mon-vital-value strong {
+  font-size: 1.2em;
+  font-weight: 700;
+}
+.mon-vital-value span {
+  color: var(--trpg-muted);
+  font-size: 0.85em;
+}
+.mon-vital-temp {
+  grid-column: 2 / 4;
+  min-width: 0;
+}
+.mon-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  min-width: 0;
+}
+.mon-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.15em 0.55em;
+  border-radius: 999px;
+  font-size: 0.75em;
+  font-weight: 600;
+  background: var(--trpg-elevated);
+  color: var(--trpg-ink-soft);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mon-chip.is-danger {
+  background: color-mix(in oklab, var(--trpg-pv) 22%, var(--trpg-surface));
+  color: var(--trpg-ink);
+}
+.mon-chip.is-critical {
+  background: var(--trpg-pv);
+  color: #fff;
+}
+.mon-grid[data-density='4'] .mon-portrait {
+  width: 3.4em;
+  height: 3.4em;
+}
+.mon-grid[data-density='4'] .mon-card {
+  padding: 0.65em;
+  gap: 0.55em;
+}
+
+/* Ameaças */
+.mon-threat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  padding: 0.7em;
+  border-radius: var(--trpg-r-lg);
+  background: color-mix(in oklab, var(--trpg-surface) 94%, transparent);
+  border: 1px solid var(--mon-line);
+  box-shadow: inset 3px 0 0 var(--trpg-pv);
+}
+.mon-threat.is-turn {
+  border-color: var(--mon-turn);
+  box-shadow: inset 3px 0 0 var(--trpg-pv), 0 0 0 1px var(--mon-turn);
+}
+.mon-threat.is-down {
+  opacity: 0.55;
+}
+.mon-threat .mon-portrait {
+  width: 3.4em;
+  height: 3.4em;
+  color: var(--trpg-pv);
+  font-size: 1em;
+}
+.mon-threat-name {
+  font-weight: 700;
+  font-size: 1.05em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.mon-threat.is-down .mon-threat-name {
+  text-decoration: line-through;
+}
+.mon-threat-state {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--mon-tone, var(--trpg-muted));
+  font-variant-numeric: tabular-nums;
+}
+
+/* Loja */
+.mon-shop-desc {
+  color: var(--trpg-ink-soft);
+  font-size: 0.85em;
+  margin-top: -0.3em;
+}
+.mon-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75em;
+  padding: 0.55em 0.8em 0.55em 0.55em;
+  border-radius: var(--trpg-r-lg);
+  background: color-mix(in oklab, var(--trpg-surface) 94%, transparent);
+  border: 1px solid var(--mon-line);
+}
+.mon-item-thumb {
+  width: 3em;
+  height: 3em;
+  border-radius: var(--trpg-r-md);
+  object-fit: cover;
+  background: var(--trpg-bg);
+  display: grid;
+  place-items: center;
+  color: var(--trpg-muted);
+}
+.mon-item-thumb.is-weapon {
+  color: var(--trpg-pv);
+}
+.mon-item-name {
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.mon-item-meta {
+  font-size: 0.76em;
+  color: var(--trpg-muted);
+}
+.mon-item-price {
+  font-family: var(--trpg-font-display);
+  font-size: 1.15em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--trpg-gold);
+  text-align: right;
+}
+.mon-item-price small {
+  font-family: var(--trpg-font-body);
+  font-size: 0.65em;
+  color: var(--trpg-muted);
+  margin-left: 0.25em;
+}
+.mon-empty {
+  padding: 1.5em;
+  border: 1px dashed var(--mon-line);
+  border-radius: var(--trpg-r-lg);
+  color: var(--trpg-muted);
+  text-align: center;
+  font-size: 0.9em;
+}
+
+/* Rodapé de rolagens */
+.mon-ticker {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.6em clamp(0.9em, 2vw, 2em);
+  border-top: 1px solid var(--mon-line);
+  background: color-mix(in oklab, var(--trpg-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  min-width: 0;
+}
+.mon-ticker-label {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  color: var(--trpg-muted);
+  display: inline-flex;
+  gap: 0.35em;
+  align-items: center;
+}
+.mon-ticker-list {
+  display: flex;
+  gap: 0.5em;
+  min-width: 0;
+  flex: 1;
+}
+.mon-ticker-empty {
+  font-size: 0.8em;
+  color: var(--trpg-muted-soft);
+}
+.mon-roll {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.25em 0.3em 0.25em 0.7em;
+  border-radius: var(--trpg-r-md);
+  background: var(--trpg-surface);
+  border: 1px solid var(--mon-line);
+  font-size: 0.85em;
+  cursor: pointer;
+  color: inherit;
+  max-width: 22em;
+}
+.mon-roll:hover {
+  border-color: var(--trpg-border-strong);
+}
+.mon-roll:focus-visible {
+  outline: 2px solid var(--trpg-ink);
+  outline-offset: 2px;
+}
+.mon-roll-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mon-roll-text b {
+  font-weight: 700;
+  margin-right: 0.35em;
+}
+.mon-roll-text span {
+  color: var(--trpg-ink-soft);
+}
+.mon-roll-total {
+  min-width: 2em;
+  padding: 0.1em 0.45em;
+  border-radius: var(--trpg-r-sm);
+  background: var(--trpg-ink);
+  color: var(--trpg-bg);
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sobreposições (iniciativa, projeção, sequência de disparos) */
+.mon-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  padding: clamp(0.75em, 3vw, 2.5em);
+  overflow-y: auto;
+  background: rgb(5 6 8 / 0.86);
+  animation: trpg-fade-in var(--trpg-dur-dialog) var(--trpg-ease) both;
+}
+.mon-overlay.is-projection {
+  z-index: 40;
+  background: rgb(5 6 8 / 0.92);
+}
+.mon-sheet {
+  width: 100%;
+  max-width: 62em;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2em;
+  padding: clamp(1em, 3vw, 2.2em);
+  border-radius: var(--trpg-r-2xl);
+  background: var(--trpg-surface);
+  border: 1px solid var(--trpg-border-strong);
+  box-shadow: var(--trpg-shadow-float);
+  animation: trpg-dialog-in var(--trpg-dur-dialog) var(--trpg-ease) both;
+  min-width: 0;
+}
+.mon-sheet.is-narrow {
+  max-width: 46em;
+  align-items: center;
+  text-align: center;
+}
+.mon-sheet-head {
+  text-align: center;
+}
+.mon-sheet-head p {
+  color: var(--trpg-muted);
+  font-size: 0.9em;
+}
+.mon-sheet-head h2 {
+  font-family: var(--trpg-font-display);
+  font-weight: var(--trpg-display-weight);
+  font-size: clamp(1.5em, 3vw, 2.6em);
+  line-height: 1.1;
+  margin-top: 0.15em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.mon-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5em), 1fr));
+  gap: 0.8em;
+}
+.mon-tile {
+  min-width: 0;
+  width: 100%;
+  max-width: 14em;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.55em;
+  padding: 0.9em 0.7em;
+  border-radius: var(--trpg-r-xl);
+  background: var(--trpg-bg);
+  border: 1px solid var(--mon-line);
+}
+.mon-tile.is-waiting {
+  opacity: 0.6;
+}
+.mon-tile.is-rolling {
+  border-color: var(--trpg-ink-soft);
+}
+.mon-tile.is-done {
+  border-color: var(--trpg-ink);
+}
+.mon-tile.is-crit {
+  border-color: var(--trpg-pv);
+  background: color-mix(in oklab, var(--trpg-pv) 14%, var(--trpg-bg));
+}
+.mon-tile .mon-portrait {
+  width: 4em;
+  height: 4em;
+}
+.mon-tile-name {
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.mon-tile-sub {
+  font-size: 0.75em;
+  color: var(--trpg-muted);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.mon-tile-tag {
+  font-size: 0.72em;
+  font-weight: 700;
+  padding: 0.1em 0.5em;
+  border-radius: var(--trpg-r-xs);
+  background: var(--trpg-elevated);
+  color: var(--trpg-ink-soft);
+}
+.mon-tile.is-crit .mon-tile-tag {
+  background: var(--trpg-pv);
+  color: #fff;
+}
+.mon-tile-total {
+  font-family: var(--trpg-font-display);
+  font-size: 2.6em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+  animation: trpg-land 420ms var(--trpg-ease-out-back) both;
+}
+.mon-tile-wait {
+  font-size: 0.8em;
+  color: var(--trpg-muted);
+  display: inline-flex;
+  gap: 0.4em;
+  align-items: center;
+  min-height: 3.25em;
+}
+.mon-tile-wait.is-rolling {
+  color: var(--trpg-ink);
+}
+.mon-tile-wait.is-rolling svg {
+  animation: mon-spin 0.9s linear infinite;
+}
+@keyframes mon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mon-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em 1.5em;
+  padding: 0.9em 1.1em;
+  border-radius: var(--trpg-r-xl);
+  background: color-mix(in oklab, var(--trpg-pv) 16%, var(--trpg-bg));
+  border: 1px solid var(--trpg-pv);
+}
+.mon-sum p {
+  color: var(--trpg-ink-soft);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.mon-sum strong {
+  font-family: var(--trpg-font-display);
+  font-size: 2.8em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.mon-projection-img {
+  max-height: 68dvh;
+  max-width: 100%;
+  width: auto;
+  margin-inline: auto;
+  object-fit: contain;
+  border-radius: var(--trpg-r-lg);
+}
+.mon-projection-text {
+  max-width: 40em;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  color: var(--trpg-ink-mid);
+  max-height: 40dvh;
+  overflow-y: auto;
+  text-align: left;
+}
+.mon-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  color: var(--trpg-muted);
+  background: var(--trpg-bg);
+}
+
+/* Lado a lado a partir de 1024px */
+@media (min-width: 1024px) {
+  .mon-stage.has-side {
+    grid-template-columns: minmax(0, 1.6fr) minmax(19em, 1fr);
+  }
+}
+/* Modo palco: tela grande deitada → tudo cabe; cada bloco rola por dentro só em último caso */
+@media (min-width: 1024px) and (min-height: 560px) and (orientation: landscape) {
+  .mon-root {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .mon-stage {
+    min-height: 0;
+    height: 100%;
+    align-content: stretch;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .mon-stage > .mon-panel,
+  .mon-side > .mon-panel {
+    overflow: hidden;
+  }
+  .mon-side {
+    height: 100%;
+  }
+  .mon-side > .mon-panel {
+    flex: 1 1 0;
+  }
+  .mon-side > .mon-panel.is-threats-panel:not(:only-child) {
+    flex: 0 1 auto;
+    max-height: 50%;
+  }
+  .mon-fit {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .mon-fit::-webkit-scrollbar {
+    display: none;
+  }
+}
+/* Celular */
+@media (max-width: 639px) {
+  .mon-root {
+    font-size: 15px;
+  }
+  .mon-rail-item {
+    max-width: 11em;
+  }
+  .mon-round strong {
+    font-size: 1.6em;
+  }
+  .mon-portrait {
+    width: 3.8em;
+    height: 3.8em;
+  }
+  .mon-card-name {
+    font-size: 1.25em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mon-card.is-dying {
+    animation: none;
+  }
+  .mon-tile-wait.is-rolling svg {
+    animation: none;
+  }
+}
