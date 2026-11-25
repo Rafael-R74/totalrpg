@@ -1,5 +1,6 @@
 import type { CharacterAbility, CompendiumEntryData, RPGItem } from './index';
 import { ORDEM_COMPENDIUM_ENTRIES } from './ordemCompendiumData';
+import { ORDEM_TRAILS } from './wizardData';
 
 /**
  * Regras do suplemento Sobrevivendo ao Horror que a ficha, o escudo e a conjuração compartilham.
@@ -71,13 +72,34 @@ export function isOrdemGeneralPower(entry: Pick<CompendiumEntryData, 'id' | 'cat
 }
 
 /** Perícia que o poder geral treina ("recebe treinamento em X ou, se já for treinado, +2"). */
-export function getGeneralPowerTrainedSkill(ab: Pick<CharacterAbility, 'id' | 'name'>): string | null {
+export function getGeneralPowerTrainedSkill(ab: Pick<CharacterAbility, 'id' | 'name'> & { chosenSkill?: string }): string | null {
+  return getGrantedTraining(ab)?.skill || null;
+}
+
+/**
+ * Treino concedido por um poder: perícia e bônus quando ela já é treinada
+ * (+2 padrão; Mascate 0; Laboratório de Campo +5; Carteirada usa a perícia escolhida).
+ */
+export function getGrantedTraining(
+  ab: Pick<CharacterAbility, 'id' | 'name'> & { chosenSkill?: string }
+): { skill: string; bonus: number } | null {
   const id = (ab.id || '').toLowerCase();
+  // Carteirada (Agente Secreto 10%): Diplomacia ou Enganação, à escolha
+  if (/^(?:trail|versatility)-agente_secreto-10$/.test(id)) {
+    return ab.chosenSkill === 'diplomacia' || ab.chosenSkill === 'enganacao' ? { skill: ab.chosenSkill, bonus: 2 } : null;
+  }
   const name = (ab.name || '').trim().toLowerCase();
   const entry = ORDEM_COMPENDIUM_ENTRIES.find(
     (e) => e.metadata?.grantsSkillTraining && (id.startsWith(e.id) || name === e.name.toLowerCase())
   );
-  return entry?.metadata?.grantsSkillTraining || null;
+  if (entry?.metadata?.grantsSkillTraining) return { skill: entry.metadata.grantsSkillTraining, bonus: 2 };
+  // Poderes de trilha (ex.: Rastrear o Paranormal, Revelação do Mal): ids trail-<trilha>-<nex>
+  const m = id.match(/^(?:trail|versatility)-([a-z0-9_]+)-(\d+)$/);
+  if (m) {
+    const tp = ORDEM_TRAILS.find((t) => t.id === m[1])?.powers.find((p) => String(p.nex) === m[2]);
+    if (tp?.grantsSkillTraining) return { skill: tp.grantsSkillTraining, bonus: tp.trainingBonus ?? 2 };
+  }
+  return null;
 }
 
 /**
@@ -104,24 +126,27 @@ export function applyGeneralPowerSkillGrants<S extends { id: string; trainingDeg
     changed = true;
   }
 
-  // Novos: treina ou +2
+  // Novos (ou que acabaram de ter a perícia escolhida): treina ou +bônus
+  void prevIds;
   const abilities = nextAbilities.map((ab) => {
-    if (prevIds.has(ab.id) || ab.trainingGranted !== undefined) return ab;
-    const skillId = getGeneralPowerTrainedSkill(ab);
-    if (!skillId) return ab;
+    if (ab.trainingGranted !== undefined) return ab;
+    const grant = getGrantedTraining(ab);
+    if (!grant) return ab;
+    const skillId = grant.skill;
     changed = true;
     const sk = nextSkills.find((s) => s.id === skillId);
     if (!sk || sk.trainingDegree < 5) {
       nextSkills = nextSkills.map((s) => (s.id === skillId ? { ...s, trainingDegree: 5 } : s));
       return { ...ab, trainingGranted: true };
     }
+    if (grant.bonus <= 0) return { ...ab, trainingGranted: false };
     return {
       ...ab,
       trainingGranted: false,
       isActive: true,
       modifiers: [
         ...(ab.modifiers || []).filter((m) => m.id !== `gen-train-bonus-${skillId}`),
-        { id: `gen-train-bonus-${skillId}`, targetType: 'skill_bonus' as const, targetKey: skillId, value: 2 },
+        { id: `gen-train-bonus-${skillId}`, targetType: 'skill_bonus' as const, targetKey: skillId, value: grant.bonus },
       ],
     };
   });
@@ -143,6 +168,10 @@ export function getOrdemSkillAttrOverride(
     const r = getOrdemOcultismoAttr(abilities, attrs.int, attrs.pre);
     return r.attr === 'pre' ? { attr: 'pre', source: 'Olhar Sinistro' } : null;
   }
+  // Bibliotecário 99% (A Força do Saber): a perícia escolhida passa a usar Intelecto
+  if ((abilities || []).some((ab) => ab.id === 'trail-bibliotecario-99' && ab.chosenSkill === skillId)) {
+    return { attr: 'int', source: 'A Força do Saber' };
+  }
   if (skillId === 'vontade' && attrs.int > attrs.pre && hasActiveAbility(abilities, 'racionalidade-inflexivel', 'racionalidade inflexível')) {
     return { attr: 'int', source: 'Racionalidade Inflexível' };
   }
@@ -160,3 +189,38 @@ export const ORDEM_RENAMED_POWERS: Record<string, string> = {
   'Saque Rápido (Combatente)': 'Saque Rápido (Geral)',
   'Tiro Certeiro (Combatente)': 'Tiro Certeiro (Geral)',
 };
+
+// ---------------------------------------------------------------------------
+// Possuído (Ocultista, SaH p. 27-28): Pontos de Possessão (PP)
+
+export interface PossessionInfo {
+  active: boolean;
+  max: number;
+  current: number;
+  /** PP recuperados por ação de interlúdio dormir (1; 2 a partir de As Sombras Dentro de Mim, 40%) */
+  perSleep: number;
+  /** Limite de PP gastos por turno = Presença */
+  spendLimit: number;
+}
+
+export function getPossessionInfo(
+  sheet: { trail?: string; transcendedCount?: number; possessionPoints?: number; abilities?: CharacterAbility[] } | null | undefined,
+  presence: number
+): PossessionInfo {
+  const abilities = sheet?.abilities || [];
+  const has = (nex: number) => abilities.some((a) => a.id === `trail-possuido-${nex}`);
+  const active = sheet?.trail === 'possuido' || has(10);
+  const max = 3 + 2 * Math.max(0, Number(sheet?.transcendedCount || 0));
+  const raw = sheet?.possessionPoints;
+  const current = typeof raw === 'number' ? Math.max(0, Math.min(max, raw)) : max;
+  return { active, max, current, perSleep: has(40) ? 2 : 1, spendLimit: Math.max(0, presence) };
+}
+
+/**
+ * Turnos morrendo até a morte: 3 (regra base) ou 4 para Monstruoso de Morte a partir do 40% (Ser Macabro).
+ */
+export function getDyingTurnsToDie(abilities: CharacterAbility[] | undefined): number {
+  const list = abilities || [];
+  const morte = list.some((a) => a.id === 'trail-monstruoso-10' && (a.chosenElement || '').toLowerCase() === 'morte');
+  return morte && list.some((a) => a.id === 'trail-monstruoso-40') ? 4 : 3;
+}

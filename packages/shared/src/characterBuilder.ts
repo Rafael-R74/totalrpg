@@ -1040,6 +1040,8 @@ export interface BuildOrdemCharacterInput {
   versatilityTrailId?: string;
   skillTrainingDegrees?: Record<string, 5 | 10 | 15>;
   originMeta?: OrdemOriginMeta;
+  /** Monstruoso (SaH): elemento escolhido no NEX 10% */
+  monstruosoElement?: string;
 }
 
 export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
@@ -1202,7 +1204,11 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
             category: 'classe',
             cost: tp.cost,
             description: tp.description,
-            isActive: tp.cost === 0,
+            isActive: tp.cost === 0 || (tp.modifiers || []).length > 0,
+            // Monstruoso (SaH): elemento escolhido na criação
+            ...(trail.id === 'monstruoso' && tp.nex === 10 && input.monstruosoElement
+              ? { chosenElement: input.monstruosoElement }
+              : {}),
             modifiers: tp.modifiers || [],
           });
         }

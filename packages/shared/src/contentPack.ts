@@ -1,3 +1,4 @@
+import { ORDEM_NEX_ALTERATIONS, ORDEM_NEX_ALTERATIONS_INTRO, type NexProgressionElement } from './nexProgression';
 import { ORDEM_RITUALS_DATA } from './ordemRitualsData';
 import { buildOrdemRitualCompendiumEntries } from './ordemRituals';
 import { ORDEM_COMPENDIUM_ENTRIES } from './ordemCompendiumData';
@@ -38,6 +39,8 @@ export interface TotalRpgContentPack {
     { description: string; powers: Record<string, string> }
   >;
   insanityEffects?: string[];
+  /** Progressão de NEX (SaH p. 98): intro + textos por elemento e NEX ("60", "75", "90") */
+  nexProgression?: { intro?: string; elements?: Record<string, Record<string, string>> };
   interludeDishes?: Record<string, { description: string }>;
   bestiary?: Record<
     string,
@@ -123,6 +126,12 @@ export function mergeContentPacks(packs: TotalRpgContentPack[]): TotalRpgContent
     }
     if (p.insanityEffects && p.insanityEffects.length > 0) {
       merged.insanityEffects = [...p.insanityEffects];
+    }
+    if (p.nexProgression) {
+      merged.nexProgression = {
+        intro: p.nexProgression.intro || merged.nexProgression?.intro,
+        elements: { ...(merged.nexProgression?.elements || {}), ...(p.nexProgression.elements || {}) },
+      };
     }
     if (p.interludeDishes) {
       Object.assign(merged.interludeDishes!, p.interludeDishes);
@@ -269,6 +278,19 @@ export function applyContentPack(pack: TotalRpgContentPack): ContentPackApplySta
             pw.description = desc;
           }
         }
+      }
+    }
+  }
+
+  // 6b. Progressão de NEX (SaH): textos completos das alterações
+  if (pack.nexProgression) {
+    if (pack.nexProgression.intro) ORDEM_NEX_ALTERATIONS_INTRO.text = pack.nexProgression.intro;
+    for (const [el, byNex] of Object.entries(pack.nexProgression.elements || {})) {
+      const list = ORDEM_NEX_ALTERATIONS[el as NexProgressionElement];
+      if (!list) continue;
+      for (const alt of list) {
+        const txt = byNex[String(alt.nex)];
+        if (txt) alt.fullText = txt;
       }
     }
   }

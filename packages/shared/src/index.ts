@@ -10,6 +10,7 @@ export * from './ordemBestiaryData';
 export * from './contentPack';
 export * from './contentSources';
 export * from './sahRules';
+export * from './nexProgression';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
 
@@ -565,6 +566,8 @@ export interface OrdemSheetData {
   workToolWeaponName?: string;
   sangueFerventeAttr?: 'for' | 'agi';
   useSeparateNexAndLevel?: boolean;
+  possessionPoints?: number;        // Possuído (SaH): Pontos de Possessão atuais
+  monstruosoElement?: string;       // Monstruoso (SaH): elemento escolhido no NEX 10%
   originMeta?: OrdemOriginMeta;
   tempHp?: number;
   tempHpMax?: number;
@@ -656,6 +659,9 @@ export interface CharacterAbility {
   element?: string;
   chosenElement?: string;
   chosenSkill?: string;      // Foco em Perícia (Geral, SaH): perícia escolhida
+  ritualActive?: boolean;    // Monstruoso (SaH): etapa ritualística do dia executada
+  trackedTarget?: string;    // Caçador (SaH): ser/tipo estudado ou presa
+  trackedCount?: number;     // Caçador (SaH): pistas reunidas (+1 cada)
   trainingGranted?: boolean; // Poder geral "treina ou +2": true = treinou a perícia; false = recebeu +2
   hasAffinityUpgrade?: boolean;
   isFavoriteRitual?: boolean; // Ocultista — Ritual Predileto (-1 PE)

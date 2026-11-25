@@ -49,6 +49,15 @@ export interface SahPowerProps {
   onTakePvDamage?: (amount: number, reason?: string) => void;
   /** Dano sofrido nos PV (máximo - atual), para poderes que exigem estar ferido */
   pvDamageTaken?: number;
+  onUpdateInventory?: (inventory: RPGItem[]) => void;
+  /** Condições ativas e remoção (ex.: Determinação Inquestionável) */
+  conditions?: Array<{ id: string; name: string }>;
+  onRemoveCondition?: (condId: string) => void;
+  /** Transcender fora da evolução (ex.: Ele Me Ensina): +1 Transcender e sem ganho de SAN neste NEX */
+  onTranscend?: (power: CharacterAbility) => void;
+  /** Valores atuais das barras e ajuste direto (ex.: Só Mais um Passo, Chagas da Resistência) */
+  vitalsNow?: { pv: number; pvMax: number; san: number; sanMax: number; pe: number; peLimit: number };
+  onAdjustVital?: (barId: 'pv' | 'pe' | 'san', delta: number, reason: string) => void;
   onUpdateAbilities: (abilities: CharacterAbility[]) => void;
   onApplyFlashback?: (choice: FlashbackChoice | null) => void;
   onFeedback: (msg: string) => void;

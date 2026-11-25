@@ -11,6 +11,7 @@ import {
   CharacterLivePatch,
   calculateActiveBonuses,
   hasDyingCondition,
+  getDyingTurnsToDie,
   isDyingCondition,
   dyingTurnsOf,
   deathAtOf,
@@ -777,7 +778,7 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
           key={deathQueue[0].key}
           name={deathQueue[0].name}
           portraitUrl={deathQueue[0].portraitUrl}
-          detail="Iniciou o terceiro turno morrendo nesta cena."
+          detail="Iniciou o último turno morrendo nesta cena."
           onClose={closeDeath}
           autoCloseMs={9000}
         />
@@ -1170,7 +1171,7 @@ function PartyCard({
         })}
       </div>
 
-      {showTracker && <DyingTracker turns={dyingTurns} dead={Boolean(deathAt)} className="mon-dying" />}
+      {showTracker && <DyingTracker max={getDyingTurnsToDie(raw?.abilities)} turns={dyingTurns} dead={Boolean(deathAt)} className="mon-dying" />}
 
       {((isDying && !showTracker) || isBloodied || chipConditions.length > 0) && (
         <div className="mon-chips">

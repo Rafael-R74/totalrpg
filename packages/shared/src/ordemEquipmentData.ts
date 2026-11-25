@@ -1,3 +1,4 @@
+import { getNexProgressionModifiers } from './nexProgression';
 import {
   CharacterAbility,
   CompendiumEntryData,
@@ -1920,6 +1921,92 @@ export function computeOrdemInventoryDerivedEffects(
   if (hasGeneral('sah-pwr-gen-inventario-organizado', 'inventário organizado') && attrInt > 0) {
     dynamicModifiers.push({ id: 'dyn-inventario-organizado', targetType: 'load_limit', targetKey: 'load', value: attrInt });
   }
+  // Bibliotecário 99% (A Força do Saber): soma o Intelecto (já com o +1 da trilha) no total de PE
+  if (abilities.some((ab) => ab.id === 'trail-bibliotecario-99' && ab.isActive !== false)) {
+    dynamicModifiers.push({ id: 'dyn-biblio-99-pe', targetType: 'vital_max', targetKey: 'pe', value: attrInt + 1 });
+  }
+  // Monstruoso (Combatente, SaH p. 17-21): efeitos da etapa ritualística do elemento escolhido
+  const monstro10 = abilities.find((ab) => ab.id === 'trail-monstruoso-10');
+  const monstroEl = (monstro10?.chosenElement || '').toLowerCase();
+  if (monstro10 && monstroEl) {
+    const hasTier = (nex: number) => abilities.some((ab) => ab.id === `trail-monstruoso-${nex}`);
+    const permanent = hasTier(99); // 99%: efeitos permanentes
+    if (permanent || monstro10.ritualActive) {
+      const rd = permanent ? 20 : hasTier(65) ? 15 : hasTier(40) ? 10 : 5;
+      const penaltyDice = hasTier(40) ? -2 : -1;
+      const src = 'Monstruoso';
+      const cfg: Record<string, { rd: string[]; penalty: string[] }> = {
+        sangue: { rd: ['Balístico', 'Sangue'], penalty: ['ciencias', 'intuicao'] },
+        morte: { rd: ['Perfuração', 'Morte'], penalty: ['diplomacia', 'enganacao'] },
+        conhecimento: { rd: ['Balístico', 'Conhecimento'], penalty: ['atletismo', 'acrobacia'] },
+        energia: { rd: ['Corte', 'Eletricidade', 'Fogo', 'Energia'], penalty: ['investigacao', 'percepcao'] },
+      };
+      const c = cfg[monstroEl];
+      if (c) {
+        for (const t of c.rd) addRd(t, rd, src);
+        // 65% Energia: a RD passa a valer também contra dano químico
+        if (monstroEl === 'energia' && hasTier(65)) addRd('Químico', rd, src);
+        for (const sk of c.penalty) {
+          dynamicModifiers.push({ id: `dyn-monstro-pen-${sk}`, targetType: 'skill_dice', targetKey: sk, value: penaltyDice });
+        }
+      }
+      const attrFor = Number(sheetData?.attributes?.for ?? 0);
+      const attrVig = Number(sheetData?.attributes?.vig ?? 0);
+      const attrAgi = Number(sheetData?.attributes?.agi ?? 0);
+      // 10%: Morte soma FOR nos PV; Conhecimento soma INT na Defesa
+      if (monstroEl === 'morte' && attrFor > 0) {
+        dynamicModifiers.push({ id: 'dyn-monstro-morte-pv', targetType: 'vital_max', targetKey: 'pv', value: attrFor });
+      }
+      if (monstroEl === 'conhecimento' && attrInt > 0) {
+        dynamicModifiers.push({ id: 'dyn-monstro-conh-def', targetType: 'defense', targetKey: 'defense', value: attrInt });
+      }
+      // 65% Conhecimento: perícia que deixou de ser treinada (troca por dados de bônus até o próximo interlúdio)
+      const m65 = abilities.find((ab) => ab.id === 'trail-monstruoso-65');
+      if (monstroEl === 'conhecimento' && m65?.trackedTarget) {
+        const sk = (sheetData?.skills || []).find((x: any) => x.id === m65.trackedTarget);
+        const deg = Number(sk?.trainingDegree || 0);
+        if (deg > 0) {
+          dynamicModifiers.push({ id: 'dyn-monstro-65-sacrificio', targetType: 'skill_bonus', targetKey: m65.trackedTarget, value: -deg });
+        }
+      }
+      // 99%: ajustes de atributo e deslocamento por elemento
+      if (permanent) {
+        const attrSwap: Record<string, [string, string]> = {
+          sangue: ['int', 'for'],
+          morte: ['pre', 'vig'],
+          conhecimento: ['for', 'int'],
+          energia: ['for', 'agi'],
+        };
+        const sw = attrSwap[monstroEl];
+        if (sw) {
+          dynamicModifiers.push({ id: 'dyn-monstro-99-minus', targetType: 'attribute', targetKey: sw[0], value: -1 });
+          dynamicModifiers.push({ id: 'dyn-monstro-99-plus', targetType: 'attribute', targetKey: sw[1], value: 1 });
+        }
+        if (monstroEl === 'energia') {
+          // Paira com deslocamento 12m
+          dynamicModifiers.push({ id: 'dyn-monstro-99-desloc', targetType: 'displacement', targetKey: 'deslocamento', value: 3 });
+        }
+      }
+      if (hasTier(40)) {
+        // 40%: Conhecimento +1 INT; atributo-chave dos PE: Sangue FOR, Morte VIG, Conhecimento INT, Energia AGI
+        if (monstroEl === 'conhecimento') {
+          dynamicModifiers.push({ id: 'dyn-monstro-conh-int', targetType: 'attribute', targetKey: 'int', value: 1 });
+        }
+        const peAttr =
+          monstroEl === 'sangue' ? attrFor : monstroEl === 'morte' ? attrVig : monstroEl === 'conhecimento' ? attrInt + 1 : attrAgi;
+        if (peAttr > attrPre) {
+          const nexVal = Number(sheetData?.nex ?? 5);
+          const steps = nexVal <= 5 ? 1 : nexVal === 99 ? 20 : Math.max(1, Math.floor(nexVal / 5));
+          dynamicModifiers.push({ id: 'dyn-monstro-pe-attr', targetType: 'vital_max', targetKey: 'pe', value: (peAttr - attrPre) * steps });
+        }
+      }
+    }
+  }
+
+  // Monstruoso: Progressão de NEX (SaH p. 98) com o elemento escolhido — efeitos permanentes em perícias
+  if (monstro10 && monstroEl) {
+    dynamicModifiers.push(...getNexProgressionModifiers(monstroEl, Number(sheetData?.nex ?? 5)));
+  }
   // Racionalidade Inflexível: Intelecto no lugar de Presença para os PE (diferença por grau de NEX)
   if (hasGeneral('sah-pwr-gen-racionalidade-inflexivel', 'racionalidade inflexível') && attrInt > attrPre) {
     const nexVal = Number(sheetData?.nex ?? 5);
@@ -1941,6 +2028,7 @@ export function computeOrdemInventoryDerivedEffects(
     if (desc.includes('rd conhecimento 10')) addRd('Conhecimento', 10, se.name);
     if (desc.includes('rd energia 10')) addRd('Energia', 10, se.name);
     if (desc.includes('rd mental 5')) addRd('Mental', 5, se.name);
+    if (desc.includes('rd geral 5')) addRd('Geral (Dano)', 5, se.name);
   }
 
   // Aplica o MAIOR bônus de item por perícia (regra de não-acúmulo p. 63)

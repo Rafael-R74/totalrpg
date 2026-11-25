@@ -12,6 +12,7 @@ import {
   ORDEM_COMPENDIUM_ENTRIES,
   checkOrdemPowerRequirements,
   isOrdemGeneralPower,
+  getContentSourcesForSystem,
   T20_RACES,
   T20_CLASSES,
   T20_ORIGINS,
@@ -98,6 +99,8 @@ export function CharacterWizardModal({
   >(initialLockedNex === 0 ? 'mundano' : 'combatente');
   const [ordemTrailId, setOrdemTrailId] = useState<string>('');
   const [ordemAffinity, setOrdemAffinity] = useState<string>('Sangue');
+  // Monstruoso (SaH): elemento do NEX 10% (a afinidade precisa ser o mesmo)
+  const [monstruosoElement, setMonstruosoElement] = useState<string>('');
   const [versatilityMode, setVersatilityMode] = useState<'class_power' | 'trail_10'>('class_power');
   const [versatilityTrailId, setVersatilityTrailId] = useState<string>('');
   const [chosenClassPowerIds, setChosenClassPowerIds] = useState<string[]>([]);
@@ -199,19 +202,29 @@ export function CharacterWizardModal({
   const zeroAttrsCount = Object.values(ordemAttrs).filter((v) => v === 0).length;
 
   // Trilhas, Poderes de Classe / Transcender & Rituais desbloqueados pelo NEX
-  const availableClassTrails = useMemo(
+  // Trilhas da classe permitidas pela mesa, separadas em abas por livro (Livro Básico / suplementos)
+  const allowedClassTrails = useMemo(
     () =>
       ORDEM_TRAILS.filter(
         (t) =>
           t.classId === ordemClassId &&
-          matchesContentSourceFilter(
-            t.sourceId,
-            trailSourceFilter,
-            allowedSources,
-            'ordem-paranormal'
-          )
+          matchesContentSourceFilter(t.sourceId, [], allowedSources, 'ordem-paranormal')
       ),
-    [ordemClassId, trailSourceFilter, allowedSources]
+    [ordemClassId, allowedSources]
+  );
+  const trailBookTabs = useMemo(
+    () =>
+      getContentSourcesForSystem('ordem-paranormal').filter((src) =>
+        allowedClassTrails.some((t) => (t.sourceId || 'ordem-base') === src.id)
+      ),
+    [allowedClassTrails]
+  );
+  const activeTrailBook = trailBookTabs.some((b) => b.id === trailSourceFilter[0])
+    ? trailSourceFilter[0]
+    : trailBookTabs[0]?.id || 'ordem-base';
+  const availableClassTrails = useMemo(
+    () => allowedClassTrails.filter((t) => (t.sourceId || 'ordem-base') === activeTrailBook),
+    [allowedClassTrails, activeTrailBook]
   );
   const effectiveTrailId = useMemo(() => {
     if (ordemNex < 10 || ordemClassId === 'mundano') return '';
@@ -352,6 +365,9 @@ export function CharacterWizardModal({
 
   // Aba da escolha de poderes: de classe, gerais (SaH) ou paranormais (Transcender)
   const [powerPickTab, setPowerPickTab] = useState<'class' | 'general' | 'paranormal'>('class');
+  const isMonstruoso = ordemClassId === 'combatente' && effectiveTrailId === 'monstruoso' && ordemNex >= 10;
+  // Possuído (SaH, 10%): todo novo poder de ocultista vira Transcender
+  const possuidoOnlyTranscend = ordemClassId === 'ocultista' && effectiveTrailId === 'possuido' && ordemNex >= 10;
   const powerTabOf = (e: { id: string; category: string; metadata?: any }) =>
     e.category === 'paranormal_power' ? 'paranormal' : isOrdemGeneralPower(e as any) ? 'general' : 'class';
 
@@ -676,6 +692,19 @@ export function CharacterWizardModal({
         const trainedIds = Array.from(
           new Set([...originSkillIds, ...classMandatorySkillIds, ...validFree])
         );
+        if (isMonstruoso && !monstruosoElement) {
+          setErrorMsg('Monstruoso: escolha o elemento da trilha no passo Classe.');
+          setIsSaving(false);
+          return;
+        }
+        // Requisito da trilha (ex.: Parapsicólogo exige Profissão treinada)
+        if (selectedTrailObj?.requiredSkill && !trainedIds.includes(selectedTrailObj.requiredSkill)) {
+          setErrorMsg(
+            `A trilha ${selectedTrailObj.name} exige: ${selectedTrailObj.requirementText || selectedTrailObj.requiredSkill}. Marque essa perícia no passo Perícias.`
+          );
+          setIsSaving(false);
+          return;
+        }
 
         const chosenItemsArray = Object.entries(chosenItemQuantities)
           .filter(([, qty]) => qty > 0)
@@ -697,7 +726,8 @@ export function CharacterWizardModal({
           nex: ordemNex,
           patent: ordemPatent,
           trailId: effectiveTrailId || undefined,
-          affinity: ordemNex >= 50 ? ordemAffinity : undefined,
+          affinity: ordemNex >= 50 ? (isMonstruoso && monstruosoElement ? monstruosoElement : ordemAffinity) : undefined,
+          monstruosoElement: isMonstruoso ? monstruosoElement : undefined,
           chosenClassPowerIds: chosenClassPowerIds.slice(0, totalClassPowerSlots),
           versatilityTrailId:
             ordemNex >= 50 && versatilityMode === 'trail_10'
@@ -1731,13 +1761,55 @@ export function CharacterWizardModal({
                       ))}
                     </select>
                   </div>
-                  <ContentSourceFilterBar
-                    system="ordem-paranormal"
-                    allowedSources={allowedSources}
-                    selectedSources={trailSourceFilter}
-                    onChange={setTrailSourceFilter}
-                    compact
-                  />
+                  {trailBookTabs.length > 1 && (
+                    <div role="tablist" aria-label="Livro da trilha" className="trpg-tabs -mx-1">
+                      {trailBookTabs.map((book) => (
+                        <button
+                          key={book.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={activeTrailBook === book.id}
+                          onClick={() => {
+                            setTrailSourceFilter([book.id]);
+                            const first = allowedClassTrails.find((t) => (t.sourceId || 'ordem-base') === book.id);
+                            if (first) setOrdemTrailId(first.id);
+                          }}
+                          className="trpg-tab"
+                        >
+                          {book.shortName}
+                          <span className="trpg-tab-count">
+                            {allowedClassTrails.filter((t) => (t.sourceId || 'ordem-base') === book.id).length}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {isMonstruoso && (
+                    <div className="p-3 rounded-lg border border-red-800/60 bg-red-950/20 space-y-2">
+                      <p className="text-xs text-zinc-300">
+                        Monstruoso: escolha o elemento da sua maldição (define RD, penalidades e a afinidade). Em NEX 75% o personagem é banido pela Ordem.
+                      </p>
+                      <div role="radiogroup" aria-label="Elemento do Monstruoso" className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                          <button
+                            key={el}
+                            type="button"
+                            role="radio"
+                            aria-checked={monstruosoElement === el}
+                            onClick={() => setMonstruosoElement(el)}
+                            className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 ${elementChoiceClasses(el, monstruosoElement === el)}`}
+                          >
+                            <Icon name={el.toLowerCase()} size={15} /> {el}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {selectedTrailObj?.requirementText && (
+                    <p className="text-xs text-amber-300">
+                      <Icon name="warning" /> Requisito: {selectedTrailObj.requirementText}. Garanta essa perícia no passo Perícias.
+                    </p>
+                  )}
                   {selectedTrailObj && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {selectedTrailObj.powers
@@ -1782,9 +1854,11 @@ export function CharacterWizardModal({
                             key={el}
                             type="button"
                             role="radio"
-                            aria-checked={ordemAffinity === el}
+                            aria-checked={(isMonstruoso && monstruosoElement ? monstruosoElement : ordemAffinity) === el}
+                            disabled={isMonstruoso && Boolean(monstruosoElement) && monstruosoElement !== el}
+                            title={isMonstruoso && monstruosoElement && monstruosoElement !== el ? `Monstruoso: sua afinidade precisa ser ${monstruosoElement}` : undefined}
                             onClick={() => setOrdemAffinity(el)}
-                            className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 ${elementChoiceClasses(el, ordemAffinity === el)}`}
+                            className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${elementChoiceClasses(el, (isMonstruoso && monstruosoElement ? monstruosoElement : ordemAffinity) === el)}`}
                           >
                             <Icon name={el.toLowerCase()} size={15} /> {el}
                           </button>
@@ -1885,8 +1959,10 @@ export function CharacterWizardModal({
                     )
                       .filter(
                         ([id]) =>
-                          id === 'class' ||
-                          selectableClassAndParanormalPowers.some((pw) => powerTabOf(pw) === id)
+                          (possuidoOnlyTranscend
+                            ? id === 'paranormal'
+                            : id === 'class' ||
+                              selectableClassAndParanormalPowers.some((pw) => powerTabOf(pw) === id))
                       )
                       .map(([id, label]) => {
                         const picked = chosenClassPowerIds.filter((pid) => {
@@ -1898,7 +1974,7 @@ export function CharacterWizardModal({
                             key={id}
                             type="button"
                             role="tab"
-                            aria-selected={powerPickTab === id}
+                            aria-selected={(possuidoOnlyTranscend ? 'paranormal' : powerPickTab) === id}
                             onClick={() => setPowerPickTab(id)}
                             className="trpg-tab"
                           >
@@ -1908,7 +1984,12 @@ export function CharacterWizardModal({
                         );
                       })}
                   </div>
-                  {powerPickTab === 'general' && (
+                  {possuidoOnlyTranscend && (
+                    <p className="text-[11px] text-purple-300">
+                      Possuído: seus poderes de ocultista viram Transcender (cada um dá +2 Pontos de Possessão máximos).
+                    </p>
+                  )}
+                  {!possuidoOnlyTranscend && powerPickTab === 'general' && (
                     <p className="text-[11px] text-zinc-400">
                       Poderes gerais valem para todas as classes e ocupam a mesma escolha de um poder de classe.
                     </p>
@@ -1916,7 +1997,7 @@ export function CharacterWizardModal({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
                     {selectableClassAndParanormalPowers
-                      .filter((pw) => powerTabOf(pw) === powerPickTab)
+                      .filter((pw) => powerTabOf(pw) === (possuidoOnlyTranscend ? 'paranormal' : powerPickTab))
                       .filter((pw) => {
                         const q = classPowerSearch.trim().toLowerCase();
                         if (!q) return true;

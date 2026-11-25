@@ -71,6 +71,7 @@ import { SahCombatentePowerControls, isSahCombatenteControlled } from './SahComb
 import { SahEspecialistaPowerControls, isSahEspecialistaControlled } from './SahEspecialistaPowers';
 import { SahOcultistaPowerControls, isSahOcultistaControlled } from './SahOcultistaPowers';
 import { SahGeraisPowerControls, isSahGeraisControlled } from './SahGeraisPowers';
+import { SahTrilhasPowerControls, isSahTrilhasControlled } from './SahTrilhasPowers';
 import type { FlashbackChoice, SahPowerProps } from './sahPowerKit';
 interface SheetExtrasProps {
   system: SystemId;
@@ -107,6 +108,11 @@ interface SheetExtrasProps {
   onLoseSanity?: (amount: number, reason: string) => void;
   /** Dano sofrido nos PV (máximo - atual) */
   pvDamageTaken?: number;
+  ordemConditions?: Array<{ id: string; name: string }>;
+  onRemoveCondition?: (condId: string) => void;
+  onTranscend?: (power: CharacterAbility) => void;
+  vitalsNow?: { pv: number; pvMax: number; san: number; sanMax: number; pe: number; peLimit: number };
+  onAdjustVital?: (barId: 'pv' | 'pe' | 'san', delta: number, reason: string) => void;
   onAddSceneEffect?: (effect: SceneEffect) => void;
   onRoll: (
     label: string,
@@ -131,6 +137,7 @@ interface SheetExtrasProps {
       ampliar?: boolean;
       acelerar?: boolean;
       catalystItemIds?: string[];
+      parareligiosidade?: string;
     }
   ) => void;
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
@@ -289,6 +296,11 @@ export function SheetExtras({
   onGrantTempPe,
   onLoseSanity,
   pvDamageTaken,
+  ordemConditions,
+  onRemoveCondition,
+  onTranscend,
+  vitalsNow,
+  onAdjustVital,
   onAddSceneEffect,
   onRoll,
   onCastOrdemRitual,
@@ -505,7 +517,8 @@ export function SheetExtras({
       isSahCombatenteControlled(ab) ||
       isSahEspecialistaControlled(ab) ||
       isSahOcultistaControlled(ab) ||
-      isSahGeraisControlled(ab)
+      isSahGeraisControlled(ab) ||
+      isSahTrilhasControlled(ab)
     ) {
       return true;
     }
@@ -749,6 +762,8 @@ export function SheetExtras({
   const [ritualAcelerar, setRitualAcelerar] = useState(false);
   // Catalisadores Ritualísticos (SaH) escolhidos para o próximo ritual (2 diferentes com Domínio Esotérico)
   const [ritualCatalystIds, setRitualCatalystIds] = useState<string[]>([]);
+  // Parareligiosidade (Exorcista 65%, SaH): +2 PE para um efeito de catalisador sem gastar item
+  const [ritualParareligiosidade, setRitualParareligiosidade] = useState<string>('');
   const [ritualPoderFlagelo, setRitualPoderFlagelo] = useState(false);
   const [ritualLaminaMovimentoMap, setRitualLaminaMovimentoMap] = useState<Record<string, boolean>>({});
   const [improvisarElemento, setImprovisarElemento] = useState<string>('Sangue');
@@ -4225,6 +4240,7 @@ export function SheetExtras({
             // Catalisadores Ritualísticos (SaH p. 44): 1 por ritual, ou 2 diferentes com Domínio Esotérico
             const catalystItems = inventory.filter((it) => getCatalystType(it) && (it.quantity ?? 1) > 0);
             const maxCatalysts = hasDominioEsoterico(abilities) ? 2 : 1;
+            const hasParareligiosidade = abilities.some((a) => a.id === 'trail-exorcista-65');
             const selectedCatalysts = ritualCatalystIds.filter((id) => catalystItems.some((it) => it.id === id));
             const toggleCatalyst = (itemId: string) => {
               const item = catalystItems.find((it) => it.id === itemId);
@@ -4316,7 +4332,7 @@ export function SheetExtras({
                   )}
                 </div>
 
-                {(hasCamuflarPower || hasAmpliarPower || hasAcelerarPower || hasFlageloPower || hasLaminaMalditaPower || catalystItems.length > 0) && (
+                {(hasCamuflarPower || hasAmpliarPower || hasAcelerarPower || hasFlageloPower || hasLaminaMalditaPower || catalystItems.length > 0 || hasParareligiosidade) && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-purple-900/60">
                     <span className="text-[10px] font-bold uppercase text-purple-400 mr-1">Modificadores de Conjuração:</span>
                     {hasCamuflarPower && (
@@ -4375,6 +4391,28 @@ export function SheetExtras({
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900/70 border border-zinc-700 text-amber-300">
                         <Icon name="sword" /> Lâmina Maldita: Amaldiçoar Arma custa -1 PE (mín. 1) na ficha
                       </span>
+                    )}
+                    {hasParareligiosidade && (
+                      <div className="flex flex-wrap items-center gap-1.5 basis-full pt-1">
+                        <span className="text-[10px] font-bold text-purple-400 mr-1">Parareligiosidade (+2 PE):</span>
+                        {(Object.keys(CATALYST_INFO) as Array<keyof typeof CATALYST_INFO>).map((type) => {
+                          const on = ritualParareligiosidade === type;
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              aria-pressed={on}
+                              title={`${CATALYST_INFO[type].effect}. Sem gastar item.`}
+                              onClick={() => setRitualParareligiosidade(on ? '' : type)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                on ? 'bg-purple-600 text-white border-purple-400' : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
+                              }`}
+                            >
+                              {CATALYST_INFO[type].label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                     {catalystItems.length > 0 && (
                       <div className="flex flex-wrap items-center gap-1.5 basis-full pt-1">
@@ -4621,6 +4659,7 @@ export function SheetExtras({
                     (isOrdemRitual && ritualCamuflar ? 2 : 0) +
                     (isOrdemRitual && ritualAmpliar ? 2 : 0) +
                     (isOrdemRitual && ritualAcelerar ? 4 : 0) +
+                    (isOrdemRitual && ritualParareligiosidade ? 2 : 0) +
                     (laminaMovActive ? 1 : 0);
                   const computedRitualForms = isOrdemRitual
                     ? parseOrdemRitualForms(ab.name, ab.description, ab.cost || 1, ab.damageFormula, {
@@ -4823,9 +4862,11 @@ export function SheetExtras({
                                     ampliar: ritualAmpliar,
                                     acelerar: ritualAcelerar,
                                     catalystItemIds: ritualCatalystIds,
+                                    parareligiosidade: ritualParareligiosidade || undefined,
                                   });
                                   // Catalisadores são consumidos: a seleção vale só para este ritual
                                   setRitualCatalystIds([]);
+                                  setRitualParareligiosidade('');
                                 }}
                                 title={f.description}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap cursor-pointer ${
@@ -5271,6 +5312,12 @@ export function SheetExtras({
                               onLoseSanity,
                               pvDamageTaken,
                               onTakePvDamage,
+                              onUpdateInventory,
+                              conditions: ordemConditions,
+                              onRemoveCondition,
+                              onTranscend,
+                              vitalsNow,
+                              onAdjustVital,
                               onSpendResource,
                               onAddSceneEffect,
                               onUpdateSceneEffects,
@@ -5285,6 +5332,7 @@ export function SheetExtras({
                                 <SahEspecialistaPowerControls {...sahProps} />
                                 <SahOcultistaPowerControls {...sahProps} />
                                 <SahGeraisPowerControls {...sahProps} />
+                                <SahTrilhasPowerControls {...sahProps} onHealPv={onHealPv} />
                               </>
                             );
                           })()}

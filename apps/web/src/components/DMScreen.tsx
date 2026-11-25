@@ -27,6 +27,7 @@ import {
   dyingTurnsOf,
   deathAtOf,
   DYING_TURNS_TO_DIE,
+  getDyingTurnsToDie,
 } from '@totalrpg/shared';
 import {
   DMScreenCampaignData,
@@ -980,8 +981,9 @@ async function handleDeliverItemToCharacter(
     if (!char || char.system !== 'ordem-paranormal') return;
     const raw = (char.sheetData || {}) as Record<string, any>;
     if (!hasDyingCondition(raw.conditions) || deathAtOf(raw)) return;
-    const turns = Math.min(DYING_TURNS_TO_DIE, dyingTurnsOf(raw) + 1);
-    const dies = turns >= DYING_TURNS_TO_DIE;
+    const turnsToDie = getDyingTurnsToDie(raw.abilities);
+    const turns = Math.min(turnsToDie, dyingTurnsOf(raw) + 1);
+    const dies = turns >= turnsToDie;
     const isConsciousApego =
       hasApegoAngustiado(raw.abilities) &&
       !(Array.isArray(raw.conditions) && raw.conditions.some(isUnconsciousCondition));
@@ -1005,7 +1007,7 @@ async function handleDeliverItemToCharacter(
         ? `Morreu: iniciou o terceiro turno morrendo nesta cena${
             isConsciousApego ? ' (-2 SAN por Apego Angustiado)' : ''
           }`
-        : `Iniciou o turno morrendo (${turns} de ${DYING_TURNS_TO_DIE})${
+        : `Iniciou o turno morrendo (${turns} de ${turnsToDie})${
             isConsciousApego ? ' • Apego Angustiado (-2 SAN)' : ''
           }`,
       costText: isConsciousApego ? '-2 SAN' : undefined,
@@ -1030,7 +1032,10 @@ async function handleDeliverItemToCharacter(
 
   /** Desfaz uma morte marcada por engano: volta para 2 de 3 e continua morrendo. */
   function handleUndoDeath(char: DMScreenCharacter) {
-    updateDyingState(char.id, { deathAt: null, dyingTurns: DYING_TURNS_TO_DIE - 1 });
+    updateDyingState(char.id, {
+      deathAt: null,
+      dyingTurns: getDyingTurnsToDie((char.sheetData as any)?.abilities) - 1,
+    });
     onLogActivity?.({
       characterId: char.id,
       characterName: char.name,
@@ -2241,12 +2246,13 @@ async function handleDeliverItemToCharacter(
                           (hasDyingCondition(conditions) || deathAtOf(raw)) && (
                             <div className="flex flex-wrap items-center gap-2">
                               <DyingTracker
+                                max={getDyingTurnsToDie(raw.abilities)}
                                 turns={dyingTurnsOf(raw)}
                                 dead={Boolean(deathAtOf(raw))}
                                 onSetTurns={(n) => {
                                   updateDyingState(char.id, {
                                     dyingTurns: n,
-                                    ...(n >= DYING_TURNS_TO_DIE ? { deathAt: Date.now() } : {}),
+                                    ...(n >= getDyingTurnsToDie(raw.abilities) ? { deathAt: Date.now() } : {}),
                                   });
                                 }}
                               />

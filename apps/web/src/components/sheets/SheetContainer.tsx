@@ -19,6 +19,9 @@ import {
   getOrdemOcultismoAttr,
   ORDEM_RENAMED_POWERS,
   applyGeneralPowerSkillGrants,
+  isOrdemGeneralPower,
+  getPossessionInfo,
+  getContentSourcesForSystem,
   hasInventarioOrganizado,
   getCatalystType,
   getCatalystElement,
@@ -64,6 +67,7 @@ import {
   hasDyingCondition,
   hasApegoAngustiado,
   DYING_TURNS_TO_DIE,
+  getDyingTurnsToDie,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -78,6 +82,7 @@ import { OrdemSheet } from './OrdemSheet';
 import { TormentaSheet } from './TormentaSheet';
 import { SheetExtras } from './SheetExtras';
 import { FLASHBACK_GRANT, type FlashbackChoice } from './SahEspecialistaPowers';
+import { PossessionControl } from './SahTrilhasPowers';
 import { ImageUploadField } from '../ImageUploadField';
 import { TempVitalBar } from '../TempVitalBar';
 import { useTheme } from '../../theme/themeEngine';
@@ -396,11 +401,14 @@ export function SheetContainer({
 
   const [isNexEvolutionOpen, setIsNexEvolutionOpen] = useState(false);
   const [evoSourceFilter, setEvoSourceFilter] = useState<string[]>([]);
+  const [evoTrailBook, setEvoTrailBook] = useState<string>('ordem-base');
   const [evoTrailId, setEvoTrailId] = useState<string>('');
   const [evoChoiceMode, setEvoChoiceMode] = useState<'class_power' | 'transcend' | 'versatility'>('class_power');
   const [evoSelectedPowerId, setEvoSelectedPowerId] = useState<string>('');
   const [evoSkillTrainingPowerIds, setEvoSkillTrainingPowerIds] = useState<string[]>([]);
   const [evoPowerSearch, setEvoPowerSearch] = useState<string>('');
+  // Dentro de "Poder de classe": poderes da classe ou gerais (SaH p. 33, ocupam a mesma escolha)
+  const [evoPowerGroup, setEvoPowerGroup] = useState<'class' | 'general'>('class');
   const [evoPowerElementFilter, setEvoPowerElementFilter] = useState<string>('ALL');
   const [evoAttrKey, setEvoAttrKey] = useState<'agi' | 'for' | 'int' | 'pre' | 'vig'>('agi');
   const [evoAffinity, setEvoAffinity] = useState<string>('Sangue');
@@ -562,7 +570,11 @@ export function SheetContainer({
                     ...ab,
                     cost: tpDef.cost,
                     description: tpDef.description,
-                    modifiers: tpDef.modifiers || [],
+                    // Mantém o +2 do "treina ou +2" (poder já treinado) concedido ao pegar o poder
+                    modifiers: [
+                      ...(tpDef.modifiers || []),
+                      ...(ab.modifiers || []).filter((m) => m.id.startsWith('gen-train-bonus-')),
+                    ],
                   };
                 }
               }
@@ -1012,6 +1024,11 @@ export function SheetContainer({
     activeSceneEffects,
     character.system === 'ordem-paranormal' ? (rawSheet as Partial<OrdemSheetData>) : undefined
   );
+  // Possuído (SaH): Pontos de Possessão
+  const possessionInfo = getPossessionInfo(
+    character.system === 'ordem-paranormal' ? (rawSheet as any) : null,
+    Number(rawSheet.attributes?.pre ?? 0) + (bonuses.attributes['pre'] || 0)
+  );
 
   // Sangue Fervente (Poder Paranormal de Sangue): +1 (+2 com Afinidade) em FOR ou AGI enquanto Machucado
   if (character.system === 'ordem-paranormal') {
@@ -1245,6 +1262,32 @@ export function SheetContainer({
         tone: 'purple',
       });
     }
+  }
+
+  /** Possuído (SaH): gasta PP — cada um recupera 10 PV ou 2 PE. */
+  function handleSpendPossession(ppToPv: number, ppToPe: number) {
+    const total = ppToPv + ppToPe;
+    if (total <= 0) return;
+    applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      const nextVitals = base.vitals.map((bar) => {
+        const effMax = bar.max + (bonuses.vitalMax[bar.id] || 0);
+        if (bar.id === 'pv' && ppToPv > 0) return { ...bar, current: Math.min(effMax, bar.current + ppToPv * 10) };
+        if (bar.id === 'pe' && ppToPe > 0) return { ...bar, current: Math.min(effMax, bar.current + ppToPe * 2) };
+        return bar;
+      });
+      return {
+        ...base,
+        vitals: nextVitals,
+        sheetData: { ...baseRaw, possessionPoints: Math.max(0, possessionInfo.current - total) },
+      };
+    });
+    logSheetActivity({
+      category: 'ability',
+      summary: `Gastou ${total} Ponto${total > 1 ? 's' : ''} de Possessão`,
+      details: [ppToPv ? `+${ppToPv * 10} PV` : '', ppToPe ? `+${ppToPe * 2} PE` : ''].filter(Boolean).join(' • '),
+      tone: 'purple',
+    });
   }
 
   function handleHealPv(amount: number, label?: string) {
@@ -1669,6 +1712,7 @@ export function SheetContainer({
       ampliar?: boolean;
       acelerar?: boolean;
       catalystItemIds?: string[];
+      parareligiosidade?: string;
     }
   ) {
     if (!character) return;
@@ -1968,6 +2012,14 @@ export function SheetContainer({
       }
       consumedCatalystIds.push(item.id);
       effectNotes.push(`${label}: ${CATALYST_INFO[type].effect}`);
+    }
+    // Parareligiosidade (Exorcista 65%): efeito de catalisador sem item (o +2 PE já está no custo)
+    const paraType = castOptions?.parareligiosidade as keyof typeof CATALYST_INFO | undefined;
+    if (paraType && CATALYST_INFO[paraType]) {
+      if (paraType === 'potencializador' && effectType === 'damage' && effectFormula) {
+        effectFormula = addOneDieToFormula(effectFormula);
+      }
+      effectNotes.push(`Parareligiosidade: ${CATALYST_INFO[paraType].effect}`);
     }
     if (skippedCatalysts.length > 0) {
       showHoverToast(`Catalisador não usado (não foi consumido): ${skippedCatalysts.join(' • ')}`);
@@ -2647,7 +2699,7 @@ export function SheetContainer({
         category: 'classe',
         cost: tp.cost,
         description: tp.description,
-        isActive: tp.cost === 0,
+        isActive: tp.cost === 0 || (tp.modifiers || []).length > 0,
         modifiers: tp.modifiers || [],
       }));
 
@@ -3021,6 +3073,10 @@ export function SheetContainer({
           sceneEffects: nextSceneEffectsList,
           interludeBonusDice: nextBonusDice,
           pendingInterlude: null,
+          // Possuído (SaH): recupera PP ao dormir
+          ...(possessionInfo.active && interludeSleep
+            ? { possessionPoints: Math.min(possessionInfo.max, possessionInfo.current + possessionInfo.perSleep) }
+            : {}),
         },
       };
     }, false);
@@ -3071,13 +3127,16 @@ export function SheetContainer({
     if (!character || character.system !== 'ordem-paranormal') return;
     setEvoSourceFilter([]);
     setEvoTrailId(rawSheet.trail || '');
-    setEvoChoiceMode('class_power');
+    // Possuído (SaH, 10%): todo novo poder de ocultista vira Transcender
+    setEvoChoiceMode(rawSheet.trail === 'possuido' ? 'transcend' : 'class_power');
     setEvoSelectedPowerId('');
     setEvoSkillTrainingPowerIds([]);
     setEvoPowerSearch('');
     setEvoPowerElementFilter('ALL');
     setEvoAttrKey('agi');
-    setEvoAffinity(rawSheet.affinity || 'Sangue');
+    // Monstruoso (SaH): a afinidade precisa ser o elemento escolhido na trilha
+    const monstroEl = characterAbilities.find((a) => a.id === 'trail-monstruoso-10')?.chosenElement;
+    setEvoAffinity(monstroEl || rawSheet.affinity || 'Sangue');
     setEvoUpgradeSkills([]);
     setEvoNewRitualId('');
     setEvoRitualSearch('');
@@ -3315,7 +3374,7 @@ export function SheetContainer({
               category: 'classe',
               cost: tp.cost,
               description: tp.description,
-              isActive: tp.cost === 0,
+              isActive: tp.cost === 0 || (tp.modifiers || []).length > 0,
               modifiers: tp.modifiers || [],
             });
           }
@@ -3615,6 +3674,11 @@ export function SheetContainer({
         })
       : [];
 
+    // Poderes gerais (SaH) escolhidos na evolução: "treina a perícia ou +2"
+    const evoGrants = applyGeneralPowerSkillGrants(characterAbilities, nextAbilities, nextSkills);
+    nextAbilities.splice(0, nextAbilities.length, ...evoGrants.abilities);
+    nextSkills.splice(0, nextSkills.length, ...evoGrants.skills);
+
     // Recalcular PV, PE e SAN máximos oficiais para o novo NEX
     const newBaseVitals = calculateOrdemBaseVitals({
       characterClass: rawSheet.characterClass || 'combatente',
@@ -3737,7 +3801,7 @@ export function SheetContainer({
         <DeathModal
           name={character.name}
           portraitUrl={character.portraitUrl}
-          detail="Iniciou o terceiro turno morrendo nesta cena."
+          detail="Iniciou o último turno morrendo nesta cena."
           onClose={closeDeathModal}
         />
       )}
@@ -4140,7 +4204,21 @@ export function SheetContainer({
                     </button>
                   ))}
 
-                  {showDyingTracker && <DyingTracker turns={dyingTurns} dead={Boolean(deathAt)} />}
+                  {showDyingTracker && <DyingTracker max={getDyingTurnsToDie(characterAbilities)} turns={dyingTurns} dead={Boolean(deathAt)} />}
+
+                  {possessionInfo.active && (
+                    <PossessionControl
+                      info={possessionInfo}
+                      onSpend={handleSpendPossession}
+                      onAdjust={(delta) =>
+                        applyLocalCharacterUpdate((base) => {
+                          const baseRaw = (base.sheetData || {}) as Record<string, any>;
+                          const next = Math.max(0, Math.min(possessionInfo.max, possessionInfo.current + delta));
+                          return { ...base, sheetData: { ...baseRaw, possessionPoints: next } };
+                        })
+                      }
+                    />
+                  )}
 
                   {canMasterControl && (
                     <button
@@ -5110,16 +5188,39 @@ export function SheetContainer({
         const currentNex = Number(rawSheet.nex ?? 5);
         const nextNex = currentNex === 0 ? 5 : currentNex === 95 ? 99 : Math.min(99, currentNex + 5);
         const milestone = ORDEM_NEX_PROGRESSION.find((m) => m.nex === nextNex);
+        // Trilhas permitidas pela mesa; na escolha, separadas em abas por livro (Livro Básico / suplementos)
         const classTrails = ORDEM_TRAILS.filter(
           (t) =>
             t.classId === rawSheet.characterClass &&
-            matchesContentSourceFilter(
-              t.sourceId,
-              evoSourceFilter,
-              campaignAllowedSources,
-              'ordem-paranormal'
-            )
+            matchesContentSourceFilter(t.sourceId, [], campaignAllowedSources, 'ordem-paranormal')
         );
+        const evoTrailBooks = getContentSourcesForSystem('ordem-paranormal').filter((src) =>
+          classTrails.some((t) => (t.sourceId || 'ordem-base') === src.id)
+        );
+        const activeEvoTrailBook = evoTrailBooks.some((b) => b.id === evoTrailBook)
+          ? evoTrailBook
+          : evoTrailBooks[0]?.id || 'ordem-base';
+        const trailsInBook = classTrails.filter((t) => (t.sourceId || 'ordem-base') === activeEvoTrailBook);
+        const trailBookTabs =
+          evoTrailBooks.length > 1 ? (
+            <div role="tablist" aria-label="Livro da trilha" className="trpg-tabs -mx-1">
+              {evoTrailBooks.map((book) => (
+                <button
+                  key={book.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeEvoTrailBook === book.id}
+                  onClick={() => setEvoTrailBook(book.id)}
+                  className="trpg-tab"
+                >
+                  {book.shortName}
+                  <span className="trpg-tab-count">
+                    {classTrails.filter((t) => (t.sourceId || 'ordem-base') === book.id).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null;
         const activeTrailId = evoTrailId || rawSheet.trail || '';
         const selectedTrailObj = ORDEM_TRAILS.find((t) => t.id === activeTrailId);
         const unlockedTrailPowerAtThisNex = selectedTrailObj?.powers.find((p) => p.nex === nextNex);
@@ -5339,16 +5440,28 @@ export function SheetContainer({
                       <label className="block text-xs font-black uppercase text-amber-400">
                         <Icon name="route" /> Escolha sua Trilha de {clsObj.name} (Desbloqueia o Poder de 10% agora)
                       </label>
+                      {trailBookTabs}
                       <div className="grid grid-cols-1 gap-2.5 max-h-80 overflow-y-auto pr-1">
-                        {classTrails.map((t) => {
+                        {trailsInBook.map((t) => {
                           const isSelected = evoTrailId === t.id;
                           const p10 = t.powers.find((p) => p.nex === 10);
+                          // Requisito da trilha (ex.: Parapsicólogo exige Profissão treinada)
+                          const reqUnmet = Boolean(
+                            t.requiredSkill &&
+                              !(rawSheet.skills || []).some(
+                                (sk: any) => sk.id === t.requiredSkill && Number(sk.trainingDegree || 0) >= 5
+                              )
+                          );
                           return (
                             <button
                               key={t.id}
                               type="button"
-                              onClick={() => setEvoTrailId(t.id)}
-                              className={`w-full text-left p-3.5 rounded-xl border transition cursor-pointer ${
+                              disabled={reqUnmet}
+                              title={reqUnmet ? `Requer: ${t.requirementText}` : undefined}
+                              onClick={() => !reqUnmet && setEvoTrailId(t.id)}
+                              className={`w-full text-left p-3.5 rounded-xl border transition ${
+                                reqUnmet ? 'opacity-50 cursor-not-allowed ' : 'cursor-pointer '
+                              }${
                                 isSelected
                                   ? 'bg-amber-500/15 border-amber-400 ring-1 ring-amber-400/40'
                                   : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
@@ -5362,6 +5475,11 @@ export function SheetContainer({
                                   10%: {p10?.name}
                                 </span>
                               </div>
+                              {t.requirementText && (
+                                <p className={`text-xs mt-1 ${reqUnmet ? 'text-red-300' : 'text-zinc-500'}`}>
+                                  Requisito: {t.requirementText}{reqUnmet ? ' (você não cumpre)' : ''}
+                                </p>
+                              )}
                               <p className="text-xs text-zinc-400 mt-1">{t.description}</p>
                               {p10 && (
                                 <div className="mt-2 p-2.5 rounded-lg bg-zinc-950 border border-amber-500/30">
@@ -5428,6 +5546,11 @@ export function SheetContainer({
                           : 'grid-cols-2'
                       }`}
                     >
+                      {activeTrailId === 'possuido' ? (
+                        <p className="py-2 px-2 rounded-lg text-xs border border-purple-700/60 bg-purple-950/30 text-purple-200 self-center">
+                          <Icon name="ghost" /> Possuído: seus novos poderes de ocultista viram Transcender (+2 PP máximos).
+                        </p>
+                      ) : (
                       <button
                         type="button"
                         onClick={() => {
@@ -5443,6 +5566,7 @@ export function SheetContainer({
                       >
                         <Icon name="swords" /> Poder de {clsObj.name} (+SAN normal)
                       </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -5506,7 +5630,8 @@ export function SheetContainer({
 
                     {evoChoiceMode === 'versatility' ? (
                       <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                        {classTrails
+                        {trailBookTabs}
+                        {trailsInBook
                           .filter((t) => t.id !== activeTrailId)
                           .map((t) => {
                             const p10 = t.powers.find((p) => p.nex === 10);
@@ -5547,9 +5672,46 @@ export function SheetContainer({
                           className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white focus:outline-none focus:border-amber-500"
                         />
 
+                        {evoChoiceMode === 'class_power' &&
+                          classPowerOptions.some((e) => isOrdemGeneralPower(e)) && (
+                            <>
+                              <div role="tablist" aria-label="Tipo de poder" className="trpg-tabs -mx-1">
+                                {(
+                                  [
+                                    ['class', `De ${clsObj.name.toLowerCase()}`],
+                                    ['general', 'Gerais'],
+                                  ] as const
+                                ).map(([id, label]) => (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={evoPowerGroup === id}
+                                    onClick={() => setEvoPowerGroup(id)}
+                                    className="trpg-tab"
+                                  >
+                                    {label}
+                                    <span className="trpg-tab-count">
+                                      {classPowerOptions.filter((e) => isOrdemGeneralPower(e) === (id === 'general')).length}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                              {evoPowerGroup === 'general' && (
+                                <p className="text-[11px] text-zinc-400">
+                                  Poderes gerais valem para todas as classes e ocupam esta mesma escolha de poder.
+                                </p>
+                              )}
+                            </>
+                          )}
+
                         <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                           {(evoChoiceMode === 'class_power'
-                            ? classPowerOptions
+                            ? classPowerOptions.some((e) => isOrdemGeneralPower(e))
+                              ? classPowerOptions.filter(
+                                  (e) => isOrdemGeneralPower(e) === (evoPowerGroup === 'general')
+                                )
+                              : classPowerOptions
                             : paranormalPowerOptions
                           ).map((pw) => {
                             const check = checkOrdemPowerRequirements(
@@ -5925,18 +6087,24 @@ export function SheetContainer({
                       <Icon name="conhecimento" /> Afinidade com Elemento Paranormal (NEX 50%)
                     </label>
                     <div role="radiogroup" aria-label="Elemento de afinidade" className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                      {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                      {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => {
+                        const monstroEl = characterAbilities.find((a) => a.id === 'trail-monstruoso-10')?.chosenElement;
+                        const locked = Boolean(monstroEl && monstroEl !== el);
+                        return (
                         <button
                           key={el}
                           type="button"
                           role="radio"
                           aria-checked={evoAffinity === el}
-                          onClick={() => setEvoAffinity(el)}
+                          disabled={locked}
+                          title={locked ? `Monstruoso: sua afinidade precisa ser ${monstroEl}` : undefined}
+                          onClick={() => !locked && setEvoAffinity(el)}
                           className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 ${elementChoiceClasses(el, evoAffinity === el)}`}
                         >
                           <Icon name={el.toLowerCase()} size={15} /> {el}
                         </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -6398,6 +6566,52 @@ export function SheetContainer({
       {/* Abas Inferiores integradas com Troca entre Jogadores */}
       <SheetExtras
         system={character.system}
+        ordemConditions={activeConditions}
+        onRemoveCondition={handleRemoveCondition}
+        onTranscend={(power) => {
+          // Transcender: recebe o poder paranormal, conta +1 Transcender e não ganha a SAN deste NEX
+          const cls = ORDEM_CLASSES.find((c) => c.id === rawSheet.characterClass);
+          applyLocalCharacterUpdate((base) => {
+            const baseRaw = (base.sheetData || {}) as Record<string, any>;
+            return {
+              ...base,
+              vitals: base.vitals.map((bar) =>
+                bar.id === 'san' && cls
+                  ? { ...bar, max: Math.max(1, bar.max - cls.sanPerNex), current: Math.min(bar.current, Math.max(1, bar.max - cls.sanPerNex)) }
+                  : bar
+              ),
+              sheetData: {
+                ...baseRaw,
+                transcendedCount: Number(baseRaw.transcendedCount || 0) + 1,
+                abilities: [...(Array.isArray(baseRaw.abilities) ? baseRaw.abilities : []), power],
+              },
+            };
+          });
+          logSheetActivity({ category: 'ability', summary: `Transcendeu: ${power.name}`, tone: 'purple' });
+        }}
+        vitalsNow={(() => {
+          const get = (id: string) => character.vitals.find((b) => b.id === id);
+          const max = (id: string) => (get(id)?.max || 0) + (bonuses.vitalMax[id] || 0);
+          return {
+            pv: get('pv')?.current || 0,
+            pvMax: max('pv'),
+            san: get('san')?.current || 0,
+            sanMax: max('san'),
+            pe: (get('pe')?.current || 0) + Number(rawSheet.tempPe || 0),
+            peLimit: getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities),
+          };
+        })()}
+        onAdjustVital={(barId, delta, reason) => {
+          applyLocalCharacterUpdate((base) => ({
+            ...base,
+            vitals: base.vitals.map((bar) => {
+              if (bar.id !== barId) return bar;
+              const effMax = bar.max + (bonuses.vitalMax[bar.id] || 0);
+              return { ...bar, current: Math.max(0, Math.min(effMax, bar.current + delta)) };
+            }),
+          }));
+          logSheetActivity({ category: 'ability', summary: reason, tone: 'purple' });
+        }}
         pvDamageTaken={(() => {
           const pv = character.vitals.find((b) => b.id === 'pv');
           return pv ? Math.max(0, pv.max - pv.current) : 0;

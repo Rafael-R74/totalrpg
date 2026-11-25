@@ -193,11 +193,18 @@ export function OrdemSheet({
   const hasPerito =
     isEspecialista ||
     abilities.some((a) => a.name.toLowerCase().includes('perito'));
-  const hasConhecimentoAplicado = abilities.some(
+  const hasConhecimentoAplicadoPower = abilities.some(
     (a) =>
       a.id === 'ord-pwr-esp-conhecimento-aplicado' ||
       a.name.toLowerCase().includes('conhecimento aplicado')
   );
+  // Bibliotecário 10% (Conhecimento Prático, SaH): mesmo efeito; com Conhecimento Aplicado o custo cai 1 PE
+  const hasConhecimentoPratico = abilities.some((a) => a.id === 'trail-bibliotecario-10');
+  const hasConhecimentoAplicado = hasConhecimentoAplicadoPower || hasConhecimentoPratico;
+  const intSwapCost = hasConhecimentoAplicadoPower && hasConhecimentoPratico ? 1 : 2;
+  const intSwapLabel = hasConhecimentoPratico && !hasConhecimentoAplicadoPower ? 'Conhecimento Prático' : 'Conhecimento Aplicado';
+  // Bibliotecário 40% (Leitor Contumaz): dado de Ler vira d8 e vale para qualquer perícia
+  const hasLeitorContumaz = abilities.some((a) => a.id === 'trail-bibliotecario-40');
   const hasPeritoExplosivos = abilities.some(
     (a) =>
       a.id === 'ord-pwr-esp-perito-explosivos' ||
@@ -298,6 +305,8 @@ export function OrdemSheet({
   const interludeMental = Math.max(0, Number(safeData.interludeBonusDice?.mental || 0));
   const [armInterludePhysical, setArmInterludePhysical] = useState(false);
   const [armInterludeMental, setArmInterludeMental] = useState(false);
+  // Leitor Contumaz (Bibliotecário 40%, SaH): +1 dado no bônus de Ler por 2 PE
+  const [armLeitorExtra, setArmLeitorExtra] = useState(false);
 
   function adjustInterludeDice(kind: 'physical' | 'mental', delta: number) {
     const nextPhys =
@@ -1449,9 +1458,23 @@ export function OrdemSheet({
                   }`}
                 >
                   <Icon name="library" /> Ler ({interludeMental}):{' '}
-                  {hasOriginPower('nerd_entusiasta') ? '+2d6 INT/PRE (O Inteligentão)' : '+1d6 INT/PRE'}
+                  {`+${hasOriginPower('nerd_entusiasta') ? 2 : 1}d${hasLeitorContumaz ? 8 : 6} ${hasLeitorContumaz ? 'qualquer perícia (Leitor Contumaz)' : 'INT/PRE'}${hasOriginPower('nerd_entusiasta') ? ' (O Inteligentão)' : ''}`}
                   {armInterludeMental ? ' ✓ ARMADO' : ''}
                 </button>
+                {hasLeitorContumaz && armInterludeMental && (
+                  <button
+                    type="button"
+                    onClick={() => setArmLeitorExtra((v) => !v)}
+                    title="Leitor Contumaz: aumenta o bônus de Ler em +1 dado"
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                      armLeitorExtra
+                        ? 'bg-purple-600 text-white border-purple-400 shadow'
+                        : 'bg-zinc-950 hover:bg-zinc-800 text-purple-300 border-purple-700/70'
+                    }`}
+                  >
+                    +1d8 (-2 PE){armLeitorExtra ? ' ✓' : ''}
+                  </button>
+                )}
                 {allowAttrEdit && (
                   <>
                     <button
@@ -1693,9 +1716,9 @@ export function OrdemSheet({
                         ? 'bg-cyan-600 text-white border-cyan-300 shadow'
                         : 'bg-zinc-900 hover:bg-cyan-950 text-cyan-200 border-cyan-800/70'
                     }`}
-                    title="Muda o atributo-base da próxima perícia (exceto Luta e Pontaria) para Intelecto por 2 PE"
+                    title={`Muda o atributo-base da próxima perícia (exceto Luta e Pontaria) para Intelecto por ${intSwapCost} PE`}
                   >
-                    <Icon name="brain" /> Conhecimento Aplicado (-2 PE → Usar INT [{effectiveInt}d20])
+                    <Icon name="brain" /> {intSwapLabel} (-{intSwapCost} PE → Usar INT [{effectiveInt}d20])
                   </button>
                 )}
               </div>
@@ -1844,7 +1867,7 @@ export function OrdemSheet({
             const isInterludeMentSkill =
               armInterludeMental &&
               interludeMental > 0 &&
-              ['int', 'pre'].includes(attrForSkill);
+              (hasLeitorContumaz || ['int', 'pre'].includes(attrForSkill));
             const lerDiceBonusSkillCount = hasOriginPower('nerd_entusiasta') ? 2 : 1;
             const rawDiceCount =
               baseAttr +
@@ -1909,8 +1932,8 @@ export function OrdemSheet({
 
               // 2. Conhecimento Aplicado
               if (canUseConhecimentoAplicadoHere) {
-                peToSpend += 2;
-                suffixParts.push('Conhecimento Aplicado (INT)');
+                peToSpend += intSwapCost;
+                suffixParts.push(`${intSwapLabel} (INT)`);
               }
 
               // 2b. Intuição Paranormal (Ocultista)
@@ -2013,11 +2036,15 @@ export function OrdemSheet({
                 adjustInterludeDice('physical', -1);
                 setArmInterludePhysical(false);
               } else if (isInterludeMentSkill) {
-                suffixParts.push(`Ler +${lerDiceBonusSkillCount}d6`);
+                const leitorExtra =
+                  hasLeitorContumaz && armLeitorExtra && (!onSpendResource || onSpendResource(2)) ? 1 : 0;
+                if (armLeitorExtra) setArmLeitorExtra(false);
+                const lerCount = lerDiceBonusSkillCount + leitorExtra;
+                suffixParts.push(`Ler +${lerCount}d${hasLeitorContumaz ? 8 : 6}${leitorExtra ? ' (Leitor Contumaz -2 PE)' : ''}`);
                 extraDiceForSkill = [
                   {
-                    count: lerDiceBonusSkillCount,
-                    sides: 6,
+                    count: lerCount,
+                    sides: hasLeitorContumaz ? 8 : 6,
                     label:
                       hasOriginPower('nerd_entusiasta')
                         ? 'Ler (O Inteligentão)'
