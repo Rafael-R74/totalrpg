@@ -254,7 +254,8 @@ function MonstruosoControl(p: SahPowerProps & { onHealPv?: (amount: number, reas
   const update = (patch: Partial<typeof ab>) =>
     p.onUpdateAbilities(p.abilities.map((a) => (a.id === ab.id ? { ...a, ...patch } : a)));
 
-  if (!el || (p.isEditMode && !permanent)) {
+  // Escolha permanente: o seletor só aparece para fichas antigas que ainda não têm elemento
+  if (!el) {
     return (
       <label className="flex items-center gap-1.5 text-xs text-zinc-300">
         Elemento:

@@ -92,6 +92,31 @@ import { DyingTracker } from '../ui/DyingTracker';
 import { DeathModal } from '../ui/DeathModal';
 import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilterBar';
+
+type OrdemTrailDef = (typeof ORDEM_TRAILS)[number];
+
+/**
+ * Monta a habilidade de um poder de trilha. Se o personagem já tinha esse poder,
+ * preserva o estado salvo nele (ex.: elemento do Monstruoso, toggles) em vez de recriá-lo do zero.
+ */
+function buildTrailAbility(
+  trail: OrdemTrailDef,
+  tp: OrdemTrailDef['powers'][number],
+  previous?: CharacterAbility
+): CharacterAbility {
+  const defaultActive = tp.cost === 0 || (tp.modifiers || []).length > 0;
+  return {
+    ...(previous || {}),
+    id: `trail-${trail.id}-${tp.nex}`,
+    name: `Trilha ${trail.name} (${tp.nex}%): ${tp.name}`,
+    category: 'classe',
+    cost: tp.cost,
+    description: tp.description,
+    isActive: defaultActive || Boolean(previous?.isActive),
+    modifiers: tp.modifiers || [],
+  };
+}
+
 interface SheetContainerProps {
   characterId: string;
   currentUserId: string;
@@ -403,6 +428,7 @@ export function SheetContainer({
   const [evoSourceFilter, setEvoSourceFilter] = useState<string[]>([]);
   const [evoTrailBook, setEvoTrailBook] = useState<string>('ordem-base');
   const [evoTrailId, setEvoTrailId] = useState<string>('');
+  const [evoMonstruosoElement, setEvoMonstruosoElement] = useState<string>('');
   const [evoChoiceMode, setEvoChoiceMode] = useState<'class_power' | 'transcend' | 'versatility'>('class_power');
   const [evoSelectedPowerId, setEvoSelectedPowerId] = useState<string>('');
   const [evoSkillTrainingPowerIds, setEvoSkillTrainingPowerIds] = useState<string[]>([]);
@@ -2693,15 +2719,9 @@ export function SheetContainer({
     );
     const trailPowersToAdd: CharacterAbility[] = trail.powers
       .filter((tp) => targetNex >= tp.nex)
-      .map((tp) => ({
-        id: `trail-${trail.id}-${tp.nex}`,
-        name: `Trilha ${trail.name} (${tp.nex}%): ${tp.name}`,
-        category: 'classe',
-        cost: tp.cost,
-        description: tp.description,
-        isActive: tp.cost === 0 || (tp.modifiers || []).length > 0,
-        modifiers: tp.modifiers || [],
-      }));
+      .map((tp) =>
+        buildTrailAbility(trail, tp, characterAbilities.find((a) => a.id === `trail-${trail.id}-${tp.nex}`))
+      );
 
     const nextAbilities = [...filteredExisting, ...trailPowersToAdd];
     setCharacter((prev) => {
@@ -3127,6 +3147,7 @@ export function SheetContainer({
     if (!character || character.system !== 'ordem-paranormal') return;
     setEvoSourceFilter([]);
     setEvoTrailId(rawSheet.trail || '');
+    setEvoMonstruosoElement('');
     // Possuído (SaH, 10%): todo novo poder de ocultista vira Transcender
     setEvoChoiceMode(rawSheet.trail === 'possuido' ? 'transcend' : 'class_power');
     setEvoSelectedPowerId('');
@@ -3163,6 +3184,14 @@ export function SheetContainer({
     const activeTrail = evoTrailId || rawSheet.trail || '';
     if (!rawSheet.trail && nextNexVal >= 10 && rawSheet.characterClass !== 'mundano' && !activeTrail) {
       missing.push('Escolher sua Trilha de classe');
+    }
+    if (
+      activeTrail === 'monstruoso' &&
+      nextNexVal >= 10 &&
+      !characterAbilities.find((a) => a.id === 'trail-monstruoso-10')?.chosenElement &&
+      !evoMonstruosoElement
+    ) {
+      missing.push('Escolher o elemento do Monstruoso');
     }
 
     if (milestoneObj?.grantsClassPower || milestoneObj?.grantsVersatility) {
@@ -3363,20 +3392,19 @@ export function SheetContainer({
     if (chosenTrailId && nextNex >= 10) {
       const trail = ORDEM_TRAILS.find((t) => t.id === chosenTrailId);
       if (trail) {
+        const previousTrailAbilities = nextAbilities;
         nextAbilities = nextAbilities.filter(
           (ab) => !ab.id.startsWith('trail-') && !ab.name.startsWith('Trilha ')
         );
         for (const tp of trail.powers) {
           if (nextNex >= tp.nex) {
-            nextAbilities.push({
-              id: `trail-${trail.id}-${tp.nex}`,
-              name: `Trilha ${trail.name} (${tp.nex}%): ${tp.name}`,
-              category: 'classe',
-              cost: tp.cost,
-              description: tp.description,
-              isActive: tp.cost === 0 || (tp.modifiers || []).length > 0,
-              modifiers: tp.modifiers || [],
-            });
+            const id = `trail-${trail.id}-${tp.nex}`;
+            const ability = buildTrailAbility(trail, tp, previousTrailAbilities.find((a) => a.id === id));
+            // Monstruoso (SaH): elemento escolhido junto com a trilha; depois fica fixo
+            if (id === 'trail-monstruoso-10' && !ability.chosenElement && evoMonstruosoElement) {
+              ability.chosenElement = evoMonstruosoElement;
+            }
+            nextAbilities.push(ability);
           }
         }
         if (
@@ -5505,6 +5533,31 @@ export function SheetContainer({
                             </button>
                           );
                         })}
+                      </div>
+                    </div>
+                  )}
+
+                {/* Monstruoso (SaH): elemento escolhido junto com a trilha; fica fixo depois */}
+                {activeTrailId === 'monstruoso' &&
+                  nextNex >= 10 &&
+                  !characterAbilities.find((a) => a.id === 'trail-monstruoso-10')?.chosenElement && (
+                    <div className="p-3 rounded-xl border border-red-800/60 bg-red-950/20 space-y-2">
+                      <p className="text-xs text-zinc-300">
+                        <Icon name="warning" /> Monstruoso: escolha o elemento da sua maldição (define RD, penalidades e a afinidade). Essa escolha é permanente. Em NEX 75% o personagem é banido pela Ordem.
+                      </p>
+                      <div role="radiogroup" aria-label="Elemento do Monstruoso" className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {['Sangue', 'Morte', 'Conhecimento', 'Energia'].map((el) => (
+                          <button
+                            key={el}
+                            type="button"
+                            role="radio"
+                            aria-checked={evoMonstruosoElement === el}
+                            onClick={() => setEvoMonstruosoElement(el)}
+                            className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 cursor-pointer ${elementChoiceClasses(el, evoMonstruosoElement === el)}`}
+                          >
+                            <Icon name={el.toLowerCase()} size={15} /> {el}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
