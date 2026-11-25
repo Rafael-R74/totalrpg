@@ -43,6 +43,12 @@ import {
   SessionActivityLogEntry,
   CharacterLivePatch,
   resolveTempVitalMax,
+  applyZeroHpRule,
+  currentPvOf,
+  dyingTurnsOf,
+  deathAtOf,
+  hasDyingCondition,
+  DYING_TURNS_TO_DIE,
 } from '@totalrpg/shared';
 import {
   FullCharacterResponse,
@@ -61,6 +67,8 @@ import { TempVitalBar } from '../TempVitalBar';
 import { useTheme } from '../../theme/themeEngine';
 
 import { Icon, stripEmoji } from '../ui/Icon';
+import { DyingTracker } from '../ui/DyingTracker';
+import { DeathModal } from '../ui/DeathModal';
 import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 interface SheetContainerProps {
   characterId: string;
@@ -211,7 +219,36 @@ export function SheetContainer({
       sceneEffects: Array.isArray(raw.sceneEffects) ? raw.sceneEffects : [],
       pendingInterlude: raw.pendingInterlude ?? null,
       inventory: charState.inventory,
+      dyingTurns: dyingTurnsOf(raw),
+      deathAt: deathAtOf(raw),
     });
+  }
+
+  /**
+   * Regra dos 0 PV (Ordem, p. 311): caiu a 0 → morrendo + inconsciente;
+   * curou para 1+ → sai inconsciente. Só na passagem, então o mestre pode retirar
+   * uma condição (efeito que diz o contrário) sem ela voltar sozinha.
+   */
+  function withZeroHpRule(prevChar: FullCharacterResponse, nextChar: FullCharacterResponse): FullCharacterResponse {
+    const prevPv = currentPvOf(prevChar.vitals);
+    const nextPv = currentPvOf(nextChar.vitals);
+    const nextRaw = (nextChar.sheetData || {}) as Record<string, any>;
+    const { conditions, transition } = applyZeroHpRule(nextChar.system, prevPv, nextPv, nextRaw.conditions);
+    if (!transition || conditions === nextRaw.conditions) return nextChar;
+    if (transition === 'fell') {
+      logSheetActivity({
+        category: 'condition',
+        summary: 'Caiu a 0 PV: ficou morrendo e inconsciente',
+        tone: 'danger',
+      });
+    } else {
+      logSheetActivity({
+        category: 'condition',
+        summary: 'Recuperou PV e deixou de estar inconsciente',
+        tone: 'success',
+      });
+    }
+    return { ...nextChar, sheetData: { ...nextRaw, conditions } as any };
   }
 
   function logSheetActivity(entry: {
@@ -270,7 +307,9 @@ export function SheetContainer({
     const base = latestCharacterRef.current;
     if (!base) return null;
     const rawNext = updater(base);
-    const nextChar = withNormalizedTempMaxes(base, rawNext);
+    const normalized = withNormalizedTempMaxes(base, rawNext);
+    // Em modo de edição (ajuste manual da ficha) a regra dos 0 PV não dispara.
+    const nextChar = shouldAutoSave ? withZeroHpRule(base, normalized) : normalized;
     latestCharacterRef.current = nextChar;
     localMutationVersionRef.current += 1;
     setCharacter(nextChar);
@@ -289,6 +328,8 @@ export function SheetContainer({
   }
 
   const [selectedConditionModal, setSelectedConditionModal] = useState<ActiveCondition | null>(null);
+  // Aviso de morte já fechado nesta sessão (também guardado por dispositivo no localStorage)
+  const [deathSeenAt, setDeathSeenAt] = useState<number | null>(null);
   const [showMasterConditionPicker, setShowMasterConditionPicker] = useState(false);
   const [showInitiativePrompt, setShowInitiativePrompt] = useState(false);
   const [isPortraitZoomOpen, setIsPortraitZoomOpen] = useState(false);
@@ -613,6 +654,8 @@ export function SheetContainer({
         if (patch.conditions !== undefined) nextRaw.conditions = patch.conditions;
         if (patch.sceneEffects !== undefined) nextRaw.sceneEffects = patch.sceneEffects;
         if (patch.pendingInterlude !== undefined) nextRaw.pendingInterlude = patch.pendingInterlude;
+        if (patch.dyingTurns !== undefined) nextRaw.dyingTurns = patch.dyingTurns;
+        if (patch.deathAt !== undefined) nextRaw.deathAt = patch.deathAt;
 
         const updated: FullCharacterResponse = {
           ...prev,
@@ -873,6 +916,22 @@ export function SheetContainer({
   const activeSceneEffects: SceneEffect[] = Array.isArray(rawSheet.sceneEffects)
     ? rawSheet.sceneEffects
     : [];
+
+  // Morrendo (Ordem, p. 311): marcas aparecem em combate (ou se já houver turnos contados na cena)
+  const deathAt = character.system === 'ordem-paranormal' ? deathAtOf(rawSheet) : null;
+  const dyingTurns = dyingTurnsOf(rawSheet);
+  const isInCombat = Boolean(liveCombatState?.combatants?.some((c: any) => c.characterId === character.id));
+  const showDyingTracker =
+    character.system === 'ordem-paranormal' &&
+    (Boolean(deathAt) || (hasDyingCondition(activeConditions) && (isInCombat || dyingTurns > 0)));
+  const deathSeenKey = `totalrpg_death_seen_${character.id}`;
+  const showDeathModal =
+    Boolean(deathAt) && deathAt !== deathSeenAt && localStorage.getItem(deathSeenKey) !== String(deathAt);
+  function closeDeathModal() {
+    if (!deathAt) return;
+    localStorage.setItem(deathSeenKey, String(deathAt));
+    setDeathSeenAt(deathAt);
+  }
   const tempHp = Number(rawSheet.tempHp || 0);
   const tempPe = Number(rawSheet.tempPe || 0);
 
@@ -3184,6 +3243,14 @@ export function SheetContainer({
 
   return (
     <div className="flex flex-col gap-6">
+      {showDeathModal && (
+        <DeathModal
+          name={character.name}
+          portraitUrl={character.portraitUrl}
+          detail="Iniciou o terceiro turno morrendo nesta cena."
+          onClose={closeDeathModal}
+        />
+      )}
       {/* Faixa fixa de vitais (celular): sempre à vista enquanto o jogador rola a ficha */}
       <div className="md:hidden sticky top-14 z-30 -mx-[var(--trpg-gutter)] px-[var(--trpg-gutter)] py-2 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 flex gap-3">
         {character.vitals.map((bar) => {
@@ -3582,6 +3649,8 @@ export function SheetContainer({
                       <Icon name="warning" size={13} /> {cond.name}
                     </button>
                   ))}
+
+                  {showDyingTracker && <DyingTracker turns={dyingTurns} dead={Boolean(deathAt)} />}
 
                   {canMasterControl && (
                     <button

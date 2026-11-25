@@ -17,6 +17,13 @@ import {
   SessionActivityLogEntry,
   CharacterLivePatch,
   resolveTempVitalMax,
+  applyZeroHpRule,
+  currentPvOf,
+  hasDyingCondition,
+  isDyingCondition,
+  dyingTurnsOf,
+  deathAtOf,
+  DYING_TURNS_TO_DIE,
 } from '@totalrpg/shared';
 import {
   DMScreenCampaignData,
@@ -32,6 +39,7 @@ import { BestiaryManager } from './dm/BestiaryManager';
 import { LootAndMerchantsManager, CampaignStoredItem } from './dm/LootAndMerchantsManager';
 import { NotesAndPostItsManager, FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
 import { MonitorDirectorPanel } from './dm/MonitorPanel';
+import { DyingTracker } from './ui/DyingTracker';
 import { TempVitalBar } from './TempVitalBar';
 import { useTheme } from '../theme/themeEngine';
 
@@ -409,6 +417,8 @@ export function DMScreen({
           if (patch.conditions !== undefined) nextRaw.conditions = patch.conditions;
           if (patch.sceneEffects !== undefined) nextRaw.sceneEffects = patch.sceneEffects;
           if (patch.pendingInterlude !== undefined) nextRaw.pendingInterlude = patch.pendingInterlude;
+        if (patch.dyingTurns !== undefined) nextRaw.dyingTurns = patch.dyingTurns;
+        if (patch.deathAt !== undefined) nextRaw.deathAt = patch.deathAt;
           return {
             ...ch,
             vitals: patch.vitals ?? ch.vitals,
@@ -852,14 +862,107 @@ async function handleDeliverItemToCharacter(
     });
   }
 
+  /**
+   * Morrendo (Ordem, p. 311): altera contador/morte/condições de um personagem,
+   * mostra na hora (escudo, ficha, TV) e salva.
+   */
+  async function updateDyingState(
+    charId: string,
+    next: { dyingTurns?: number; deathAt?: number | null; conditions?: ActiveCondition[] }
+  ) {
+    const current = latestCampaignRef.current?.characters.find((c) => c.id === charId);
+    if (!current) return;
+    const raw = (current.sheetData || {}) as Record<string, any>;
+    const nextSheetData: Record<string, any> = { ...raw };
+    if (next.dyingTurns !== undefined) nextSheetData.dyingTurns = next.dyingTurns;
+    if (next.deathAt !== undefined) nextSheetData.deathAt = next.deathAt;
+    if (next.conditions !== undefined) nextSheetData.conditions = next.conditions;
+
+    const prevCampaign = latestCampaignRef.current;
+    if (prevCampaign) {
+      const nextCampaign: DMScreenCampaignData = {
+        ...prevCampaign,
+        characters: prevCampaign.characters.map((c) =>
+          c.id === charId ? { ...c, sheetData: nextSheetData as any } : c
+        ),
+      };
+      latestCampaignRef.current = nextCampaign;
+      setCampaign(nextCampaign);
+    }
+    onBroadcastCharacterPatch?.({
+      characterId: charId,
+      ...(next.dyingTurns !== undefined ? { dyingTurns: next.dyingTurns } : {}),
+      ...(next.deathAt !== undefined ? { deathAt: next.deathAt } : {}),
+      ...(next.conditions !== undefined ? { conditions: next.conditions } : {}),
+    });
+    try {
+      await updateCharacter(charId, { sheetData: nextSheetData as any });
+      onBroadcastCharacterSync(charId);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  /** Um personagem começou o turno: se está morrendo, preenche mais uma marca (na 3ª, morre). */
+  function registerTurnStart(combatant: CombatantEntry | undefined) {
+    if (!combatant || combatant.isNPC || !combatant.characterId) return;
+    const char = latestCampaignRef.current?.characters.find((c) => c.id === combatant.characterId);
+    if (!char || char.system !== 'ordem-paranormal') return;
+    const raw = (char.sheetData || {}) as Record<string, any>;
+    if (!hasDyingCondition(raw.conditions) || deathAtOf(raw)) return;
+    const turns = Math.min(DYING_TURNS_TO_DIE, dyingTurnsOf(raw) + 1);
+    const dies = turns >= DYING_TURNS_TO_DIE;
+    updateDyingState(char.id, { dyingTurns: turns, ...(dies ? { deathAt: Date.now() } : {}) });
+    onLogActivity?.({
+      characterId: char.id,
+      characterName: char.name,
+      actorLabel: 'Mestre',
+      category: 'condition',
+      summary: dies
+        ? 'Morreu: iniciou o terceiro turno morrendo nesta cena'
+        : `Iniciou o turno morrendo (${turns} de ${DYING_TURNS_TO_DIE})`,
+      tone: 'danger',
+    });
+  }
+
+  /** Mestre estabiliza (Medicina DT 20 ou efeito): retira morrendo. O contador da cena fica. */
+  function handleStabilizeCharacter(char: DMScreenCharacter) {
+    const raw = (char.sheetData || {}) as Record<string, any>;
+    const conds: ActiveCondition[] = Array.isArray(raw.conditions) ? raw.conditions : [];
+    updateDyingState(char.id, { conditions: conds.filter((c) => !isDyingCondition(c)) });
+    onLogActivity?.({
+      characterId: char.id,
+      characterName: char.name,
+      actorLabel: 'Mestre',
+      category: 'condition',
+      summary: 'Foi estabilizado (deixou de estar morrendo)',
+      tone: 'success',
+    });
+  }
+
+  /** Desfaz uma morte marcada por engano: volta para 2 de 3 e continua morrendo. */
+  function handleUndoDeath(char: DMScreenCharacter) {
+    updateDyingState(char.id, { deathAt: null, dyingTurns: DYING_TURNS_TO_DIE - 1 });
+    onLogActivity?.({
+      characterId: char.id,
+      characterName: char.name,
+      actorLabel: 'Mestre',
+      category: 'condition',
+      summary: 'Morte desfeita pelo mestre',
+      tone: 'warning',
+    });
+  }
+
   function handleNextTurn() {
     if (combatants.length === 0) return;
-    if (currentTurnIndex + 1 >= combatants.length) {
+    const nextIndex = currentTurnIndex + 1 >= combatants.length ? 0 : currentTurnIndex + 1;
+    if (nextIndex === 0) {
       setCurrentTurnIndex(0);
       setRoundNumber((r) => r + 1);
     } else {
-      setCurrentTurnIndex((i) => i + 1);
+      setCurrentTurnIndex(nextIndex);
     }
+    registerTurnStart(combatants[nextIndex]);
   }
 
   function handlePrevTurn() {
@@ -963,7 +1066,7 @@ async function handleDeliverItemToCharacter(
       return { ...bar, current: nextCurrent };
     });
 
-    const nextSheetData =
+    const baseSheetData =
       tempHpChanged || tempPeChanged
         ? {
             ...rawSheet,
@@ -973,6 +1076,28 @@ async function handleDeliverItemToCharacter(
             tempPeMax: nextTempPeMax,
           }
         : rawSheet;
+
+    // Regra dos 0 PV (Ordem, p. 311): caiu a 0 → morrendo + inconsciente; curou → sai inconsciente.
+    const zeroHp = applyZeroHpRule(
+      targetChar.system,
+      currentPvOf(targetChar.vitals),
+      currentPvOf(updatedVitals),
+      conditions
+    );
+    const nextSheetData =
+      zeroHp.transition && zeroHp.conditions !== conditions
+        ? { ...baseSheetData, conditions: zeroHp.conditions }
+        : baseSheetData;
+    if (zeroHp.transition === 'fell') {
+      onLogActivity?.({
+        characterId: targetChar.id,
+        characterName: targetChar.name,
+        actorLabel: 'Mestre',
+        category: 'condition',
+        summary: 'Caiu a 0 PV: ficou morrendo e inconsciente',
+        tone: 'danger',
+      });
+    }
 
     if (activeCampaign) {
       const nextCampaign: DMScreenCampaignData = {
@@ -995,6 +1120,7 @@ async function handleDeliverItemToCharacter(
       tempHpMax: nextTempHpMax,
       tempPe: nextTempPe,
       tempPeMax: nextTempPeMax,
+      ...(nextSheetData !== baseSheetData ? { conditions: zeroHp.conditions } : {}),
     });
 
     const nextVer = (charMutationVersionRef.current[targetChar.id] || 0) + 1;
@@ -1044,6 +1170,8 @@ async function handleDeliverItemToCharacter(
           tempPe: 0,
           tempPeMax: 0,
           sceneEffects: [],
+          // Morrendo conta turnos "na mesma cena": cena nova, contador zerado.
+          dyingTurns: 0,
         },
       };
     });
@@ -1057,6 +1185,7 @@ async function handleDeliverItemToCharacter(
         tempPe: 0,
         tempPeMax: 0,
         sceneEffects: [],
+        dyingTurns: 0,
       }))
     );
     setSceneEndToast('Cena encerrada! Efeitos de cena e quantias temporárias foram encerrados.');
@@ -1984,6 +2113,40 @@ async function handleDeliverItemToCharacter(
                             + Condição
                           </button>
                         </div>
+
+                        {char.system === 'ordem-paranormal' &&
+                          (hasDyingCondition(conditions) || deathAtOf(raw)) && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <DyingTracker
+                                turns={dyingTurnsOf(raw)}
+                                dead={Boolean(deathAtOf(raw))}
+                                onSetTurns={(n) => {
+                                  updateDyingState(char.id, {
+                                    dyingTurns: n,
+                                    ...(n >= DYING_TURNS_TO_DIE ? { deathAt: Date.now() } : {}),
+                                  });
+                                }}
+                              />
+                              {deathAtOf(raw) ? (
+                                <button
+                                  type="button"
+                                  className="trpg-btn-quiet trpg-btn-sm"
+                                  onClick={() => handleUndoDeath(char)}
+                                >
+                                  <Icon name="undo" size={14} /> Desfazer morte
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="trpg-btn-secondary trpg-btn-sm"
+                                  onClick={() => handleStabilizeCharacter(char)}
+                                  title="Medicina DT 20 (+5 por vez já estabilizado na cena) ou efeito específico"
+                                >
+                                  <Icon name="heart-pulse" size={14} /> Estabilizar
+                                </button>
+                              )}
+                            </div>
+                          )}
 
                         {conditionPickerCharId === char.id && (
                           <div className="bg-zinc-950 border border-red-900/60 p-2.5 rounded-xl flex flex-wrap gap-1.5 mt-1">

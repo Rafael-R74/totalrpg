@@ -1,5 +1,6 @@
 import { CompendiumEntryData } from './index';
 import { buildOrdemRitualCompendiumEntries } from './ordemRituals';
+import { DYING_CONDITION_DESCRIPTION, UNCONSCIOUS_CONDITION_DESCRIPTION } from './dyingRules';
 
 export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   // ==========================================================================
@@ -2154,9 +2155,20 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     system: 'ordem-paranormal',
     category: 'condition',
     name: 'Morrendo',
-    description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
+    description: DYING_CONDITION_DESCRIPTION,
     cost: 0,
-    modifiers: [{ id: 'c-morr', targetType: 'defense', targetKey: 'defense', value: -10 }],
+    // Sem penalidade própria: o indefeso vem da condição inconsciente (p. 311).
+    modifiers: [],
+    metadata: {},
+  },
+  {
+    id: 'ord-cond-inconsciente',
+    system: 'ordem-paranormal',
+    category: 'condition',
+    name: 'Inconsciente',
+    description: UNCONSCIOUS_CONDITION_DESCRIPTION,
+    cost: 0,
+    modifiers: [{ id: 'c-incons', targetType: 'defense', targetKey: 'defense', value: -10 }],
     metadata: {},
   },
   {

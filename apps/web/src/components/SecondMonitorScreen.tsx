@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, type RefObject } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
   DiceRollResult,
@@ -10,6 +10,10 @@ import {
   SceneEffect,
   CharacterLivePatch,
   calculateActiveBonuses,
+  hasDyingCondition,
+  isDyingCondition,
+  dyingTurnsOf,
+  deathAtOf,
   ServerToClientEvents,
   ClientToServerEvents,
 } from '@totalrpg/shared';
@@ -21,6 +25,8 @@ import { useTheme, type PaletteId } from '../theme/themeEngine';
 
 import { Icon, stripEmoji } from './ui/Icon';
 import { DiceStage } from './dice/DiceStage';
+import { DyingTracker } from './ui/DyingTracker';
+import { DeathModal } from './ui/DeathModal';
 import { BACKEND_ORIGIN } from '../config';
 import './monitor/monitor.css';
 
@@ -225,6 +231,10 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
   const fetchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const partyGridRef = useRef<HTMLDivElement | null>(null);
+  // Aviso de morte na TV: só para mortes que acontecem com a TV aberta (não reabre ao recarregar)
+  const mountedAtRef = useRef(Date.now());
+  const shownDeathsRef = useRef<Set<string>>(new Set());
+  const [deathQueue, setDeathQueue] = useState<Array<{ key: string; name: string; portraitUrl?: string | null }>>([]);
   const threatsGridRef = useRef<HTMLDivElement | null>(null);
   const shopGridRef = useRef<HTMLDivElement | null>(null);
   const railTrackRef = useRef<HTMLDivElement | null>(null);
@@ -348,6 +358,8 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
         if (patch.conditions !== undefined) nextRaw.conditions = patch.conditions;
         if (patch.sceneEffects !== undefined) nextRaw.sceneEffects = patch.sceneEffects;
         if (patch.pendingInterlude !== undefined) nextRaw.pendingInterlude = patch.pendingInterlude;
+        if (patch.dyingTurns !== undefined) nextRaw.dyingTurns = patch.dyingTurns;
+        if (patch.deathAt !== undefined) nextRaw.deathAt = patch.deathAt;
 
         return {
           ...ch,
@@ -579,6 +591,21 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
     stageMode
   );
 
+  useEffect(() => {
+    if (!campaign) return;
+    const fresh: Array<{ key: string; name: string; portraitUrl?: string | null }> = [];
+    for (const ch of campaign.characters) {
+      const at = deathAtOf(ch.sheetData);
+      if (!at) continue;
+      const key = `${ch.id}:${at}`;
+      if (shownDeathsRef.current.has(key)) continue;
+      shownDeathsRef.current.add(key);
+      if (at >= mountedAtRef.current - 5000) fresh.push({ key, name: ch.name, portraitUrl: ch.portraitUrl });
+    }
+    if (fresh.length) setDeathQueue((q) => [...q, ...fresh]);
+  }, [campaign]);
+  const closeDeath = useCallback(() => setDeathQueue((q) => q.slice(1)), []);
+
   // A faixa de turnos acompanha quem está agindo.
   useEffect(() => {
     const track = railTrackRef.current;
@@ -738,6 +765,17 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
         </div>
       )}
 
+      {deathQueue[0] && (
+        <DeathModal
+          key={deathQueue[0].key}
+          name={deathQueue[0].name}
+          portraitUrl={deathQueue[0].portraitUrl}
+          detail="Iniciou o terceiro turno morrendo nesta cena."
+          onClose={closeDeath}
+          autoCloseMs={9000}
+        />
+      )}
+
       {/* Post-its marcados para o 2º monitor */}
       <FloatingPostItsLayer
         postIts={monitorPostIts}
@@ -893,6 +931,7 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
                 <PartyCard
                   key={char.id}
                   char={char}
+                  inCombat={showTurnRail && combatants.some((c) => c.characterId === char.id)}
                   isTurn={Boolean(activeTurnCombatant && activeTurnCombatant.characterId === char.id)}
                   compact={partyDensity >= 4}
                 />
@@ -1030,7 +1069,17 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
   );
 }
 
-function PartyCard({ char, isTurn, compact }: { char: DMScreenCharacter; isTurn: boolean; compact: boolean }) {
+function PartyCard({
+  char,
+  isTurn,
+  compact,
+  inCombat,
+}: {
+  char: DMScreenCharacter;
+  isTurn: boolean;
+  compact: boolean;
+  inCombat: boolean;
+}) {
   const raw = (char.sheetData || {}) as Record<string, any>;
   const abilities: CharacterAbility[] = Array.isArray(raw.abilities) ? raw.abilities : [];
   const conditions: ActiveCondition[] = Array.isArray(raw.conditions) ? raw.conditions : [];
@@ -1048,8 +1097,15 @@ function PartyCard({ char, isTurn, compact }: { char: DMScreenCharacter; isTurn:
   const pvBar = char.vitals.find((b) => b.id === 'pv');
   const pvMax = pvBar ? Math.max(1, pvBar.max + (bonuses.vitalMax['pv'] || 0)) : 1;
   const pvCurrent = pvBar ? pvBar.current : 1;
-  const isDying = pvCurrent <= 0;
-  const isBloodied = !isDying && pvCurrent <= pvMax / 2;
+  // Ordem: morrendo é a condição (p. 311), que o mestre pode retirar; outros sistemas: 0 PV.
+  const isOrdem = char.system === 'ordem-paranormal';
+  const deathAt = isOrdem ? deathAtOf(raw) : null;
+  const isDying = !deathAt && (isOrdem ? hasDyingCondition(conditions) : pvCurrent <= 0);
+  const dyingTurns = dyingTurnsOf(raw);
+  const showTracker = isOrdem && (Boolean(deathAt) || (isDying && (inCombat || dyingTurns > 0)));
+  const isBloodied = !isDying && !deathAt && pvCurrent > 0 && pvCurrent <= pvMax / 2;
+  // Com as marcas na tela, a condição "Morrendo" não precisa repetir como etiqueta.
+  const chipConditions = showTracker ? conditions.filter((c) => !isDyingCondition(c)) : conditions;
 
   const meta =
     char.system === 'ordem-paranormal'
@@ -1058,7 +1114,9 @@ function PartyCard({ char, isTurn, compact }: { char: DMScreenCharacter; isTurn:
 
   return (
     <article
-      className={`mon-card ${isTurn ? 'is-turn' : ''} ${isDying ? 'is-dying' : isBloodied ? 'is-bloodied' : ''}`}
+      className={`mon-card ${isTurn ? 'is-turn' : ''} ${
+        deathAt ? 'is-dead' : isDying ? 'is-dying' : isBloodied ? 'is-bloodied' : ''
+      }`}
     >
       <div className="mon-card-id">
         <MonitorPortrait url={char.portraitUrl} name={char.name} />
@@ -1105,15 +1163,17 @@ function PartyCard({ char, isTurn, compact }: { char: DMScreenCharacter; isTurn:
         })}
       </div>
 
-      {(isDying || isBloodied || conditions.length > 0) && (
+      {showTracker && <DyingTracker turns={dyingTurns} dead={Boolean(deathAt)} className="mon-dying" />}
+
+      {((isDying && !showTracker) || isBloodied || chipConditions.length > 0) && (
         <div className="mon-chips">
-          {isDying && (
+          {isDying && !showTracker && (
             <span className="mon-chip is-critical">
               <Icon name="skull" /> Morrendo
             </span>
           )}
           {isBloodied && <span className="mon-chip is-danger">Machucado</span>}
-          {conditions.map((cond) => (
+          {chipConditions.map((cond) => (
             <span key={cond.id} className="mon-chip" title={cond.name}>
               {cond.name}
             </span>

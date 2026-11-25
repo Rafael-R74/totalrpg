@@ -1315,3 +1315,175 @@ html[data-motion="reduced"] *::after {
   78% { opacity: 1; transform: translateY(0) rotate(-4deg); }
   100% { opacity: 0; transform: translateY(0.15em) rotate(-4deg); }
 }
+
+/* ----------------------------------------------------------------------------
+   Morrendo: três marcas (turnos iniciados morrendo na cena) e aviso de morte
+   ---------------------------------------------------------------------------- */
+.trpg-dying {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.35em 0.7em;
+  border-radius: var(--trpg-r-md);
+  background: color-mix(in oklab, var(--trpg-pv) 16%, var(--trpg-bg));
+  border: 1px solid color-mix(in oklab, var(--trpg-pv) 60%, transparent);
+  color: var(--trpg-ink);
+  max-width: 100%;
+}
+.trpg-dying-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font-weight: 700;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.trpg-dying-pips {
+  display: inline-flex;
+  gap: 0.35em;
+}
+.trpg-dying-pip {
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--trpg-pv) 75%, var(--trpg-ink));
+  background: transparent;
+  padding: 0;
+  transition: background-color 300ms var(--trpg-ease), transform 300ms var(--trpg-ease-out-back);
+}
+.trpg-dying-pip.is-filled {
+  background: var(--trpg-pv);
+  border-color: var(--trpg-pv);
+  animation: trpg-dying-fill 520ms var(--trpg-ease-out-back) both;
+}
+.trpg-dying-pip.is-button {
+  cursor: pointer;
+}
+.trpg-dying-pip.is-button:hover {
+  transform: scale(1.15);
+}
+.trpg-dying-pip.is-button:focus-visible {
+  outline: 2px solid var(--trpg-ink);
+  outline-offset: 2px;
+}
+.trpg-dying-count {
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  color: var(--trpg-ink-soft);
+}
+/* Última marca antes da morte: pulso lento para chamar atenção */
+.trpg-dying.is-last {
+  animation: trpg-dying-pulse 1.8s ease-in-out infinite;
+}
+.trpg-dying.is-dead {
+  background: var(--trpg-bg);
+  border-color: var(--trpg-border-strong);
+  color: var(--trpg-muted);
+}
+.trpg-dying.is-dead .trpg-dying-pip.is-filled {
+  background: var(--trpg-muted-dim);
+  border-color: var(--trpg-muted-dim);
+  animation: none;
+}
+@keyframes trpg-dying-fill {
+  from { transform: scale(1.6); box-shadow: 0 0 0 0.3em color-mix(in oklab, var(--trpg-pv) 45%, transparent); }
+  to { transform: scale(1); box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes trpg-dying-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 0.25em color-mix(in oklab, var(--trpg-pv) 35%, transparent); }
+}
+
+.trpg-death {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: radial-gradient(ellipse at center, rgb(20 4 4 / 0.92), rgb(0 0 0 / 0.98) 70%);
+  animation: trpg-death-fade 1.4s ease-out both;
+}
+.trpg-death-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5em;
+  max-width: 40rem;
+  font-size: clamp(1rem, 1.2vw + 0.6rem, 2rem);
+}
+.trpg-death-portrait {
+  width: 7em;
+  height: 7em;
+  border-radius: var(--trpg-r-xl);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #0c0c0d;
+  border: 1px solid #2a2a2d;
+  font-family: var(--trpg-font-display);
+  font-size: 1em;
+  color: #8a8a8f;
+  animation: trpg-death-portrait 2.4s ease-out both;
+}
+.trpg-death-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.trpg-death-portrait span {
+  font-size: 2.4em;
+}
+.trpg-death-line {
+  display: block;
+  width: 12em;
+  height: 2px;
+  margin-top: 0.8em;
+  background: linear-gradient(to right, transparent, #c42a24, transparent);
+  transform-origin: center;
+  animation: trpg-death-line 1.2s 0.6s ease-out both;
+}
+.trpg-death-name {
+  font-family: var(--trpg-font-display);
+  font-weight: var(--trpg-display-weight);
+  letter-spacing: var(--trpg-tracking-display);
+  font-size: 2.6em;
+  line-height: 1.05;
+  color: #f1ece2;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  animation: trpg-death-rise 1.2s 0.9s ease-out both;
+}
+.trpg-death-verdict {
+  font-family: var(--trpg-font-display);
+  font-size: 1.5em;
+  color: #d9423f;
+  animation: trpg-death-rise 1.2s 1.4s ease-out both;
+}
+.trpg-death-detail {
+  margin-top: 0.4em;
+  font-size: 0.85em;
+  color: #a3a9b2;
+  animation: trpg-death-rise 1s 1.9s ease-out both;
+}
+.trpg-death-close {
+  margin-top: 1.2em;
+  animation: trpg-death-rise 1s 2.3s ease-out both;
+}
+@keyframes trpg-death-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes trpg-death-portrait {
+  0% { filter: grayscale(0) brightness(1); transform: scale(1.04); }
+  100% { filter: grayscale(1) brightness(0.55) contrast(1.1); transform: scale(1); }
+}
+@keyframes trpg-death-line {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+@keyframes trpg-death-rise {
+  from { opacity: 0; transform: translateY(0.4em); }
+  to { opacity: 1; transform: none; }
+}

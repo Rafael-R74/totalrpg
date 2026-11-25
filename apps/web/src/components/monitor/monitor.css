@@ -996,3 +996,22 @@
   color: var(--trpg-muted);
   font-size: 0.8em;
 }
+
+/* Morrendo / morto no card da TV */
+.mon-card .mon-dying {
+  align-self: flex-start;
+  font-size: 1em;
+}
+.mon-card.is-dead {
+  border-color: var(--trpg-border-strong);
+  background: color-mix(in oklab, var(--trpg-bg) 80%, var(--trpg-surface));
+}
+.mon-card.is-dead .mon-portrait {
+  filter: grayscale(1) brightness(0.55);
+}
+.mon-card.is-dead .mon-card-name {
+  color: var(--trpg-muted);
+}
+.mon-card.is-dead .mon-vitals {
+  opacity: 0.45;
+}

@@ -4,6 +4,7 @@ export * from './wizardData';
 export * from './ordemEquipmentData';
 export * from './ordemRituals';
 export * from './ordemCompendiumData';
+export * from './dyingRules';
 export * from './characterBuilder';
 export * from './ordemBestiaryData';
 export * from './contentPack';
@@ -261,6 +262,10 @@ export interface CharacterLivePatch {
     grantedAt: number;
   } | null;
   inventory?: RPGItem[];
+  /** Turnos iniciados morrendo nesta cena (0–3) */
+  dyingTurns?: number;
+  /** Momento da morte (timestamp) ou null se vivo */
+  deathAt?: number | null;
   patchTimestamp: number;
 }
 
