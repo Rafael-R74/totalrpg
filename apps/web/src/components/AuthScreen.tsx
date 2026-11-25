@@ -1,28 +1,49 @@
-import React, { useState } from 'react';
-import { loginUser, registerUser, AuthResponse } from '../services/api';
+import React, { useEffect, useState } from 'react';
+import type { PublicPlatformStatus } from '@totalrpg/shared';
+import { loginUser, registerUser, fetchPlatformStatus, AuthResponse } from '../services/api';
 import { BrandMark, D20Mark } from './BrandMark';
 import { Icon } from './ui/Icon';
 
 interface AuthScreenProps {
   initialMode?: 'login' | 'register';
+  platformStatus?: PublicPlatformStatus | null;
   onBackToLanding?: () => void;
   onLoginSuccess: (authData: AuthResponse) => void;
 }
 
 export function AuthScreen({
   initialMode = 'login',
+  platformStatus: externalStatus,
   onBackToLanding,
   onLoginSuccess,
 }: AuthScreenProps) {
   const [isRegistering, setIsRegistering] = useState(initialMode === 'register');
+  const [status, setStatus] = useState<PublicPlatformStatus | null>(externalStatus || null);
 
   const [username, setUsername] = useState('');
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (externalStatus) {
+      setStatus(externalStatus);
+      return;
+    }
+    fetchPlatformStatus()
+      .then((res) => setStatus(res))
+      .catch(() => {});
+  }, [externalStatus]);
+
+  const isHardBlockedRegistration =
+    Boolean(status && !status.allowRegistration && !status.requireInviteCode);
+  const requiresInviteCode = Boolean(
+    status && !status.allowRegistration && status.requireInviteCode
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +52,7 @@ export function AuthScreen({
 
     try {
       const data = isRegistering
-        ? await registerUser(username.trim(), email.trim(), password)
+        ? await registerUser(username.trim(), email.trim(), password, inviteCode.trim())
         : await loginUser(emailOrUsername.trim(), password);
 
       localStorage.setItem('totalrpg_token', data.token);
@@ -68,78 +89,134 @@ export function AuthScreen({
               : 'Suas fichas, mesas e escudo do mestre continuam de onde você parou.'}
           </p>
 
+          {status?.maintenanceMode && (
+            <div className="mt-5 rounded-lg border border-amber-800/70 bg-amber-950/35 px-3.5 py-2.5 text-sm text-amber-200 flex gap-2">
+              <Icon name="wrench" size={16} className="mt-0.5 shrink-0 text-amber-400" />
+              <span>
+                {status.maintenanceMessage} (Apenas administradores podem entrar no momento.)
+              </span>
+            </div>
+          )}
+
+          {isRegistering && isHardBlockedRegistration && (
+            <div className="mt-5 rounded-lg border border-amber-800/70 bg-amber-950/35 px-3.5 py-3 text-sm text-amber-200 flex flex-col gap-2">
+              <div className="flex items-center gap-2 font-semibold">
+                <Icon name="lock" size={16} className="text-amber-400" />
+                Novos cadastros fechados
+              </div>
+              <p className="text-xs text-amber-200/85 leading-relaxed">
+                O administrador bloqueou temporariamente a criação de novas contas. Se você já possui uma conta, entre abaixo.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegistering(false);
+                  setErrorMessage('');
+                }}
+                className="trpg-btn-secondary trpg-btn-sm self-start mt-1"
+              >
+                Ir para Entrar
+              </button>
+            </div>
+          )}
+
           {errorMessage && (
-            <p role="alert" className="mt-6 rounded-lg border border-red-800/70 bg-red-950/40 px-3.5 py-2.5 text-sm text-red-200 flex gap-2">
+            <p
+              role="alert"
+              className="mt-5 rounded-lg border border-red-800/70 bg-red-950/40 px-3.5 py-2.5 text-sm text-red-200 flex gap-2"
+            >
               <Icon name="warning" size={16} className="mt-0.5 shrink-0" /> {errorMessage}
             </p>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-            {isRegistering ? (
-              <>
+          {(!isRegistering || !isHardBlockedRegistration) && (
+            <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+              {isRegistering ? (
+                <>
+                  {requiresInviteCode && (
+                    <div>
+                      <label htmlFor="auth-invite-code" className="trpg-label">
+                        Chave de convite
+                      </label>
+                      <input
+                        id="auth-invite-code"
+                        type="text"
+                        required
+                        placeholder="Informe o código fornecido pelo mestre/admin"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                        className="trpg-input"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label htmlFor="auth-username" className="trpg-label">
+                      Nome de usuário
+                    </label>
+                    <input
+                      id="auth-username"
+                      type="text"
+                      required
+                      autoComplete="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="trpg-input"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="auth-email" className="trpg-label">
+                      E-mail
+                    </label>
+                    <input
+                      id="auth-email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="trpg-input"
+                    />
+                  </div>
+                </>
+              ) : (
                 <div>
-                  <label htmlFor="auth-username" className="trpg-label">
-                    Nome de usuário
+                  <label htmlFor="auth-identifier" className="trpg-label">
+                    Usuário ou e-mail
                   </label>
                   <input
-                    id="auth-username"
+                    id="auth-identifier"
                     type="text"
                     required
                     autoComplete="username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    value={emailOrUsername}
+                    onChange={(e) => setEmailOrUsername(e.target.value)}
                     className="trpg-input"
                   />
                 </div>
-                <div>
-                  <label htmlFor="auth-email" className="trpg-label">
-                    E-mail
-                  </label>
-                  <input
-                    id="auth-email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="trpg-input"
-                  />
-                </div>
-              </>
-            ) : (
+              )}
               <div>
-                <label htmlFor="auth-identifier" className="trpg-label">
-                  Usuário ou e-mail
+                <label htmlFor="auth-password" className="trpg-label">
+                  Senha
                 </label>
                 <input
-                  id="auth-identifier"
-                  type="text"
+                  id="auth-password"
+                  type="password"
                   required
-                  autoComplete="username"
-                  value={emailOrUsername}
-                  onChange={(e) => setEmailOrUsername(e.target.value)}
+                  autoComplete={isRegistering ? 'new-password' : 'current-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="trpg-input"
                 />
               </div>
-            )}
-            <div>
-              <label htmlFor="auth-password" className="trpg-label">
-                Senha
-              </label>
-              <input
-                id="auth-password"
-                type="password"
-                required
-                autoComplete={isRegistering ? 'new-password' : 'current-password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="trpg-input"
-              />
-            </div>
-            <button type="submit" disabled={isLoading} className="trpg-btn-primary trpg-btn-lg w-full mt-2">
-              {isLoading ? 'Entrando…' : isRegistering ? 'Criar conta' : 'Entrar'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="trpg-btn-primary trpg-btn-lg w-full mt-2"
+              >
+                {isLoading ? 'Entrando…' : isRegistering ? 'Criar conta' : 'Entrar'}
+              </button>
+            </form>
+          )}
 
           <p className="mt-6 text-sm text-zinc-400">
             {isRegistering ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}

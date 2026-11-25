@@ -129,6 +129,34 @@ export function attachAdminTelemetryIo(io: Server): void {
   ioInstance = io;
 }
 
+export function disconnectUserSockets(userId: string, reason: string): number {
+  if (!ioInstance) return 0;
+  let count = 0;
+  for (const [socketId, conn] of liveConnections.entries()) {
+    if (conn.userId === userId) {
+      const sock = ioInstance.sockets.sockets.get(socketId);
+      if (sock) {
+        sock.emit('admin:forceLogout', { reason });
+        sock.disconnect(true);
+        count += 1;
+      }
+      liveConnections.delete(socketId);
+    }
+  }
+  if (count > 0) {
+    notifyAdminWatchers('kick');
+  }
+  return count;
+}
+
+export function removeUserTelemetryRecord(userId: string): void {
+  ensureLoaded();
+  if (persistedStore.users[userId]) {
+    delete persistedStore.users[userId];
+    scheduleSave();
+  }
+}
+
 function notifyAdminWatchers(reason: string): void {
   if (!ioInstance || broadcastTimer) return;
   broadcastTimer = setTimeout(() => {

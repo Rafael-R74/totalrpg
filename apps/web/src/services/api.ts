@@ -7,6 +7,7 @@ import {
   SceneEffect,
   TotalRpgContentPack,
   ContentPackApplyStats,
+  PublicPlatformStatus,
 } from '@totalrpg/shared';
 import { API_URL } from '../config';
 
@@ -80,11 +81,30 @@ function getAuthHeader() {
 }
 
 // Autenticação
-export async function registerUser(username: string, email: string, password: string): Promise<AuthResponse> {
+export async function fetchPlatformStatus(): Promise<PublicPlatformStatus> {
+  const response = await fetch(`${API_URL}/auth/platform-status`);
+  if (!response.ok) {
+    return {
+      allowRegistration: true,
+      requireInviteCode: false,
+      maintenanceMode: false,
+      maintenanceMessage: '',
+      announcementBanner: '',
+    };
+  }
+  return response.json();
+}
+
+export async function registerUser(
+  username: string,
+  email: string,
+  password: string,
+  inviteCode?: string
+): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, email, password }),
+    body: JSON.stringify({ username, email, password, inviteCode }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao realizar cadastro.');
@@ -593,6 +613,13 @@ export async function applyCampaignSceneEffect(
 // --- PAINEL DE ADMIN GERAL & TELEMETRIA ---
 export interface AdminOverviewResponse {
   generatedAt: number;
+  settings: {
+    allowRegistration: boolean;
+    registrationInviteCode: string;
+    maintenanceMode: boolean;
+    maintenanceMessage: string;
+    announcementBanner: string;
+  };
   serverHealth: {
     uptimeSeconds: number;
     nodeVersion: string;
@@ -609,6 +636,7 @@ export interface AdminOverviewResponse {
   totals: {
     totalUsers: number;
     adminsCount: number;
+    suspendedCount: number;
     activeUsers24h: number;
     onlineAuthenticatedUsers: number;
     onlineGuestSockets: number;
@@ -649,6 +677,8 @@ export interface AdminOverviewResponse {
     username: string;
     email: string;
     isAdmin: boolean;
+    isSuspended: boolean;
+    suspendReason: string | null;
     createdAt: string;
     isOnline: boolean;
     openTabsCount: number;
@@ -755,4 +785,106 @@ export async function clearAdminEventsHistory(): Promise<void> {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao limpar histórico de eventos.');
+}
+
+export async function updateAdminPlatformSettings(payload: {
+  allowRegistration?: boolean;
+  registrationInviteCode?: string;
+  maintenanceMode?: boolean;
+  maintenanceMessage?: string;
+  announcementBanner?: string;
+}): Promise<{ settings: AdminOverviewResponse['settings'] }> {
+  const response = await fetch(`${API_URL}/admin/settings`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao salvar configurações administrativas.');
+  return data;
+}
+
+export async function adminCreateUser(payload: {
+  username: string;
+  email: string;
+  password: string;
+  isAdmin: boolean;
+}): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/users`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao criar conta.');
+}
+
+export async function adminUpdateUser(
+  userId: string,
+  payload: {
+    username: string;
+    email: string;
+    newPassword?: string;
+    isAdmin: boolean;
+    isSuspended: boolean;
+    suspendReason?: string;
+  }
+): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao editar dados do usuário.');
+}
+
+export async function adminKickUser(userId: string): Promise<{ disconnectedCount: number }> {
+  const response = await fetch(`${API_URL}/admin/users/${userId}/kick`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao desconectar usuário.');
+  return data;
+}
+
+export async function adminDeleteUser(userId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao excluir usuário.');
+}
+
+export async function adminUpdateCharacter(
+  characterId: string,
+  payload: { name: string; ownerId: string; campaignId: string | null }
+): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/characters/${characterId}`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao atualizar personagem.');
+}
+
+export async function adminDeleteCharacter(characterId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/characters/${characterId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao excluir personagem.');
+}
+
+export async function adminDeleteCampaign(campaignId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/campaigns/${campaignId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao excluir campanha.');
 }

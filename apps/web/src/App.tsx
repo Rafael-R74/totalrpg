@@ -17,7 +17,12 @@ const diceLabLoader = Object.values(diceLabModules)[0];
 const DiceLab = diceLabLoader ? lazy(() => diceLabLoader().then((m) => ({ default: m.DiceLab }))) : null;
 import { UserSettingsPanel } from './components/UserSettingsPanel';
 import { ThemeProvider, useTheme } from './theme/themeEngine';
-import { AuthResponse, fetchContentPack, fetchCurrentUser } from './services/api';
+import {
+  AuthResponse,
+  fetchContentPack,
+  fetchCurrentUser,
+  fetchPlatformStatus,
+} from './services/api';
 import { io, Socket } from 'socket.io-client';
 import { SecondMonitorScreen } from './components/SecondMonitorScreen';
 import {
@@ -37,6 +42,7 @@ import {
   SessionActivityLogEntry,
   CharacterLivePatch,
   PresenceViewId,
+  PublicPlatformStatus,
 } from '@totalrpg/shared';
 import { BACKEND_ORIGIN } from './config';
 
@@ -102,6 +108,32 @@ export default function App() {
   const [dedicatedAuthMode, setDedicatedAuthMode] = useState<'login' | 'register' | null>(null);
   const [dashboardRequestedTab, setDashboardRequestedTab] = useState<DashboardTabId | null>(null);
   const [isQuickSettingsOpen, setIsQuickSettingsOpen] = useState(false);
+  const [platformStatus, setPlatformStatus] = useState<PublicPlatformStatus | null>(null);
+
+  useEffect(() => {
+    fetchPlatformStatus()
+      .then((st) => setPlatformStatus(st))
+      .catch(() => {});
+
+    const onStatusUpdated = (st: PublicPlatformStatus) => {
+      setPlatformStatus(st);
+    };
+    const onForceLogout = ({ reason }: { reason: string }) => {
+      localStorage.removeItem('totalrpg_token');
+      localStorage.removeItem('totalrpg_user');
+      setCurrentUser(null);
+      setCurrentCampaignSession(null);
+      setOpenedCharacter(null);
+      alert(reason || 'Sua sessão foi encerrada pelo administrador.');
+    };
+
+    socket.on('platform:statusUpdated', onStatusUpdated);
+    socket.on('admin:forceLogout', onForceLogout);
+    return () => {
+      socket.off('platform:statusUpdated', onStatusUpdated);
+      socket.off('admin:forceLogout', onForceLogout);
+    };
+  }, []);
 
   const [currentCampaignSession, setCurrentCampaignSession] = useState<{
     campaignId: string;
@@ -510,6 +542,7 @@ export default function App() {
         {dedicatedAuthMode ? (
           <AuthScreen
             initialMode={dedicatedAuthMode}
+            platformStatus={platformStatus}
             onBackToLanding={() => setDedicatedAuthMode(null)}
             onLoginSuccess={(authData: AuthResponse) => {
               setDedicatedAuthMode(null);
@@ -923,6 +956,12 @@ export default function App() {
       />
 
       <main className="trpg-wrap pt-5 pb-16 sm:pt-8 flex-1 flex flex-col gap-6">
+        {platformStatus?.announcementBanner && (
+          <div className="rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-2.5 text-sm text-amber-100 flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+            <span>{platformStatus.announcementBanner}</span>
+          </div>
+        )}
 
       {/* VISÃO 1: Ficha Completa Aberta */}
       {openedCharacter ? (

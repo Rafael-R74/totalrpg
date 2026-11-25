@@ -295,6 +295,14 @@ export interface PresenceUpdatePayload {
   diceMode?: string;
 }
 
+export interface PublicPlatformStatus {
+  allowRegistration: boolean;
+  requireInviteCode: boolean;
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+  announcementBanner: string;
+}
+
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
   'vital:updated': (data: VitalBar) => void;
@@ -322,6 +330,8 @@ export interface ServerToClientEvents {
   'scene:ended': (payload: { campaignId: string; timestamp: number }) => void;
   'activity:logged': (entry: SessionActivityLogEntry) => void;
   'admin:telemetryUpdated': (payload: { timestamp: number; reason: string }) => void;
+  'admin:forceLogout': (payload: { reason: string }) => void;
+  'platform:statusUpdated': (status: PublicPlatformStatus) => void;
   'monitor:updated': (payload: {
     director: MonitorDirectorState;
     combatState: {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type {
   ClientToServerEvents,
@@ -6,17 +6,31 @@ import type {
   SystemId,
 } from '@totalrpg/shared';
 import {
+  adminCreateUser,
+  adminDeleteCampaign,
+  adminDeleteCharacter,
+  adminDeleteUser,
+  adminKickUser,
   AdminOverviewResponse,
+  adminUpdateCharacter,
+  adminUpdateUser,
   clearAdminEventsHistory,
   fetchAdminOverview,
-  toggleUserAdminStatus,
+  updateAdminPlatformSettings,
 } from '../services/api';
 import { ART_DIRECTION_CATALOG, PALETTE_CATALOG } from '../theme/themeEngine';
 import { SystemSigilBadge } from './BrandMark';
+import { Dialog } from './ui/Dialog';
 import { Icon, IconName } from './ui/Icon';
 import { Portrait } from './ui/Portrait';
 
-type AdminSubTab = 'overview' | 'activity' | 'users' | 'characters' | 'campaigns';
+type AdminSubTab =
+  | 'overview'
+  | 'controls'
+  | 'users'
+  | 'characters'
+  | 'campaigns'
+  | 'activity';
 
 interface PlatformAdminDashboardProps {
   currentUserId: string;
@@ -158,24 +172,86 @@ export function PlatformAdminDashboard({
   const [eventCategoryFilter, setEventCategoryFilter] = useState<string>('ALL');
   const [eventSearch, setEventSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
-  const [userFilterMode, setUserFilterMode] = useState<'all' | 'online' | 'admin'>('all');
+  const [userFilterMode, setUserFilterMode] = useState<
+    'all' | 'online' | 'admin' | 'suspended'
+  >('all');
   const [charSearch, setCharSearch] = useState('');
   const [charSystemFilter, setCharSystemFilter] = useState<'ALL' | SystemId>('ALL');
 
-  const loadOverview = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    else setIsRefreshing(true);
-    setError(null);
-    try {
-      const res = await fetchAdminOverview();
-      setData(res);
-    } catch (err: any) {
-      setError(err?.message || 'Não foi possível carregar os dados administrativos.');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
+  // Estados do formulário de Controles Globais
+  const [regMode, setRegMode] = useState<'open' | 'invite' | 'blocked'>('open');
+  const [inviteCodeDraft, setInviteCodeDraft] = useState('');
+  const [maintenanceDraft, setMaintenanceDraft] = useState(false);
+  const [maintenanceMsgDraft, setMaintenanceMsgDraft] = useState('');
+  const [bannerDraft, setBannerDraft] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsFeedback, setSettingsFeedback] = useState<string | null>(null);
+
+  // Modal: Criar Usuário Manualmente
+  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newIsAdmin, setNewIsAdmin] = useState(false);
+  const [isSubmittingUser, setIsSubmittingUser] = useState(false);
+
+  // Modal: Editar Usuário Existente
+  const [editingUser, setEditingUser] = useState<
+    AdminOverviewResponse['users'][number] | null
+  >(null);
+  const [editUsername, setEditUsername] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editNewPassword, setEditNewPassword] = useState('');
+  const [editIsAdmin, setEditIsAdmin] = useState(false);
+  const [editIsSuspended, setEditIsSuspended] = useState(false);
+  const [editSuspendReason, setEditSuspendReason] = useState('');
+
+  // Modal: Editar / Transferir Personagem
+  const [editingCharacter, setEditingCharacter] = useState<
+    AdminOverviewResponse['characters'][number] | null
+  >(null);
+  const [editCharName, setEditCharName] = useState('');
+  const [editCharOwnerId, setEditCharOwnerId] = useState('');
+  const [editCharCampaignId, setEditCharCampaignId] = useState<string>('');
+  const [isSubmittingChar, setIsSubmittingChar] = useState(false);
+
+  const syncDraftsFromSettings = useCallback(
+    (s: AdminOverviewResponse['settings']) => {
+      if (s.allowRegistration) {
+        setRegMode('open');
+      } else if (s.registrationInviteCode) {
+        setRegMode('invite');
+      } else {
+        setRegMode('blocked');
+      }
+      setInviteCodeDraft(s.registrationInviteCode || '');
+      setMaintenanceDraft(Boolean(s.maintenanceMode));
+      setMaintenanceMsgDraft(s.maintenanceMessage || '');
+      setBannerDraft(s.announcementBanner || '');
+    },
+    []
+  );
+
+  const loadOverview = useCallback(
+    async (silent = false) => {
+      if (!silent) setIsLoading(true);
+      else setIsRefreshing(true);
+      setError(null);
+      try {
+        const res = await fetchAdminOverview();
+        setData(res);
+        if (!silent) {
+          syncDraftsFromSettings(res.settings);
+        }
+      } catch (err: any) {
+        setError(err?.message || 'Não foi possível carregar os dados administrativos.');
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [syncDraftsFromSettings]
+  );
 
   useEffect(() => {
     void loadOverview(false);
@@ -225,6 +301,7 @@ export function PlatformAdminDashboard({
     return data.users.filter((u) => {
       if (userFilterMode === 'online' && !u.isOnline) return false;
       if (userFilterMode === 'admin' && !u.isAdmin) return false;
+      if (userFilterMode === 'suspended' && !u.isSuspended) return false;
       if (!q) return true;
       const palName = resolvePaletteInfo(u.theme.palette).name.toLowerCase();
       const artName = resolveArtDirectionName(u.theme.artDirection).toLowerCase();
@@ -254,16 +331,185 @@ export function PlatformAdminDashboard({
     });
   }, [data, charSearch, charSystemFilter]);
 
-  async function handleToggleAdmin(userId: string, username: string, currentIsAdmin: boolean) {
-    const actionText = currentIsAdmin
-      ? `Revogar permissão de Administrador de @${username}?`
-      : `Promover @${username} a Administrador da plataforma?`;
-    if (!window.confirm(actionText)) return;
+  function openEditUserModal(u: AdminOverviewResponse['users'][number]) {
+    setEditingUser(u);
+    setEditUsername(u.username);
+    setEditEmail(u.email);
+    setEditNewPassword('');
+    setEditIsAdmin(u.isAdmin);
+    setEditIsSuspended(u.isSuspended);
+    setEditSuspendReason(u.suspendReason || '');
+  }
+
+  function openEditCharacterModal(c: AdminOverviewResponse['characters'][number]) {
+    setEditingCharacter(c);
+    setEditCharName(c.name);
+    setEditCharOwnerId(c.ownerId);
+    setEditCharCampaignId(c.campaignId || '');
+  }
+
+  async function handleSaveGlobalSettings(e: React.FormEvent) {
+    e.preventDefault();
+    if (regMode === 'invite' && !inviteCodeDraft.trim()) {
+      alert('Defina uma chave de convite ou escolha "Totalmente Bloqueado".');
+      return;
+    }
+    setSavingSettings(true);
+    setSettingsFeedback(null);
     try {
-      await toggleUserAdminStatus(userId);
+      const res = await updateAdminPlatformSettings({
+        allowRegistration: regMode === 'open',
+        registrationInviteCode: regMode === 'invite' ? inviteCodeDraft.trim() : '',
+        maintenanceMode: maintenanceDraft,
+        maintenanceMessage: maintenanceMsgDraft.trim(),
+        announcementBanner: bannerDraft.trim(),
+      });
+      syncDraftsFromSettings(res.settings);
+      await loadOverview(true);
+      setSettingsFeedback('Configurações salvas e aplicadas em tempo real!');
+      setTimeout(() => setSettingsFeedback(null), 4000);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao salvar configurações.');
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  async function handleQuickToggleRegistration() {
+    if (!data) return;
+    const nextAllow = !data.settings.allowRegistration;
+    try {
+      const res = await updateAdminPlatformSettings({
+        allowRegistration: nextAllow,
+        registrationInviteCode: nextAllow ? '' : data.settings.registrationInviteCode,
+      });
+      syncDraftsFromSettings(res.settings);
       await loadOverview(true);
     } catch (err: any) {
-      alert(err?.message || 'Erro ao alterar permissão.');
+      alert(err?.message || 'Erro ao alternar bloqueio de cadastros.');
+    }
+  }
+
+  async function handleCreateManualUser(e: React.FormEvent) {
+    e.preventDefault();
+    setIsSubmittingUser(true);
+    try {
+      await adminCreateUser({
+        username: newUsername.trim(),
+        email: newEmail.trim(),
+        password: newPassword,
+        isAdmin: newIsAdmin,
+      });
+      setIsCreateUserOpen(false);
+      setNewUsername('');
+      setNewEmail('');
+      setNewPassword('');
+      setNewIsAdmin(false);
+      await loadOverview(true);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao criar conta.');
+    } finally {
+      setIsSubmittingUser(false);
+    }
+  }
+
+  async function handleSaveEditedUser(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingUser) return;
+    setIsSubmittingUser(true);
+    try {
+      await adminUpdateUser(editingUser.id, {
+        username: editUsername.trim(),
+        email: editEmail.trim(),
+        newPassword: editNewPassword.trim() || undefined,
+        isAdmin: editIsAdmin,
+        isSuspended: editIsSuspended,
+        suspendReason: editSuspendReason.trim() || undefined,
+      });
+      setEditingUser(null);
+      await loadOverview(true);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao salvar alterações do usuário.');
+    } finally {
+      setIsSubmittingUser(false);
+    }
+  }
+
+  async function handleKickUser(u: AdminOverviewResponse['users'][number]) {
+    if (!window.confirm(`Encerrar imediatamente todas as sessões abertas de @${u.username}?`)) {
+      return;
+    }
+    try {
+      await adminKickUser(u.id);
+      await loadOverview(true);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao desconectar usuário.');
+    }
+  }
+
+  async function handleDeleteUser(u: AdminOverviewResponse['users'][number]) {
+    const msg =
+      `Tem certeza que deseja EXCLUIR PERMANENTEMENTE a conta @${u.username} (${u.email})?\n\n` +
+      `• ${u.charactersCount} personagem(ns) pertencente(s) a ele serão excluídos;\n` +
+      `• ${u.campaignsAsDmCount} campanha(s) mestrada(s) por ele serão encerradas (devolvendo fichas de outros jogadores aos seus cofres).\n\n` +
+      `Esta ação não pode ser desfeita.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await adminDeleteUser(u.id);
+      await loadOverview(true);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao excluir usuário.');
+    }
+  }
+
+  async function handleSaveEditedCharacter(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingCharacter) return;
+    setIsSubmittingChar(true);
+    try {
+      await adminUpdateCharacter(editingCharacter.id, {
+        name: editCharName.trim(),
+        ownerId: editCharOwnerId,
+        campaignId: editCharCampaignId ? editCharCampaignId : null,
+      });
+      setEditingCharacter(null);
+      await loadOverview(true);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao atualizar personagem.');
+    } finally {
+      setIsSubmittingChar(false);
+    }
+  }
+
+  async function handleDeleteCharacterAdmin(c: AdminOverviewResponse['characters'][number]) {
+    if (
+      !window.confirm(
+        `Excluir permanentemente a ficha de "${c.name}" (dono: @${c.ownerUsername})?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await adminDeleteCharacter(c.id);
+      await loadOverview(true);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao excluir personagem.');
+    }
+  }
+
+  async function handleDeleteCampaignAdmin(camp: AdminOverviewResponse['campaigns'][number]) {
+    if (
+      !window.confirm(
+        `Encerrar e excluir a campanha "${camp.name}" (Mestre: @${camp.dmUsername})?\nAs fichas dos ${camp.playersCount} jogadores voltarão intactas para os cofres.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await adminDeleteCampaign(camp.id);
+      await loadOverview(true);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao excluir campanha.');
     }
   }
 
@@ -293,7 +539,11 @@ export function PlatformAdminDashboard({
           <Icon name="warning" size={18} /> Acesso ou carregamento falhou
         </p>
         <p className="text-sm text-zinc-400">{error || 'Dados indisponíveis.'}</p>
-        <button type="button" onClick={() => loadOverview(false)} className="trpg-btn-secondary trpg-btn-sm">
+        <button
+          type="button"
+          onClick={() => loadOverview(false)}
+          className="trpg-btn-secondary trpg-btn-sm"
+        >
           Tentar novamente
         </button>
       </div>
@@ -305,33 +555,366 @@ export function PlatformAdminDashboard({
     Math.round((data.serverHealth.memoryRssMb / data.serverHealth.memoryLimitMb) * 100)
   );
 
+  const registrationBadgeLabel = data.settings.allowRegistration
+    ? 'Cadastros Abertos'
+    : data.settings.registrationInviteCode
+      ? `Restrito por Chave (${data.settings.registrationInviteCode})`
+      : 'Novos Cadastros Bloqueados';
+
   return (
     <div className="flex flex-col gap-6">
-      {/* Cabeçalho Principal + Saúde do Servidor */}
+      {/* MODAL 1: Criar Usuário Manualmente */}
+      <Dialog
+        open={isCreateUserOpen}
+        onClose={() => setIsCreateUserOpen(false)}
+        size="sm"
+        title="Criar conta manualmente"
+        description="Mesmo quando o cadastro público estiver bloqueado, você pode criar contas por aqui."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setIsCreateUserOpen(false)}
+              className="trpg-btn-quiet"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="admin-create-user-form"
+              disabled={isSubmittingUser}
+              className="trpg-btn-primary"
+            >
+              {isSubmittingUser ? 'Criando...' : 'Criar conta'}
+            </button>
+          </>
+        }
+      >
+        <form
+          id="admin-create-user-form"
+          onSubmit={handleCreateManualUser}
+          className="flex flex-col gap-4"
+        >
+          <div>
+            <label htmlFor="adm-new-username" className="trpg-label">
+              Nome de usuário
+            </label>
+            <input
+              id="adm-new-username"
+              type="text"
+              required
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              className="trpg-input"
+              placeholder="ex: jogador_teste"
+            />
+          </div>
+          <div>
+            <label htmlFor="adm-new-email" className="trpg-label">
+              E-mail
+            </label>
+            <input
+              id="adm-new-email"
+              type="email"
+              required
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              className="trpg-input"
+              placeholder="email@exemplo.com"
+            />
+          </div>
+          <div>
+            <label htmlFor="adm-new-pass" className="trpg-label">
+              Senha inicial
+            </label>
+            <input
+              id="adm-new-pass"
+              type="text"
+              required
+              minLength={4}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="trpg-input"
+              placeholder="Mínimo 4 caracteres"
+            />
+          </div>
+          <label className="flex items-center gap-2.5 text-sm text-zinc-200 cursor-pointer pt-1">
+            <input
+              type="checkbox"
+              checked={newIsAdmin}
+              onChange={(e) => setNewIsAdmin(e.target.checked)}
+              className="h-4 w-4 accent-amber-500"
+            />
+            Conceder acesso de Administrador
+          </label>
+        </form>
+      </Dialog>
+
+      {/* MODAL 2: Editar Dados / Senha / Suspensão de Usuário */}
+      <Dialog
+        open={Boolean(editingUser)}
+        onClose={() => setEditingUser(null)}
+        size="sm"
+        title={editingUser ? `Editar @${editingUser.username}` : 'Editar usuário'}
+        description="Altere nome de usuário, e-mail, redefina a senha ou suspenda o acesso."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditingUser(null)}
+              className="trpg-btn-quiet"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="admin-edit-user-form"
+              disabled={isSubmittingUser}
+              className="trpg-btn-primary"
+            >
+              {isSubmittingUser ? 'Salvando...' : 'Salvar alterações'}
+            </button>
+          </>
+        }
+      >
+        {editingUser && (
+          <form
+            id="admin-edit-user-form"
+            onSubmit={handleSaveEditedUser}
+            className="flex flex-col gap-4"
+          >
+            <div>
+              <label htmlFor="adm-edit-username" className="trpg-label">
+                Nome de usuário
+              </label>
+              <input
+                id="adm-edit-username"
+                type="text"
+                required
+                value={editUsername}
+                onChange={(e) => setEditUsername(e.target.value)}
+                className="trpg-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="adm-edit-email" className="trpg-label">
+                E-mail
+              </label>
+              <input
+                id="adm-edit-email"
+                type="email"
+                required
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                className="trpg-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="adm-edit-pass" className="trpg-label">
+                Redefinir senha (deixe em branco para manter a atual)
+              </label>
+              <input
+                id="adm-edit-pass"
+                type="text"
+                value={editNewPassword}
+                onChange={(e) => setEditNewPassword(e.target.value)}
+                placeholder="Nova senha opcional"
+                className="trpg-input"
+              />
+            </div>
+
+            {editingUser.id !== currentUserId && (
+              <div className="pt-2 border-t border-zinc-800 flex flex-col gap-3">
+                <label className="flex items-center gap-2.5 text-sm text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editIsAdmin}
+                    onChange={(e) => setEditIsAdmin(e.target.checked)}
+                    className="h-4 w-4 accent-amber-500"
+                  />
+                  Administrador da plataforma
+                </label>
+
+                <label className="flex items-center gap-2.5 text-sm text-red-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editIsSuspended}
+                    onChange={(e) => setEditIsSuspended(e.target.checked)}
+                    className="h-4 w-4 accent-red-500"
+                  />
+                  Suspender / Bloquear acesso desta conta
+                </label>
+
+                {editIsSuspended && (
+                  <div>
+                    <label htmlFor="adm-suspend-reason" className="trpg-label">
+                      Motivo da suspensão (opcional, exibido ao tentar logar)
+                    </label>
+                    <input
+                      id="adm-suspend-reason"
+                      type="text"
+                      value={editSuspendReason}
+                      onChange={(e) => setEditSuspendReason(e.target.value)}
+                      placeholder="Ex: Conta de teste encerrada"
+                      className="trpg-input"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </form>
+        )}
+      </Dialog>
+
+      {/* MODAL 3: Editar / Transferir Personagem */}
+      <Dialog
+        open={Boolean(editingCharacter)}
+        onClose={() => setEditingCharacter(null)}
+        size="sm"
+        title={editingCharacter ? `Gerenciar ficha: ${editingCharacter.name}` : 'Editar ficha'}
+        description="Renomeie o personagem, transfira a propriedade para outra conta ou altere a mesa vinculada."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditingCharacter(null)}
+              className="trpg-btn-quiet"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="admin-edit-char-form"
+              disabled={isSubmittingChar}
+              className="trpg-btn-primary"
+            >
+              {isSubmittingChar ? 'Salvando...' : 'Salvar ficha'}
+            </button>
+          </>
+        }
+      >
+        {editingCharacter && (
+          <form
+            id="admin-edit-char-form"
+            onSubmit={handleSaveEditedCharacter}
+            className="flex flex-col gap-4"
+          >
+            <div>
+              <label htmlFor="adm-char-name" className="trpg-label">
+                Nome do personagem
+              </label>
+              <input
+                id="adm-char-name"
+                type="text"
+                required
+                value={editCharName}
+                onChange={(e) => setEditCharName(e.target.value)}
+                className="trpg-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="adm-char-owner" className="trpg-label">
+                Dono da ficha
+              </label>
+              <select
+                id="adm-char-owner"
+                value={editCharOwnerId}
+                onChange={(e) => setEditCharOwnerId(e.target.value)}
+                className="trpg-input"
+              >
+                {data.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    @{u.username} ({u.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="adm-char-camp" className="trpg-label">
+                Campanha vinculada
+              </label>
+              <select
+                id="adm-char-camp"
+                value={editCharCampaignId}
+                onChange={(e) => setEditCharCampaignId(e.target.value)}
+                className="trpg-input"
+              >
+                <option value="">Livre no Cofre (sem mesa)</option>
+                {data.campaigns
+                  .filter((camp) => camp.system === editingCharacter.system)
+                  .map((camp) => (
+                    <option key={camp.id} value={camp.id}>
+                      {camp.name} (Mestre: @{camp.dmUsername})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </form>
+        )}
+      </Dialog>
+
+      {/* Cabeçalho Principal + Saúde do Servidor + Atalhos de Bloqueio */}
       <div className="trpg-card p-5 flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-2xl sm:text-3xl leading-tight">Painel de Admin Geral</h2>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-800/70 bg-emerald-950/40 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                 Ao vivo
               </span>
+              <button
+                type="button"
+                onClick={handleQuickToggleRegistration}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition cursor-pointer ${
+                  data.settings.allowRegistration
+                    ? 'border-sky-800/70 bg-sky-950/40 text-sky-200 hover:bg-sky-900/50'
+                    : 'border-red-800/70 bg-red-950/50 text-red-200 hover:bg-red-900/60'
+                }`}
+                title="Clique para bloquear/liberar rapidamente a criação de novas contas"
+              >
+                <Icon
+                  name={data.settings.allowRegistration ? 'lock-open' : 'lock'}
+                  size={12}
+                />
+                {registrationBadgeLabel}
+              </button>
+              {data.settings.maintenanceMode && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-700 bg-amber-950/60 px-2.5 py-0.5 text-xs font-semibold text-amber-200">
+                  <Icon name="wrench" size={12} /> Modo Manutenção Ativo
+                </span>
+              )}
             </div>
             <p className="text-sm text-zinc-400 mt-1">
-              Monitoramento em tempo real de conexões, contas, temas visuais, personagens, campanhas e saúde da VPS.
+              Controle geral de contas, segurança, conexões em tempo real, temas visuais, fichas e saúde da VPS.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => loadOverview(true)}
-            className="trpg-btn-secondary trpg-btn-sm"
-            disabled={isRefreshing}
-          >
-            <Icon name="refresh" size={15} className={isRefreshing ? 'animate-spin' : ''} />
-            {isRefreshing ? 'Atualizando...' : 'Atualizar agora'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                syncDraftsFromSettings(data.settings);
+                setSubTab('controls');
+              }}
+              className="trpg-btn-secondary trpg-btn-sm"
+            >
+              <Icon name="lock" size={14} /> Controles & Bloqueios
+            </button>
+            <button
+              type="button"
+              onClick={() => loadOverview(true)}
+              className="trpg-btn-secondary trpg-btn-sm"
+              disabled={isRefreshing}
+            >
+              <Icon name="refresh" size={15} className={isRefreshing ? 'animate-spin' : ''} />
+              {isRefreshing ? 'Atualizando...' : 'Atualizar'}
+            </button>
+          </div>
         </div>
 
         {/* Barra Técnica de Infraestrutura */}
@@ -407,7 +990,8 @@ export function PlatformAdminDashboard({
             </span>
           </div>
           <p className="text-xs text-zinc-500">
-            {data.totals.totalLiveSockets} {data.totals.totalLiveSockets === 1 ? 'conexão ativa' : 'conexões ativas'}
+            {data.totals.totalLiveSockets}{' '}
+            {data.totals.totalLiveSockets === 1 ? 'conexão ativa' : 'conexões ativas'}
             {data.totals.onlineGuestSockets > 0
               ? ` (${data.totals.onlineGuestSockets} visitante/TV)`
               : ''}
@@ -421,7 +1005,8 @@ export function PlatformAdminDashboard({
           </div>
           <div className="text-3xl font-bold trpg-num text-zinc-100">{data.totals.totalUsers}</div>
           <p className="text-xs text-zinc-500">
-            {data.totals.activeUsers24h} ativos nas últimas 24h • {data.totals.adminsCount} admin
+            {data.totals.activeUsers24h} ativos 24h • {data.totals.adminsCount} admin
+            {data.totals.suspendedCount > 0 ? ` • ${data.totals.suspendedCount} susp.` : ''}
           </p>
         </div>
 
@@ -430,7 +1015,9 @@ export function PlatformAdminDashboard({
             <span>Personagens Criados</span>
             <Icon name="user" size={16} className="text-amber-400" />
           </div>
-          <div className="text-3xl font-bold trpg-num text-zinc-100">{data.totals.totalCharacters}</div>
+          <div className="text-3xl font-bold trpg-num text-zinc-100">
+            {data.totals.totalCharacters}
+          </div>
           <p className="text-xs text-zinc-500">
             {data.totals.charactersInCampaigns} em mesas • {data.totals.charactersInVault} no cofre
           </p>
@@ -441,7 +1028,9 @@ export function PlatformAdminDashboard({
             <span>Campanhas & Mesas</span>
             <Icon name="shield" size={16} className="text-purple-400" />
           </div>
-          <div className="text-3xl font-bold trpg-num text-zinc-100">{data.totals.totalCampaigns}</div>
+          <div className="text-3xl font-bold trpg-num text-zinc-100">
+            {data.totals.totalCampaigns}
+          </div>
           <p className="text-xs text-zinc-500">
             {data.totals.pendingInvites} convites pendentes • {data.totals.compendiumEntries} itens no compêndio
           </p>
@@ -453,12 +1042,7 @@ export function PlatformAdminDashboard({
         {(
           [
             { id: 'overview', label: 'Visão Geral & Temas', icon: 'chart' as IconName },
-            {
-              id: 'activity',
-              label: 'Atividades',
-              icon: 'activity' as IconName,
-              count: data.events.length,
-            },
+            { id: 'controls', label: 'Controles & Segurança', icon: 'lock' as IconName },
             { id: 'users', label: 'Usuários', icon: 'users' as IconName, count: data.users.length },
             {
               id: 'characters',
@@ -472,6 +1056,12 @@ export function PlatformAdminDashboard({
               icon: 'shield' as IconName,
               count: data.campaigns.length,
             },
+            {
+              id: 'activity',
+              label: 'Atividades',
+              icon: 'activity' as IconName,
+              count: data.events.length,
+            },
           ] as const
         ).map((tab) => (
           <button
@@ -479,7 +1069,12 @@ export function PlatformAdminDashboard({
             type="button"
             role="tab"
             aria-selected={subTab === tab.id}
-            onClick={() => setSubTab(tab.id)}
+            onClick={() => {
+              if (tab.id === 'controls') {
+                syncDraftsFromSettings(data.settings);
+              }
+              setSubTab(tab.id);
+            }}
             className="trpg-tab"
           >
             <Icon name={tab.icon} size={15} />
@@ -490,6 +1085,184 @@ export function PlatformAdminDashboard({
           </button>
         ))}
       </div>
+
+      {/* ABA CONTROLES & SEGURANÇA */}
+      {subTab === 'controls' && (
+        <form onSubmit={handleSaveGlobalSettings} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Bloco 1: Controle de Criação de Novas Contas */}
+          <section className="trpg-card p-5 flex flex-col gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
+                <Icon name="key" size={17} className="text-amber-400" />
+                Criação de Novas Contas
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Escolha quem pode criar conta na plataforma. Você sempre pode cadastrar usuários manualmente na aba Usuários.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              {(
+                [
+                  {
+                    id: 'open',
+                    title: 'Aberto ao público',
+                    desc: 'Qualquer visitante com acesso ao link pode criar uma conta.',
+                    icon: 'lock-open' as IconName,
+                  },
+                  {
+                    id: 'invite',
+                    title: 'Restrito por Chave de Convite',
+                    desc: 'Exige um código secreto na tela de Criar Conta (ideal para beta fechado com amigos).',
+                    icon: 'key' as IconName,
+                  },
+                  {
+                    id: 'blocked',
+                    title: 'Totalmente Bloqueado',
+                    desc: 'Ninguém consegue se cadastrar pelo site; apenas contas já existentes entram.',
+                    icon: 'lock' as IconName,
+                  },
+                ] as const
+              ).map((opt) => (
+                <label
+                  key={opt.id}
+                  className={`rounded-xl border p-3.5 flex items-start gap-3 cursor-pointer transition ${
+                    regMode === opt.id
+                      ? 'border-amber-600/80 bg-amber-950/25'
+                      : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="regMode"
+                    checked={regMode === opt.id}
+                    onChange={() => setRegMode(opt.id)}
+                    className="mt-1 accent-amber-500"
+                  />
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold text-zinc-100 flex items-center gap-1.5">
+                      <Icon name={opt.icon} size={14} className="text-amber-400" />
+                      {opt.title}
+                    </span>
+                    <span className="text-xs text-zinc-400 block mt-0.5">{opt.desc}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {regMode === 'invite' && (
+              <div className="pt-1">
+                <label htmlFor="adm-reg-code" className="trpg-label">
+                  Chave de Convite exigida no cadastro
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="adm-reg-code"
+                    type="text"
+                    value={inviteCodeDraft}
+                    onChange={(e) => setInviteCodeDraft(e.target.value)}
+                    placeholder="Ex: ORDO2026"
+                    className="trpg-input flex-1 trpg-code"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setInviteCodeDraft(
+                        `BETA-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+                      )
+                    }
+                    className="trpg-btn-secondary trpg-btn-sm shrink-0"
+                  >
+                    Gerar código
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Bloco 2: Modo Manutenção & Aviso Global */}
+          <section className="trpg-card p-5 flex flex-col justify-between gap-5">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
+                  <Icon name="megaphone" size={17} className="text-sky-400" />
+                  Aviso Global & Modo Manutenção
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Publique recados em tempo real no topo do site ou feche temporariamente para manutenção.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="adm-banner" className="trpg-label">
+                  Banner de Aviso no Topo (em branco para ocultar)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="adm-banner"
+                    type="text"
+                    value={bannerDraft}
+                    onChange={(e) => setBannerDraft(e.target.value)}
+                    placeholder="Ex: Sessão de teste hoje às 20h! Reportem feedbacks."
+                    className="trpg-input flex-1"
+                  />
+                  {bannerDraft && (
+                    <button
+                      type="button"
+                      onClick={() => setBannerDraft('')}
+                      className="trpg-btn-quiet trpg-btn-sm shrink-0"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-zinc-800 flex flex-col gap-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={maintenanceDraft}
+                    onChange={(e) => setMaintenanceDraft(e.target.checked)}
+                    className="mt-1 h-4 w-4 accent-amber-500"
+                  />
+                  <div>
+                    <span className="text-sm font-semibold text-zinc-100 block">
+                      Ativar Modo Manutenção
+                    </span>
+                    <span className="text-xs text-zinc-400 block">
+                      Bloqueia temporariamente o acesso de jogadores comuns (contas Admin continuam entrando normalmente).
+                    </span>
+                  </div>
+                </label>
+
+                {maintenanceDraft && (
+                  <div>
+                    <label htmlFor="adm-maint-msg" className="trpg-label">
+                      Mensagem de manutenção exibida aos usuários
+                    </label>
+                    <input
+                      id="adm-maint-msg"
+                      type="text"
+                      value={maintenanceMsgDraft}
+                      onChange={(e) => setMaintenanceMsgDraft(e.target.value)}
+                      className="trpg-input"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-zinc-800 flex items-center justify-between gap-3">
+              <span className="text-xs text-emerald-300">{settingsFeedback || ''}</span>
+              <button type="submit" disabled={savingSettings} className="trpg-btn-primary">
+                <Icon name="save" size={16} />
+                {savingSettings ? 'Salvando...' : 'Salvar controles'}
+              </button>
+            </div>
+          </section>
+        </form>
+      )}
 
       {/* ABA 1: VISÃO GERAL, CONEXÕES AO VIVO & TEMAS */}
       {subTab === 'overview' && (
@@ -602,7 +1375,9 @@ export function PlatformAdminDashboard({
                             />
                           </span>
                           {pal.name}
-                          <span className="text-zinc-500 font-normal">({pal.recommendedSystemLabel})</span>
+                          <span className="text-zinc-500 font-normal">
+                            ({pal.recommendedSystemLabel})
+                          </span>
                         </span>
                         <span className="trpg-num text-zinc-300 font-semibold">
                           {count} ({pct}%)
@@ -720,7 +1495,10 @@ export function PlatformAdminDashboard({
                 {data.events.slice(0, 10).map((ev) => {
                   const meta = EVENT_CATEGORY_META[ev.category] || EVENT_CATEGORY_META.system;
                   return (
-                    <li key={ev.id} className="py-2.5 flex items-start justify-between gap-3 text-sm">
+                    <li
+                      key={ev.id}
+                      className="py-2.5 flex items-start justify-between gap-3 text-sm"
+                    >
                       <div className="flex items-start gap-2.5 min-w-0">
                         <span
                           className={`mt-0.5 shrink-0 inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-medium ${meta.badgeClass}`}
@@ -747,7 +1525,7 @@ export function PlatformAdminDashboard({
         </div>
       )}
 
-      {/* ABA 2: FEED COMPLETO DE ATIVIDADES */}
+      {/* ABA DE ATIVIDADES */}
       {subTab === 'activity' && (
         <section className="trpg-card p-5 flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -833,11 +1611,11 @@ export function PlatformAdminDashboard({
         </section>
       )}
 
-      {/* ABA 3: USUÁRIOS CADASTRADOS & TEMAS */}
+      {/* ABA DE USUÁRIOS (CRIAR, EDITAR, REDEFINIR SENHA, SUSPENDER, KICKAR E EXCLUIR) */}
       {subTab === 'users' && (
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {(
                 [
                   { id: 'all', label: `Todos (${data.users.length})` },
@@ -848,6 +1626,10 @@ export function PlatformAdminDashboard({
                   {
                     id: 'admin',
                     label: `Admins (${data.users.filter((u) => u.isAdmin).length})`,
+                  },
+                  {
+                    id: 'suspended',
+                    label: `Suspensos (${data.users.filter((u) => u.isSuspended).length})`,
                   },
                 ] as const
               ).map((m) => (
@@ -866,27 +1648,46 @@ export function PlatformAdminDashboard({
               ))}
             </div>
 
-            <input
-              type="search"
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              placeholder="Buscar usuário, e-mail, tema ou dispositivo..."
-              className="trpg-input sm:w-80"
-            />
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <input
+                type="search"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Buscar usuário, e-mail, tema..."
+                className="trpg-input sm:w-64"
+              />
+              <button
+                type="button"
+                onClick={() => setIsCreateUserOpen(true)}
+                className="trpg-btn-primary trpg-btn-sm shrink-0"
+              >
+                <Icon name="plus" size={15} /> Criar conta
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {filteredUsers.map((u) => {
               const pal = resolvePaletteInfo(u.theme.palette);
               const artName = resolveArtDirectionName(u.theme.artDirection);
+              const isSelf = u.id === currentUserId;
               return (
-                <div key={u.id} className="trpg-card p-5 flex flex-col gap-4">
+                <div
+                  key={u.id}
+                  className={`trpg-card p-5 flex flex-col gap-4 ${
+                    u.isSuspended ? 'border-red-900/70 bg-red-950/10' : ''
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                            u.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
+                            u.isSuspended
+                              ? 'bg-red-500'
+                              : u.isOnline
+                                ? 'bg-emerald-400 animate-pulse'
+                                : 'bg-zinc-600'
                           }`}
                         />
                         <h3 className="text-lg font-semibold text-zinc-100 truncate">
@@ -897,28 +1698,61 @@ export function PlatformAdminDashboard({
                             Admin
                           </span>
                         )}
+                        {u.isSuspended && (
+                          <span className="rounded border border-red-700/70 bg-red-950/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-300">
+                            Suspenso
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-zinc-400 truncate mt-0.5">{u.email}</p>
+                      {u.isSuspended && u.suspendReason && (
+                        <p className="text-xs text-red-300 mt-1">
+                          Motivo: {u.suspendReason}
+                        </p>
+                      )}
                       <p className="text-xs text-zinc-500 mt-1">
                         {u.isOnline
-                          ? `Online agora (${VIEW_LABELS[u.currentView || 'dashboard'] || u.currentView}${
-                              u.currentContextLabel ? ` • ${u.currentContextLabel}` : ''
-                            })`
+                          ? `Online agora (${
+                              VIEW_LABELS[u.currentView || 'dashboard'] || u.currentView
+                            }${u.currentContextLabel ? ` • ${u.currentContextLabel}` : ''})`
                           : `Último acesso: ${formatRelativeTime(u.lastSeenAt)}`}
                         {u.device ? ` • ${u.device}` : ''}
                         {u.lastIp ? ` • IP ${u.lastIp}` : ''}
                       </p>
                     </div>
 
-                    {u.id !== currentUserId && (
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
-                        onClick={() => handleToggleAdmin(u.id, u.username, u.isAdmin)}
-                        className="trpg-btn-secondary trpg-btn-sm shrink-0"
+                        onClick={() => openEditUserModal(u)}
+                        className="trpg-btn-secondary trpg-btn-sm"
+                        title="Editar usuário, e-mail, senha ou suspensão"
                       >
-                        {u.isAdmin ? 'Revogar Admin' : 'Tornar Admin'}
+                        <Icon name="pencil" size={14} /> Editar
                       </button>
-                    )}
+                      {!isSelf && u.isOnline && (
+                        <button
+                          type="button"
+                          onClick={() => handleKickUser(u)}
+                          className="trpg-icon-btn hover:text-amber-300!"
+                          title="Encerrar sessões ativas agora"
+                          aria-label={`Desconectar @${u.username}`}
+                        >
+                          <Icon name="logout" size={16} />
+                        </button>
+                      )}
+                      {!isSelf && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUser(u)}
+                          className="trpg-icon-btn hover:text-red-300!"
+                          title="Excluir conta permanentemente"
+                          aria-label={`Excluir @${u.username}`}
+                        >
+                          <Icon name="trash" size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Tema e Preferências Visuais do Usuário */}
@@ -997,7 +1831,7 @@ export function PlatformAdminDashboard({
         </section>
       )}
 
-      {/* ABA 4: TODOS OS PERSONAGENS CRIADOS */}
+      {/* ABA DE PERSONAGENS (INSPECIONAR, TRANSFERIR/RENOMEAR E EXCLUIR) */}
       {subTab === 'characters' && (
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1007,7 +1841,9 @@ export function PlatformAdminDashboard({
                   { id: 'ALL', label: `Todos (${data.characters.length})` },
                   {
                     id: 'ordem-paranormal',
-                    label: `Ordem Paranormal (${data.totals.charactersBySystem['ordem-paranormal'] || 0})`,
+                    label: `Ordem Paranormal (${
+                      data.totals.charactersBySystem['ordem-paranormal'] || 0
+                    })`,
                   },
                   {
                     id: 'tormenta20',
@@ -1055,11 +1891,14 @@ export function PlatformAdminDashboard({
                     <Portrait url={c.portraitUrl} name={c.name} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-base font-semibold text-zinc-100 truncate">{c.name}</h3>
+                        <h3 className="text-base font-semibold text-zinc-100 truncate">
+                          {c.name}
+                        </h3>
                         <SystemSigilBadge system={c.system} compact />
                       </div>
                       <p className="text-xs text-zinc-400 mt-0.5 truncate">
-                        Criado por <span className="text-zinc-200 font-medium">@{c.ownerUsername}</span>
+                        Criado por{' '}
+                        <span className="text-zinc-200 font-medium">@{c.ownerUsername}</span>
                       </p>
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {c.summary.className && (
@@ -1104,13 +1943,35 @@ export function PlatformAdminDashboard({
                     >
                       {c.campaignName ? `Mesa: ${c.campaignName}` : 'Livre no cofre'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => onOpenCharacter(c.id, c.campaignId || undefined, c.system)}
-                      className="trpg-btn-secondary trpg-btn-sm shrink-0"
-                    >
-                      <Icon name="eye" size={14} /> Inspecionar
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenCharacter(c.id, c.campaignId || undefined, c.system)
+                        }
+                        className="trpg-btn-secondary trpg-btn-sm"
+                      >
+                        <Icon name="eye" size={14} /> Abrir
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditCharacterModal(c)}
+                        className="trpg-icon-btn"
+                        title="Renomear, transferir dono ou alterar mesa"
+                        aria-label={`Editar ${c.name}`}
+                      >
+                        <Icon name="pencil" size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCharacterAdmin(c)}
+                        className="trpg-icon-btn hover:text-red-300!"
+                        title="Excluir personagem"
+                        aria-label={`Excluir ${c.name}`}
+                      >
+                        <Icon name="trash" size={15} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1119,7 +1980,7 @@ export function PlatformAdminDashboard({
         </section>
       )}
 
-      {/* ABA 5: TODAS AS CAMPANHAS */}
+      {/* ABA DE CAMPANHAS */}
       {subTab === 'campaigns' && (
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {data.campaigns.length === 0 ? (
@@ -1133,14 +1994,28 @@ export function PlatformAdminDashboard({
                   <div className="min-w-0">
                     <h3 className="text-xl font-semibold text-zinc-100 truncate">{camp.name}</h3>
                     <p className="text-xs text-zinc-400 mt-0.5">
-                      Mestre: <span className="text-zinc-200 font-medium">@{camp.dmUsername}</span> •
+                      Mestre:{' '}
+                      <span className="text-zinc-200 font-medium">@{camp.dmUsername}</span> •
                       Criada em {new Date(camp.createdAt).toLocaleDateString('pt-BR')}
                     </p>
                     {camp.description && (
-                      <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2">{camp.description}</p>
+                      <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2">
+                        {camp.description}
+                      </p>
                     )}
                   </div>
-                  <SystemSigilBadge system={camp.system} compact />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <SystemSigilBadge system={camp.system} compact />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCampaignAdmin(camp)}
+                      className="trpg-icon-btn hover:text-red-300!"
+                      title="Encerrar e excluir campanha"
+                      aria-label={`Excluir campanha ${camp.name}`}
+                    >
+                      <Icon name="trash" size={16} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2 text-xs">

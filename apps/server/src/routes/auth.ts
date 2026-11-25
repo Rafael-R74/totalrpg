@@ -12,6 +12,11 @@ import {
   summarizeUserAgent,
   touchUserTelemetry,
 } from '../adminTelemetryService';
+import {
+  getAdminSettings,
+  getPublicPlatformStatus,
+  getUserSuspension,
+} from '../adminSettingsService';
 
 export const authRouter = Router();
 
@@ -40,14 +45,68 @@ function writeAllUserPrefs(data: Record<string, unknown>) {
   fs.writeFileSync(prefsFile, JSON.stringify(data, null, 2), 'utf-8');
 }
 
+export function deleteUserPrefs(userId: string): void {
+  const all = readAllUserPrefs();
+  if (userId in all) {
+    delete all[userId];
+    writeAllUserPrefs(all);
+  }
+}
+
+// 0. Status público da plataforma (bloqueio de cadastro, chave de convite, manutenção e banner)
+authRouter.get('/platform-status', (_req, res) => {
+  return res.json(getPublicPlatformStatus());
+});
+
 // 1. Rota de cadastro
 authRouter.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, inviteCode } = req.body;
 
     // Validação básica dos campos
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Preencha todos os campos obrigatórios.' });
+    }
+
+    const shouldBeAdmin = isConfiguredAdminIdentity(email, username);
+    const settings = getAdminSettings();
+    const reqIp = extractCleanIpFromRequest(req);
+    const reqDevice = summarizeUserAgent(req.headers['user-agent']);
+
+    if (!shouldBeAdmin) {
+      if (settings.maintenanceMode) {
+        return res.status(503).json({ error: settings.maintenanceMessage });
+      }
+      if (!settings.allowRegistration) {
+        const expectedCode = settings.registrationInviteCode.trim();
+        if (expectedCode) {
+          if (String(inviteCode || '').trim() !== expectedCode) {
+            recordAdminEvent({
+              category: 'auth',
+              summary: `Cadastro barrado (chave de convite inválida) para "${String(username).slice(0, 30)}"`,
+              details: `${reqDevice} • IP ${reqIp}`,
+              ip: reqIp,
+              device: reqDevice,
+              tone: 'warning',
+            });
+            return res.status(403).json({
+              error: 'Cadastro restrito: informe uma chave de convite válida.',
+            });
+          }
+        } else {
+          recordAdminEvent({
+            category: 'auth',
+            summary: `Tentativa de cadastro bloqueada (@${String(username).slice(0, 30)})`,
+            details: `Novos cadastros estão desativados • ${reqDevice} • IP ${reqIp}`,
+            ip: reqIp,
+            device: reqDevice,
+            tone: 'warning',
+          });
+          return res.status(403).json({
+            error: 'A criação de novas contas está temporariamente bloqueada pelo administrador.',
+          });
+        }
+      }
     }
 
     // Verifica se já existe alguém com esse e-mail ou nome de usuário
@@ -65,7 +124,6 @@ authRouter.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Salva o usuário no banco SQLite usando o Prisma (promove automaticamente caso listado no .env)
-    const shouldBeAdmin = isConfiguredAdminIdentity(email, username);
     const user = await prisma.user.create({
       data: {
         username,
@@ -175,6 +233,30 @@ authRouter.post('/login', async (req, res) => {
         data: { isAdmin: true },
       });
       effectiveIsAdmin = true;
+    }
+
+    const suspension = getUserSuspension(user.id);
+    if (suspension && !effectiveIsAdmin) {
+      recordAdminEvent({
+        category: 'auth',
+        userId: user.id,
+        username: user.username,
+        summary: `Login bloqueado (conta suspensa): @${user.username}`,
+        details: `${device} • IP ${ip}`,
+        ip,
+        device,
+        tone: 'danger',
+      });
+      return res.status(403).json({
+        error: suspension.reason
+          ? `Sua conta está suspensa: ${suspension.reason}`
+          : 'Sua conta está suspensa pelo administrador.',
+      });
+    }
+
+    const settings = getAdminSettings();
+    if (settings.maintenanceMode && !effectiveIsAdmin) {
+      return res.status(503).json({ error: settings.maintenanceMessage });
     }
 
     touchUserTelemetry(user.id, {
