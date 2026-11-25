@@ -52,14 +52,17 @@ interface ElementBadgeProps {
 }
 
 export function ElementBadge({ element, children, size = 'sm', className = '', showIcon = true }: ElementBadgeProps) {
-  // "Conhecimento / Energia / Morte / Sangue" → um selo por elemento
+  // "Conhecimento / Energia / Morte / Sangue": o jogador escolhe o elemento → selo cinza "Escolha"
   const parts = !children && element ? element.split(/\s*[/,]\s*|\s+ou\s+/i).filter(Boolean) : [];
   if (parts.length > 1) {
+    const list = parts.join(', ');
     return (
-      <span className={`inline-flex flex-wrap items-center gap-1 ${className}`}>
-        {parts.map((p) => (
-          <ElementBadge key={p} element={p} size={size} showIcon={showIcon} />
-        ))}
+      <span
+        className={`trpg-el trpg-el-neutral ${size === 'md' ? 'trpg-el-md' : ''} ${className}`}
+        title={`Elemento à escolha: ${list}`}
+      >
+        Escolha
+        <span className="sr-only"> entre {list}</span>
       </span>
     );
   }

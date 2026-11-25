@@ -6840,3 +6840,98 @@ export function instantiateCampaignThreatFromTemplate(
     description: template.description,
   };
 }
+
+/* ----------------------------------------------------------------------------
+   Bestiário editável pelo Admin
+   Criaturas do compêndio ficam em CompendiumEntry (category 'creature') com a
+   ficha completa em metadata.creature. Uma entrada com baseTemplateId substitui a
+   criatura oficial de mesmo id; com hidden=true, remove-a do catálogo.
+   ---------------------------------------------------------------------------- */
+export interface CreatureCompendiumMeta {
+  creature?: OrdemBestiaryTemplate;
+  /** id da criatura oficial que esta entrada substitui ou oculta */
+  baseTemplateId?: string;
+  hidden?: boolean;
+}
+
+export type BestiaryOrigin = 'official' | 'edited' | 'custom';
+
+export interface BestiaryCatalogEntry {
+  template: OrdemBestiaryTemplate;
+  origin: BestiaryOrigin;
+  /** id da CompendiumEntry que guarda a alteração (se houver) */
+  entryId?: string;
+}
+
+interface CreatureEntryLike {
+  id: string;
+  system: string;
+  category: string;
+  metadata?: unknown;
+}
+
+function creatureMeta(e: CreatureEntryLike): CreatureCompendiumMeta {
+  return (e.metadata && typeof e.metadata === 'object' ? e.metadata : {}) as CreatureCompendiumMeta;
+}
+
+/** Junta as 67 ameaças oficiais com as alterações e criaturas novas do compêndio. */
+export function buildOrdemBestiaryCatalog(entries: CreatureEntryLike[] = []): BestiaryCatalogEntry[] {
+  const byId = new Map<string, BestiaryCatalogEntry>();
+  for (const tpl of ORDEM_BESTIARY_THREATS) byId.set(tpl.id, { template: tpl, origin: 'official' });
+
+  const creatureEntries = entries.filter((e) => e.category === 'creature' && e.system === 'ordem-paranormal');
+  for (const e of creatureEntries) {
+    const meta = creatureMeta(e);
+    const baseId = meta.baseTemplateId;
+    if (meta.hidden) {
+      if (baseId) byId.delete(baseId);
+      continue;
+    }
+    if (!meta.creature) continue;
+    const id = baseId || `cmp-${e.id}`;
+    byId.set(id, {
+      template: { ...meta.creature, id },
+      origin: baseId && ORDEM_BESTIARY_THREATS.some((t) => t.id === baseId) ? 'edited' : 'custom',
+      entryId: e.id,
+    });
+  }
+  return [...byId.values()].sort((a, b) => a.template.vd - b.template.vd || a.template.name.localeCompare(b.template.name));
+}
+
+/** Criaturas ocultadas pelo Admin (para poder restaurá-las). */
+export function hiddenOrdemBestiaryEntries(entries: CreatureEntryLike[] = []): Array<{ entryId: string; template: OrdemBestiaryTemplate }> {
+  return entries
+    .filter((e) => e.category === 'creature' && e.system === 'ordem-paranormal' && creatureMeta(e).hidden)
+    .map((e) => {
+      const baseId = creatureMeta(e).baseTemplateId;
+      const tpl = ORDEM_BESTIARY_THREATS.find((t) => t.id === baseId);
+      return tpl ? { entryId: e.id, template: tpl } : null;
+    })
+    .filter((x): x is { entryId: string; template: OrdemBestiaryTemplate } => Boolean(x));
+}
+
+export function blankOrdemBestiaryTemplate(): OrdemBestiaryTemplate {
+  return {
+    id: '',
+    name: '',
+    vd: 20,
+    group: 'sangue',
+    subGroup: 'Criatura Paranormal',
+    element: 'Sangue',
+    secondaryElements: [],
+    creatureType: 'Criatura',
+    size: 'Médio',
+    hpMax: 30,
+    machucadoHp: 15,
+    defense: 15,
+    initiativeDice: 1,
+    initiativeBonus: 0,
+    displacement: '9m / 6q',
+    attributes: { agi: 1, for: 1, int: 1, pre: 1, vig: 1 },
+    skills: [],
+    attacks: [],
+    hasEnigmaOfFear: false,
+    specialAbilities: [],
+    description: '',
+  };
+}

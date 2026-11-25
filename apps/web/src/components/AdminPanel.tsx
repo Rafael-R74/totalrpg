@@ -22,6 +22,7 @@ import {
 } from '../services/api';
 
 import { Icon } from './ui/Icon';
+import { AdminBestiaryPanel } from './admin/AdminBestiaryPanel';
 const CATEGORY_LABELS: Record<CompendiumCategory, string> = {
   power: 'Poderes de Classe / Gerais',
   paranormal_power: 'Poderes Paranormais',
@@ -29,6 +30,7 @@ const CATEGORY_LABELS: Record<CompendiumCategory, string> = {
   item: 'Armas & Equipamentos',
   origin: 'Origens',
   condition: 'Condições (Buff/Debuff)',
+  creature: 'Bestiário',
 };
 
 const TARGET_TYPE_LABELS: Record<ModifierTargetType, string> = {
@@ -45,6 +47,8 @@ const TARGET_TYPE_LABELS: Record<ModifierTargetType, string> = {
 export function AdminPanel() {
   const [selectedSystem, setSelectedSystem] = useState<SystemId>('ordem-paranormal');
   const [activeSection, setActiveSection] = useState<CompendiumCategory | 'skills'>('power');
+  // O bestiário editável só existe para Ordem Paranormal
+  const showBestiary = selectedSystem === 'ordem-paranormal';
 
   const [entries, setEntries] = useState<CompendiumEntryData[]>([]);
   const [skills, setSkills] = useState<SystemSkillDefinition[]>([]);
@@ -324,7 +328,9 @@ export function AdminPanel() {
 
       {/* Sub-Abas de Categorias do Compêndio */}
       <div className="flex flex-wrap border-b border-zinc-800 gap-2">
-        {(Object.keys(CATEGORY_LABELS) as CompendiumCategory[]).map((cat) => (
+        {(Object.keys(CATEGORY_LABELS) as CompendiumCategory[])
+          .filter((cat) => cat !== 'creature' || showBestiary)
+          .map((cat) => (
           <button
             key={cat}
             type="button"
@@ -353,7 +359,13 @@ export function AdminPanel() {
       </div>
 
       {/* SEÇÃO A: GERENCIADOR DE PERÍCIAS CUSTOMIZADAS */}
-      {activeSection === 'skills' ? (
+      {activeSection === 'creature' ? (
+        showBestiary ? (
+          <AdminBestiaryPanel entries={entries} onChanged={loadCompendium} />
+        ) : (
+          <p className="text-sm text-zinc-400">O bestiário editável está disponível para Ordem Paranormal.</p>
+        )
+      ) : activeSection === 'skills' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <form
             onSubmit={handleSaveSkill}

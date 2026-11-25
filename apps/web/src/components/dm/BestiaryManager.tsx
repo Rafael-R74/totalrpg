@@ -7,7 +7,7 @@ import {
   PreparedAttack,
   CompendiumEntryData,
   MonitorProjection,
-  ORDEM_BESTIARY_THREATS,
+  buildOrdemBestiaryCatalog,
   OrdemBestiaryGroup,
   OrdemBestiaryTemplate,
   ThreatActionType,
@@ -202,11 +202,18 @@ export function BestiaryManager({
   const [newAbDmg, setNewAbDmg] = useState('');
   const [newAbDesc, setNewAbDesc] = useState('');
 
+  // Catálogo = 67 ameaças oficiais + edições e criaturas novas do Compêndio (aba Bestiário do Admin)
+  const catalogTemplates = useMemo(
+    () => buildOrdemBestiaryCatalog(compendiumEntries).map((c) => c.template),
+    [compendiumEntries]
+  );
+  const groupCount = (g: string) => catalogTemplates.filter((t) => g === 'ALL' || t.group === g).length;
+
   const filteredCatalog = useMemo(() => {
     if (!isOrdem) return [];
     const q = catalogSearch.trim().toLowerCase();
 
-    return ORDEM_BESTIARY_THREATS.filter((tpl) => {
+    return catalogTemplates.filter((tpl) => {
       if (groupFilter !== 'ALL' && tpl.group !== groupFilter) return false;
       if (groupFilter === 'realidade' && realitySubFilter !== 'ALL') {
         if (tpl.subGroup !== realitySubFilter) return false;
@@ -242,7 +249,7 @@ export function BestiaryManager({
       if (catalogSort === 'vd-desc') return b.vd - a.vd || a.name.localeCompare(b.name, 'pt-BR');
       return a.name.localeCompare(b.name, 'pt-BR');
     });
-  }, [isOrdem, catalogSearch, groupFilter, realitySubFilter, vdRangeFilter, catalogSort]);
+  }, [isOrdem, catalogSearch, groupFilter, realitySubFilter, vdRangeFilter, catalogSort, catalogTemplates]);
 
   function handleOpenCreateNew() {
     setEditingThreatId(null);
@@ -637,7 +644,7 @@ export function BestiaryManager({
                   : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
               }`}
             >
-              <Icon name="book" /> Catálogo Oficial Cap. 7 ({ORDEM_BESTIARY_THREATS.length})
+              <Icon name="book" /> Catálogo ({catalogTemplates.length})
             </button>
             <button
               type="button"
@@ -1262,13 +1269,13 @@ export function BestiaryManager({
 
             <div className="flex flex-wrap gap-1.5">
               {[
-                { id: 'ALL' as const, label: 'Todos (67)', icon: 'ghost', color: '' },
-                { id: 'sangue' as const, label: 'Sangue (12)', icon: 'sangue', color: 'var(--trpg-el-sangue)' },
-                { id: 'morte' as const, label: 'Morte (12)', icon: 'morte', color: 'var(--trpg-el-morte)' },
-                { id: 'conhecimento' as const, label: 'Conhecimento (12)', icon: 'conhecimento', color: 'var(--trpg-el-conhecimento)' },
-                { id: 'energia' as const, label: 'Energia (12)', icon: 'energia', color: 'var(--trpg-el-energia)' },
-                { id: 'medo' as const, label: 'Medo (1)', icon: 'medo', color: 'var(--trpg-el-medo)' },
-                { id: 'realidade' as const, label: 'Realidade (18)', icon: 'user', color: '' },
+                { id: 'ALL' as const, label: `Todos (${groupCount('ALL')})`, icon: 'ghost', color: '' },
+                { id: 'sangue' as const, label: `Sangue (${groupCount('sangue')})`, icon: 'sangue', color: 'var(--trpg-el-sangue)' },
+                { id: 'morte' as const, label: `Morte (${groupCount('morte')})`, icon: 'morte', color: 'var(--trpg-el-morte)' },
+                { id: 'conhecimento' as const, label: `Conhecimento (${groupCount('conhecimento')})`, icon: 'conhecimento', color: 'var(--trpg-el-conhecimento)' },
+                { id: 'energia' as const, label: `Energia (${groupCount('energia')})`, icon: 'energia', color: 'var(--trpg-el-energia)' },
+                { id: 'medo' as const, label: `Medo (${groupCount('medo')})`, icon: 'medo', color: 'var(--trpg-el-medo)' },
+                { id: 'realidade' as const, label: `Realidade (${groupCount('realidade')})`, icon: 'user', color: '' },
               ].map((pill) => (
                 <button
                   key={pill.id}
@@ -1611,7 +1618,7 @@ export function BestiaryManager({
                   onClick={() => setActiveSubTab('catalog')}
                   className="px-3.5 py-1.5 bg-zinc-800 hover:bg-red-700 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
                 >
-                  <Icon name="book" /> Explorar Catálogo Oficial Cap. 7 (67 Ameaças)
+                  <Icon name="book" /> Explorar o catálogo ({catalogTemplates.length} ameaças)
                 </button>
               )}
             </div>

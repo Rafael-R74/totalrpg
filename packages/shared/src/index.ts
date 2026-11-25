@@ -597,7 +597,7 @@ export interface CharacterAbility {
 }
 
 // Motor de Regras Dinâmico & Compêndio do Admin
-export type CompendiumCategory = 'power' | 'paranormal_power' | 'spell' | 'item' | 'origin' | 'condition';
+export type CompendiumCategory = 'power' | 'paranormal_power' | 'spell' | 'item' | 'origin' | 'condition' | 'creature';
 
 export type ModifierTargetType =
   | 'attribute'      // Afeta um atributo base (ex: for, agi, forca, destreza)

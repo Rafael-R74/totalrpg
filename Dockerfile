@@ -12,28 +12,25 @@ RUN npm install -g pnpm
 
 WORKDIR /build
 
-# Copia manifestos e código-fonte primeiro
+# Camada 1 (Cacheável): copia apenas manifestos e schema do Prisma para aproveitar cache do pnpm install
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages ./packages
-COPY apps ./apps
-COPY data/packs/content-pack.example.json ./data/packs/content-pack.example.json
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/server/package.json ./apps/server/
+COPY apps/web/package.json ./apps/web/
+COPY apps/server/prisma ./apps/server/prisma
 
-# Limpa eventuais node_modules/dist/bancos enviados do Windows (caso .dockerignore não tenha ido)
-RUN rm -rf \
-    node_modules \
-    packages/*/node_modules \
-    apps/*/node_modules \
-    apps/web/dist \
-    apps/server/prisma/*.db \
-    apps/server/prisma/*.db-* \
-    apps/web/src/components/dice/DiceLab.tsx
-
-# Instala dependências nativas Linux (incluindo esbuild e motores do Prisma)
-RUN pnpm install --no-frozen-lockfile
+RUN rm -f apps/server/prisma/*.db apps/server/prisma/*.db-* \
+  && pnpm install --no-frozen-lockfile
 
 # DATABASE_URL temporária exigida pelo schema.prisma durante o prisma generate no estágio de build
 ENV DATABASE_URL="file:/tmp/build.db"
 RUN cd /build/apps/server && ./node_modules/.bin/prisma generate
+
+# Camada 2: copia o código-fonte limpo (.dockerignore barra qualquer node_modules/dist/.db)
+COPY packages ./packages
+COPY apps ./apps
+COPY data/packs/content-pack.example.json ./data/packs/content-pack.example.json
+RUN rm -f apps/web/src/components/dice/DiceLab.tsx
 
 # Compila @totalrpg/shared, @totalrpg/server e @totalrpg/web
 ENV NODE_OPTIONS="--max-old-space-size=1536"
@@ -69,6 +66,6 @@ COPY --from=builder /build/data ./data
 
 EXPOSE 3333
 
-# Sem scripts .sh externos (imune a quebra de linha CRLF ao enviar via FileBrowser do Windows)
+# Sem scripts .sh externos (imune a quebra de linha CRLF)
 # Executa tsx como PID 1 via exec para economizar RAM (limite 512M) e receber SIGTERM limpo
 CMD ["sh", "-c", "mkdir -p /app/data/uploads /app/data/packs && cd /app/apps/server && ./node_modules/.bin/prisma db push --skip-generate && exec ./node_modules/.bin/tsx src/index.ts"]

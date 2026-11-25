@@ -219,6 +219,35 @@ compendiumRouter.post('/entry', async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Atualizar entrada do Compêndio (Apenas Admin) — usado pelo Bestiário editável
+compendiumRouter.put('/entry/:id', async (req: AuthenticatedRequest, res) => {
+  try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!currentUser?.isAdmin) {
+      return res.status(403).json({ error: 'Apenas administradores podem gerenciar o Compêndio.' });
+    }
+    const { id } = req.params;
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'ID inválido.' });
+    }
+    const { name, description, cost, modifiers, metadata } = req.body;
+    const entry = await prisma.compendiumEntry.update({
+      where: { id },
+      data: {
+        ...(typeof name === 'string' && name.trim() ? { name: name.trim() } : {}),
+        ...(typeof description === 'string' ? { description } : {}),
+        ...(cost !== undefined ? { cost: Number(cost) || 0 } : {}),
+        ...(modifiers !== undefined ? { modifiers: modifiers as unknown as Prisma.InputJsonValue } : {}),
+        ...(metadata !== undefined ? { metadata: metadata as unknown as Prisma.InputJsonValue } : {}),
+      },
+    });
+    return res.json(entry);
+  } catch (error) {
+    console.error('Erro ao atualizar entrada do compêndio:', error);
+    return res.status(500).json({ error: 'Erro ao atualizar item do compêndio.' });
+  }
+});
+
 // Excluir entrada do Compêndio (Apenas Admin)
 compendiumRouter.delete('/entry/:id', async (req: AuthenticatedRequest, res) => {
   try {

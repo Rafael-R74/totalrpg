@@ -393,6 +393,20 @@ export async function createCompendiumEntry(
   return data;
 }
 
+export async function updateCompendiumEntry(
+  id: string,
+  payload: Partial<Omit<CompendiumEntryData, 'id' | 'system' | 'category'>>
+): Promise<CompendiumEntryData> {
+  const response = await fetch(`${API_URL}/compendium/entry/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao atualizar item do compêndio.');
+  return data;
+}
+
 export async function deleteCompendiumEntry(id: string): Promise<void> {
   const response = await fetch(`${API_URL}/compendium/entry/${id}`, {
     method: 'DELETE',

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   SystemId,
   OrdemAttributes,
@@ -51,6 +51,11 @@ export function CharacterWizardModal({
   onCreated,
 }: CharacterWizardModalProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // Ao trocar de etapa, a área rolável do assistente volta ao topo.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: 0 });
+  }, [step]);
   const [name, setName] = useState('');
   const [portraitUrl, setPortraitUrl] = useState('');
   const [system, setSystem] = useState<SystemId>(lockedSystem || 'ordem-paranormal');
@@ -700,7 +705,7 @@ export function CharacterWizardModal({
         </ol>
 
         {/* Corpo Rolável */}
-        <div className="p-5 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-6">
+        <div ref={bodyRef} className="p-5 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-6">
           {errorMsg && (
             <div role="alert" className="p-3 rounded-lg bg-red-950/50 border border-red-800/80 text-red-200 text-sm flex gap-2">
               <Icon name="warning" size={16} className="mt-0.5 shrink-0" /> {errorMsg}
