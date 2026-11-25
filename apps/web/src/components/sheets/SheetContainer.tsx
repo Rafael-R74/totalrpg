@@ -35,6 +35,8 @@ import {
   ORDEM_ORIGINS,
   ORDEM_NEX_PROGRESSION,
   ORDEM_TRAILS,
+  getOrdemTrailDisplayName,
+  getMissingNexGeneralChoices,
   ORDEM_COMPENDIUM_ENTRIES,
   ORDEM_INSANITY_EFFECTS,
   ORDEM_INTERLUDE_DISHES,
@@ -82,7 +84,7 @@ import { OrdemSheet } from './OrdemSheet';
 import { TormentaSheet } from './TormentaSheet';
 import { SheetExtras } from './SheetExtras';
 import { FLASHBACK_GRANT, type FlashbackChoice } from './SahEspecialistaPowers';
-import { PossessionControl } from './SahTrilhasPowers';
+import { PossessionControl, NexGeneralChoicePicker, type NexProgChoices } from './SahTrilhasPowers';
 import { ImageUploadField } from '../ImageUploadField';
 import { TempVitalBar } from '../TempVitalBar';
 import { useTheme } from '../../theme/themeEngine';
@@ -102,13 +104,14 @@ type OrdemTrailDef = (typeof ORDEM_TRAILS)[number];
 function buildTrailAbility(
   trail: OrdemTrailDef,
   tp: OrdemTrailDef['powers'][number],
-  previous?: CharacterAbility
+  previous?: CharacterAbility,
+  trailLabel: string = trail.name
 ): CharacterAbility {
   const defaultActive = tp.cost === 0 || (tp.modifiers || []).length > 0;
   return {
     ...(previous || {}),
     id: `trail-${trail.id}-${tp.nex}`,
-    name: `Trilha ${trail.name} (${tp.nex}%): ${tp.name}`,
+    name: `Trilha ${trailLabel} (${tp.nex}%): ${tp.name}`,
     category: 'classe',
     cost: tp.cost,
     description: tp.description,
@@ -429,6 +432,7 @@ export function SheetContainer({
   const [evoTrailBook, setEvoTrailBook] = useState<string>('ordem-base');
   const [evoTrailId, setEvoTrailId] = useState<string>('');
   const [evoMonstruosoElement, setEvoMonstruosoElement] = useState<string>('');
+  const [evoNexProgChoices, setEvoNexProgChoices] = useState<NexProgChoices>({});
   const [evoChoiceMode, setEvoChoiceMode] = useState<'class_power' | 'transcend' | 'versatility'>('class_power');
   const [evoSelectedPowerId, setEvoSelectedPowerId] = useState<string>('');
   const [evoSkillTrainingPowerIds, setEvoSkillTrainingPowerIds] = useState<string[]>([]);
@@ -2720,7 +2724,12 @@ export function SheetContainer({
     const trailPowersToAdd: CharacterAbility[] = trail.powers
       .filter((tp) => targetNex >= tp.nex)
       .map((tp) =>
-        buildTrailAbility(trail, tp, characterAbilities.find((a) => a.id === `trail-${trail.id}-${tp.nex}`))
+        buildTrailAbility(
+          trail,
+          tp,
+          characterAbilities.find((a) => a.id === `trail-${trail.id}-${tp.nex}`),
+          getOrdemTrailDisplayName(trail.id, characterAbilities)
+        )
       );
 
     const nextAbilities = [...filteredExisting, ...trailPowersToAdd];
@@ -3148,6 +3157,7 @@ export function SheetContainer({
     setEvoSourceFilter([]);
     setEvoTrailId(rawSheet.trail || '');
     setEvoMonstruosoElement('');
+    setEvoNexProgChoices({});
     // Possuído (SaH, 10%): todo novo poder de ocultista vira Transcender
     setEvoChoiceMode(rawSheet.trail === 'possuido' ? 'transcend' : 'class_power');
     setEvoSelectedPowerId('');
@@ -3192,6 +3202,12 @@ export function SheetContainer({
       !evoMonstruosoElement
     ) {
       missing.push('Escolher o elemento do Monstruoso');
+    }
+    if (activeTrail === 'monstruoso' && nextNexVal >= 25) {
+      const stored = characterAbilities.find((a) => a.id === 'trail-monstruoso-10')?.nexProgChoices;
+      if (getMissingNexGeneralChoices(nextNexVal, { ...stored, ...evoNexProgChoices }).length > 0) {
+        missing.push('Escolher as alterações da Progressão de NEX (25%/35%)');
+      }
     }
 
     if (milestoneObj?.grantsClassPower || milestoneObj?.grantsVersatility) {
@@ -3393,16 +3409,24 @@ export function SheetContainer({
       const trail = ORDEM_TRAILS.find((t) => t.id === chosenTrailId);
       if (trail) {
         const previousTrailAbilities = nextAbilities;
+        const storedMonstroEl = previousTrailAbilities.find((a) => a.id === 'trail-monstruoso-10')?.chosenElement;
+        const trailLabel =
+          trail.id === 'monstruoso' && (storedMonstroEl || evoMonstruosoElement)
+            ? `${trail.name} de ${storedMonstroEl || evoMonstruosoElement}`
+            : trail.name;
         nextAbilities = nextAbilities.filter(
           (ab) => !ab.id.startsWith('trail-') && !ab.name.startsWith('Trilha ')
         );
         for (const tp of trail.powers) {
           if (nextNex >= tp.nex) {
             const id = `trail-${trail.id}-${tp.nex}`;
-            const ability = buildTrailAbility(trail, tp, previousTrailAbilities.find((a) => a.id === id));
+            const ability = buildTrailAbility(trail, tp, previousTrailAbilities.find((a) => a.id === id), trailLabel);
             // Monstruoso (SaH): elemento escolhido junto com a trilha; depois fica fixo
             if (id === 'trail-monstruoso-10' && !ability.chosenElement && evoMonstruosoElement) {
               ability.chosenElement = evoMonstruosoElement;
+            }
+            if (id === 'trail-monstruoso-10' && Object.keys(evoNexProgChoices).length > 0) {
+              ability.nexProgChoices = { ...evoNexProgChoices, ...(ability.nexProgChoices || {}) };
             }
             nextAbilities.push(ability);
           }
@@ -5561,6 +5585,22 @@ export function SheetContainer({
                       </div>
                     </div>
                   )}
+
+                {/* Monstruoso (SaH): escolhas das alterações gerais da Progressão de NEX (25%/35%) */}
+                {activeTrailId === 'monstruoso' &&
+                  (() => {
+                    const stored = characterAbilities.find((a) => a.id === 'trail-monstruoso-10')?.nexProgChoices;
+                    const keys = getMissingNexGeneralChoices(nextNex, stored);
+                    if (keys.length === 0) return null;
+                    return (
+                      <div className="p-3 rounded-xl border border-purple-700/60 bg-purple-950/20 space-y-2">
+                        <p className="text-xs text-zinc-300">
+                          <Icon name="route" /> Progressão de NEX (Monstruoso): escolha as alterações gerais. Essas escolhas são permanentes.
+                        </p>
+                        <NexGeneralChoicePicker keys={keys} value={evoNexProgChoices} onChange={setEvoNexProgChoices} />
+                      </div>
+                    );
+                  })()}
 
                 {/* Detalhamento do Poder de Trilha Desbloqueado em NEX 40%, 65% ou 99% */}
                 {unlockedTrailPowerAtThisNex && nextNex > 10 && selectedTrailObj && (

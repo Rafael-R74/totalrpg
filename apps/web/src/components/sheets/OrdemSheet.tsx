@@ -16,6 +16,7 @@ import {
   getOrdemSkillAttrOverride,
   type OrdemOriginDefinition,
   ORDEM_TRAILS,
+  getOrdemTrailDisplayName,
   ORDEM_PATENTS,
   ORDEM_SKILLS_METADATA,
   ORDEM_PROFICIENCY_OPTIONS,
@@ -751,7 +752,7 @@ export function OrdemSheet({
             </label>
             <p className="text-sm font-semibold text-amber-300">
               {activeTrailObj
-                ? activeTrailObj.name
+                ? getOrdemTrailDisplayName(activeTrailObj.id, abilities)
                 : safeData.nex >= 10
                 ? 'Não escolhida'
                 : 'Bloqueada (<10%)'}

@@ -3,6 +3,10 @@ import {
   ORDEM_COMPENDIUM_ENTRIES,
   ORDEM_NEX_ALTERATIONS,
   ORDEM_NEX_ALTERATIONS_INTRO,
+  ORDEM_NEX_GENERAL_ALTERATIONS,
+  NEX_PROG_ATTR35_OPTIONS,
+  NEX_PROG_PEN25_OPTIONS,
+  NEX_PROG_PEN35_OPTIONS,
   getEnergyChaosEffect,
   type NexProgressionElement,
   type PossessionInfo,
@@ -314,6 +318,62 @@ function MonstruosoControl(p: SahPowerProps & { onHealPv?: (amount: number, reas
 }
 
 // ---------------------------------------------------------------------------
+// Progressão de NEX (SaH p. 100): escolhas das alterações gerais de 25% e 35%
+
+export type NexProgChoices = { pen25?: string; attr35?: string; pen35?: string };
+
+const NEX_GENERAL_CHOICE_GROUPS: Array<{ key: keyof NexProgChoices; nex: number; label: string; options: { id: string; label: string }[] }> = [
+  { key: 'pen25', nex: 25, label: 'NEX 25%: -5 em qual perícia?', options: NEX_PROG_PEN25_OPTIONS },
+  { key: 'attr35', nex: 35, label: 'NEX 35%: qual atributo soma nos PE?', options: NEX_PROG_ATTR35_OPTIONS },
+  { key: 'pen35', nex: 35, label: 'NEX 35%: -5 em qual perícia?', options: NEX_PROG_PEN35_OPTIONS },
+];
+
+/** Botões de escolha para as alterações gerais. `keys`: quais escolhas mostrar. */
+export function NexGeneralChoicePicker({
+  keys,
+  value,
+  onChange,
+}: {
+  keys: Array<keyof NexProgChoices>;
+  value: NexProgChoices;
+  onChange: (next: NexProgChoices) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      {NEX_GENERAL_CHOICE_GROUPS.filter((g) => keys.includes(g.key)).map((g) => (
+        <div key={g.key} className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-zinc-200">{g.label}</span>
+          <div role="radiogroup" aria-label={g.label} className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {g.options.map((o) => {
+              const on = value[g.key] === o.id;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => onChange({ ...value, [g.key]: o.id })}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold border cursor-pointer ${
+                    on ? 'bg-purple-600/30 border-purple-400 text-white' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function choiceLabel(key: keyof NexProgChoices, id?: string): string {
+  const g = NEX_GENERAL_CHOICE_GROUPS.find((x) => x.key === key);
+  return g?.options.find((o) => o.id === id)?.label || '';
+}
+
+// ---------------------------------------------------------------------------
 // Progressão de NEX (SaH p. 98-102): painel de alterações do elemento
 
 function NexAlterationsPanel({ p, element }: { p: SahPowerProps; element: string }) {
@@ -321,7 +381,20 @@ function NexAlterationsPanel({ p, element }: { p: SahPowerProps; element: string
   const [chaos, setChaos] = useState<{ roll: number; title: string; text: string } | null>(null);
   const nex = Number(p.sheet.nex || 5);
   const list = ORDEM_NEX_ALTERATIONS[element as NexProgressionElement] || [];
-  const unlocked = list.filter((a) => nex >= a.nex).length;
+  const general = ORDEM_NEX_GENERAL_ALTERATIONS;
+  const unlocked = list.filter((a) => nex >= a.nex).length + general.filter((a) => nex >= a.nex).length;
+  const total = list.length + general.length;
+  const choices: NexProgChoices = p.ab.nexProgChoices || {};
+  const missingKeys = (['pen25', 'attr35', 'pen35'] as const).filter(
+    (k) => nex >= (k === 'pen25' ? 25 : 35) && !choices[k]
+  );
+  const [draft, setDraft] = useState<NexProgChoices>({});
+  function saveChoices() {
+    const merged = { ...choices, ...draft };
+    p.onUpdateAbilities(p.abilities.map((a) => (a.id === p.ab.id ? { ...a, nexProgChoices: merged } : a)));
+    setDraft({});
+    p.onFeedback('Escolhas da Progressão de NEX salvas.');
+  }
   const owns = (ritual: string) =>
     p.abilities.some((a) => a.category === 'ritual' && a.name.toLowerCase().startsWith(ritual.toLowerCase()));
 
@@ -370,7 +443,7 @@ function NexAlterationsPanel({ p, element }: { p: SahPowerProps; element: string
   return (
     <>
       <button type="button" className={SAH_BTN_NEUTRAL} onClick={() => { setChaos(null); setOpen(true); }}>
-        <Icon name="route" /> Alterações por NEX ({unlocked}/{list.length})
+        <Icon name="route" /> Alterações por NEX ({unlocked}/{total}){missingKeys.length > 0 ? ' • escolha pendente' : ''}
       </button>
       <Dialog
         open={open}
@@ -386,6 +459,52 @@ function NexAlterationsPanel({ p, element }: { p: SahPowerProps; element: string
               <p className="mt-1.5">{ORDEM_NEX_ALTERATIONS_INTRO.text}</p>
             </details>
           )}
+          {missingKeys.length > 0 && (
+            <div className="p-3 rounded-lg border border-amber-600/70 bg-amber-950/20 flex flex-col gap-2.5">
+              <span className="text-sm font-semibold text-amber-200">
+                <Icon name="warning" /> Escolhas pendentes (permanentes)
+              </span>
+              <NexGeneralChoicePicker keys={missingKeys} value={draft} onChange={setDraft} />
+              <button
+                type="button"
+                className={`${SAH_BTN_AMBER} self-start`}
+                disabled={missingKeys.some((k) => !draft[k])}
+                onClick={saveChoices}
+              >
+                Salvar escolhas
+              </button>
+            </div>
+          )}
+          {general.map((alt) => {
+            const on = nex >= alt.nex;
+            const picked =
+              alt.nex === 25
+                ? choiceLabel('pen25', choices.pen25) && `-5 em ${choiceLabel('pen25', choices.pen25)}`
+                : alt.nex === 35
+                ? [choiceLabel('attr35', choices.attr35) && `${choiceLabel('attr35', choices.attr35)} nos PE`, choiceLabel('pen35', choices.pen35) && `-5 em ${choiceLabel('pen35', choices.pen35)}`]
+                    .filter(Boolean)
+                    .join('; ')
+                : `Afinidade: ${element}`;
+            return (
+              <div
+                key={`g${alt.nex}`}
+                className={`p-3 rounded-lg border flex flex-col gap-2 ${on ? 'border-purple-700/70 bg-purple-950/20' : 'border-zinc-800 bg-zinc-950 opacity-60'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-zinc-100">NEX {alt.nex}% (geral)</span>
+                  <span className={`trpg-badge ${on ? '' : 'opacity-70'}`}>{on ? 'Ativa' : 'Bloqueada'}</span>
+                </div>
+                <p className="text-sm text-zinc-300">{alt.summary}</p>
+                {on && picked && <span className="text-xs text-emerald-300">Escolha: {picked}</span>}
+                {alt.fullText && (
+                  <details className="text-xs text-zinc-400">
+                    <summary className="cursor-pointer text-zinc-300">Texto completo</summary>
+                    <p className="mt-1.5 whitespace-pre-line">{alt.fullText}</p>
+                  </details>
+                )}
+              </div>
+            );
+          })}
           {list.map((alt) => {
             const on = nex >= alt.nex;
             return (

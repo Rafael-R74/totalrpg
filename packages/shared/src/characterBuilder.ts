@@ -1200,7 +1200,9 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         if (nex >= tp.nex) {
           abilities.push({
             id: `trail-${trail.id}-${tp.nex}`,
-            name: `Trilha ${trail.name} (${tp.nex}%): ${tp.name}`,
+            name: `Trilha ${
+              trail.id === 'monstruoso' && input.monstruosoElement ? `${trail.name} de ${input.monstruosoElement}` : trail.name
+            } (${tp.nex}%): ${tp.name}`,
             category: 'classe',
             cost: tp.cost,
             description: tp.description,

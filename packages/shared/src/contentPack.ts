@@ -1,4 +1,4 @@
-import { ORDEM_NEX_ALTERATIONS, ORDEM_NEX_ALTERATIONS_INTRO, type NexProgressionElement } from './nexProgression';
+import { ORDEM_NEX_ALTERATIONS, ORDEM_NEX_ALTERATIONS_INTRO, ORDEM_NEX_GENERAL_ALTERATIONS, type NexProgressionElement } from './nexProgression';
 import { ORDEM_RITUALS_DATA } from './ordemRitualsData';
 import { buildOrdemRitualCompendiumEntries } from './ordemRituals';
 import { ORDEM_COMPENDIUM_ENTRIES } from './ordemCompendiumData';
@@ -40,7 +40,7 @@ export interface TotalRpgContentPack {
   >;
   insanityEffects?: string[];
   /** Progressão de NEX (SaH p. 98): intro + textos por elemento e NEX ("60", "75", "90") */
-  nexProgression?: { intro?: string; elements?: Record<string, Record<string, string>> };
+  nexProgression?: { intro?: string; elements?: Record<string, Record<string, string>>; general?: Record<string, string> };
   interludeDishes?: Record<string, { description: string }>;
   bestiary?: Record<
     string,
@@ -131,6 +131,7 @@ export function mergeContentPacks(packs: TotalRpgContentPack[]): TotalRpgContent
       merged.nexProgression = {
         intro: p.nexProgression.intro || merged.nexProgression?.intro,
         elements: { ...(merged.nexProgression?.elements || {}), ...(p.nexProgression.elements || {}) },
+        general: { ...(merged.nexProgression?.general || {}), ...(p.nexProgression.general || {}) },
       };
     }
     if (p.interludeDishes) {
@@ -285,6 +286,10 @@ export function applyContentPack(pack: TotalRpgContentPack): ContentPackApplySta
   // 6b. Progressão de NEX (SaH): textos completos das alterações
   if (pack.nexProgression) {
     if (pack.nexProgression.intro) ORDEM_NEX_ALTERATIONS_INTRO.text = pack.nexProgression.intro;
+    for (const alt of ORDEM_NEX_GENERAL_ALTERATIONS) {
+      const txt = pack.nexProgression.general?.[String(alt.nex)];
+      if (txt) alt.fullText = txt;
+    }
     for (const [el, byNex] of Object.entries(pack.nexProgression.elements || {})) {
       const list = ORDEM_NEX_ALTERATIONS[el as NexProgressionElement];
       if (!list) continue;

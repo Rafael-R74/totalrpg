@@ -1,4 +1,4 @@
-import { getNexProgressionModifiers } from './nexProgression';
+import { getNexGeneralModifiers, getNexProgressionModifiers } from './nexProgression';
 import {
   CharacterAbility,
   CompendiumEntryData,
@@ -2005,7 +2005,19 @@ export function computeOrdemInventoryDerivedEffects(
 
   // Monstruoso: Progressão de NEX (SaH p. 98) com o elemento escolhido — efeitos permanentes em perícias
   if (monstro10 && monstroEl) {
-    dynamicModifiers.push(...getNexProgressionModifiers(monstroEl, Number(sheetData?.nex ?? 5)));
+    const nexVal = Number(sheetData?.nex ?? 5);
+    // Alterações gerais (25%/35%): atributos já com os ajustes do Monstruoso calculados acima
+    const attrValues: Record<string, number> = {};
+    for (const k of ['agi', 'for', 'int', 'vig']) {
+      attrValues[k] =
+        Number((sheetData?.attributes as Record<string, number> | undefined)?.[k] ?? 0) +
+        dynamicModifiers
+          .filter((m) => m.targetType === 'attribute' && m.targetKey === k)
+          .reduce((s, m) => s + m.value, 0);
+    }
+    // O Monstruoso 10% já deixa o personagem treinado em Ocultismo
+    dynamicModifiers.push(...getNexGeneralModifiers(nexVal, monstro10.nexProgChoices, true, attrValues));
+    dynamicModifiers.push(...getNexProgressionModifiers(monstroEl, nexVal));
   }
   // Racionalidade Inflexível: Intelecto no lugar de Presença para os PE (diferença por grau de NEX)
   if (hasGeneral('sah-pwr-gen-racionalidade-inflexivel', 'racionalidade inflexível') && attrInt > attrPre) {

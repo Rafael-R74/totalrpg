@@ -660,6 +660,8 @@ export interface CharacterAbility {
   chosenElement?: string;
   chosenSkill?: string;      // Foco em Perícia (Geral, SaH): perícia escolhida
   ritualActive?: boolean;    // Monstruoso (SaH): etapa ritualística do dia executada
+  /** Progressão de NEX (SaH p. 100): escolhas das alterações gerais (25%: perícia -5; 35%: atributo nos PE e perícia -5) */
+  nexProgChoices?: { pen25?: string; attr35?: string; pen35?: string };
   trackedTarget?: string;    // Caçador (SaH): ser/tipo estudado ou presa
   trackedCount?: number;     // Caçador (SaH): pistas reunidas (+1 cada)
   trainingGranted?: boolean; // Poder geral "treina ou +2": true = treinou a perícia; false = recebeu +2

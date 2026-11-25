@@ -42,6 +42,76 @@ export const ORDEM_NEX_ALTERATIONS: Record<NexProgressionElement, NexAlteration[
   ],
 };
 
+/**
+ * Alterações gerais (SaH p. 100), valem para qualquer elemento:
+ * 25%: Ocultismo sem treino (+2 se treinado); -5 em Diplomacia, Enganação ou Intimidação (à escolha).
+ * 35%: soma um atributo (exceto Presença) nos PE; -5 em Atletismo, Fortitude ou Reflexos (à escolha).
+ * 50%: afinidade com um elemento na próxima vez que Transcender.
+ */
+export interface NexGeneralAlteration {
+  nex: 25 | 35 | 50;
+  summary: string;
+  fullText?: string;
+}
+
+export const ORDEM_NEX_GENERAL_ALTERATIONS: NexGeneralAlteration[] = [
+  { nex: 25, summary: 'Pode testar Ocultismo sem treino (se treinado, +2 em Ocultismo); -5 em uma perícia: Diplomacia, Enganação ou Intimidação.' },
+  { nex: 35, summary: 'Soma um atributo à sua escolha (exceto Presença) no total de PE; -5 em uma perícia: Atletismo, Fortitude ou Reflexos.' },
+  { nex: 50, summary: 'Na próxima vez que Transcender, ganha afinidade com um elemento (no Monstruoso, o elemento da trilha).' },
+];
+
+export const NEX_PROG_PEN25_OPTIONS = [
+  { id: 'diplomacia', label: 'Diplomacia' },
+  { id: 'enganacao', label: 'Enganação' },
+  { id: 'intimidacao', label: 'Intimidação' },
+];
+export const NEX_PROG_PEN35_OPTIONS = [
+  { id: 'atletismo', label: 'Atletismo' },
+  { id: 'fortitude', label: 'Fortitude' },
+  { id: 'reflexos', label: 'Reflexos' },
+];
+export const NEX_PROG_ATTR35_OPTIONS = [
+  { id: 'agi', label: 'Agilidade' },
+  { id: 'for', label: 'Força' },
+  { id: 'int', label: 'Intelecto' },
+  { id: 'vig', label: 'Vigor' },
+];
+
+/** Escolhas que ainda faltam para as alterações gerais até o NEX dado. */
+export function getMissingNexGeneralChoices(
+  nex: number,
+  choices?: { pen25?: string; attr35?: string; pen35?: string }
+): Array<'pen25' | 'attr35' | 'pen35'> {
+  const missing: Array<'pen25' | 'attr35' | 'pen35'> = [];
+  if (nex >= 25 && !choices?.pen25) missing.push('pen25');
+  if (nex >= 35 && !choices?.attr35) missing.push('attr35');
+  if (nex >= 35 && !choices?.pen35) missing.push('pen35');
+  return missing;
+}
+
+/**
+ * Modificadores das alterações gerais. `ocultismoTrained`: já treinado (o Monstruoso 10% treina Ocultismo).
+ * `attrValues`: valores atuais dos atributos, para somar o escolhido aos PE.
+ */
+export function getNexGeneralModifiers(
+  nex: number,
+  choices: { pen25?: string; attr35?: string; pen35?: string } | undefined,
+  ocultismoTrained: boolean,
+  attrValues: Record<string, number>
+): RuleModifier[] {
+  const mods: RuleModifier[] = [];
+  if (nex >= 25) {
+    if (ocultismoTrained) mods.push({ id: 'nexprog-25-ocultismo', targetType: 'skill_bonus', targetKey: 'ocultismo', value: 2 });
+    if (choices?.pen25) mods.push({ id: 'nexprog-25-pen', targetType: 'skill_bonus', targetKey: choices.pen25, value: -5 });
+  }
+  if (nex >= 35) {
+    const v = choices?.attr35 ? Number(attrValues[choices.attr35] ?? 0) : 0;
+    if (v) mods.push({ id: 'nexprog-35-pe', targetType: 'vital_max', targetKey: 'pe', value: v });
+    if (choices?.pen35) mods.push({ id: 'nexprog-35-pen', targetType: 'skill_bonus', targetKey: choices.pen35, value: -5 });
+  }
+  return mods;
+}
+
 /** Texto de abertura da regra (preenchido pelo pacote local) */
 export const ORDEM_NEX_ALTERATIONS_INTRO = { text: '' };
 

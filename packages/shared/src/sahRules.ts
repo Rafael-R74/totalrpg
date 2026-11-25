@@ -224,3 +224,20 @@ export function getDyingTurnsToDie(abilities: CharacterAbility[] | undefined): n
   const morte = list.some((a) => a.id === 'trail-monstruoso-10' && (a.chosenElement || '').toLowerCase() === 'morte');
   return morte && list.some((a) => a.id === 'trail-monstruoso-40') ? 4 : 3;
 }
+
+/**
+ * Nome da trilha para exibição. O Monstruoso (SaH) mostra o elemento escolhido no 10%,
+ * ex.: "Monstruoso de Sangue".
+ */
+export function getOrdemTrailDisplayName(
+  trailId: string | undefined,
+  abilities: Pick<CharacterAbility, 'id' | 'chosenElement'>[] | undefined
+): string {
+  const trail = ORDEM_TRAILS.find((t) => t.id === trailId);
+  if (!trail) return '';
+  if (trail.id === 'monstruoso') {
+    const el = (abilities || []).find((a) => a.id === 'trail-monstruoso-10')?.chosenElement;
+    if (el) return `${trail.name} de ${el}`;
+  }
+  return trail.name;
+}
