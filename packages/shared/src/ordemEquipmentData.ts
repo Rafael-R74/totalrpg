@@ -1280,6 +1280,7 @@ export interface OrdemInventoryDerivedEffects {
   ritualDtBonus: number;
   ignoresLoadPenaltySkills: string[];
   equippedVestimentaCount: number;
+  maxVestimentas: number;
   vestimentaLimitExceeded: boolean;
   missingSkillKits: Array<{ skillId: string; skillName: string }>;
   curseCountsByElement: Record<OrdemElement, number>;
@@ -1679,6 +1680,22 @@ export function computeOrdemInventoryDerivedEffects(
       (ab.id.toLowerCase().includes('tanque-guerra') ||
         ab.name.toLowerCase().includes('tanque de guerra'))
   );
+  const hasMochileiro = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('mochileiro') ||
+        ab.name.toLowerCase().includes('mochileiro'))
+  );
+  const maxVestimentas = hasMochileiro ? 3 : 2;
+  const hasCorreriaDesesperada = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('correria-desesperada') ||
+        ab.name.toLowerCase().includes('correria desesperada'))
+  );
+  if (hasCorreriaDesesperada) {
+    displacementBonus += 3;
+  }
 
   // Kits presentes na mochila (não precisam estar equipados, basta possuir no inventário — ou acessório Instrumental)
   const ownedKitSkills = new Set<string>();
@@ -1733,14 +1750,14 @@ export function computeOrdemInventoryDerivedEffects(
       });
     }
 
-    // Vestimentas: limite de 2 simultâneas (p. 63)
+    // Vestimentas: limite de 2 simultâneas (p. 63) ou 3 com Mochileiro (SaH, p. 14)
     const isVestimenta =
       kind === 'accessory' &&
       (item.accessoryConfig?.accessoryType === 'vestimenta' || ln.includes('vestimenta'));
     let vestimentaAllowed = true;
     if (isVestimenta) {
       equippedVestimentaCount += 1;
-      if (equippedVestimentaCount > 2) {
+      if (equippedVestimentaCount > maxVestimentas) {
         vestimentaAllowed = false;
       }
     }
@@ -2009,7 +2026,8 @@ export function computeOrdemInventoryDerivedEffects(
     ritualDtBonus,
     ignoresLoadPenaltySkills: Array.from(ignoresLoadPenaltySkills),
     equippedVestimentaCount,
-    vestimentaLimitExceeded: equippedVestimentaCount > 2,
+    maxVestimentas,
+    vestimentaLimitExceeded: equippedVestimentaCount > maxVestimentas,
     missingSkillKits,
     curseCountsByElement,
     cursePriceByAttr,

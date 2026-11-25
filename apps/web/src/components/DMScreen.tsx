@@ -7,6 +7,7 @@ import {
   ActiveCondition,
   CharacterAbility,
   RPGItem,
+  VitalBar,
   PreparedAttack,
   CampaignThreat,
   CampaignMerchant,
@@ -21,6 +22,8 @@ import {
   currentPvOf,
   hasDyingCondition,
   isDyingCondition,
+  isUnconsciousCondition,
+  hasApegoAngustiado,
   dyingTurnsOf,
   deathAtOf,
   DYING_TURNS_TO_DIE,
@@ -868,7 +871,12 @@ async function handleDeliverItemToCharacter(
    */
   async function updateDyingState(
     charId: string,
-    next: { dyingTurns?: number; deathAt?: number | null; conditions?: ActiveCondition[] }
+    next: {
+      dyingTurns?: number;
+      deathAt?: number | null;
+      conditions?: ActiveCondition[];
+      vitals?: VitalBar[];
+    }
   ) {
     const current = latestCampaignRef.current?.characters.find((c) => c.id === charId);
     if (!current) return;
@@ -883,7 +891,13 @@ async function handleDeliverItemToCharacter(
       const nextCampaign: DMScreenCampaignData = {
         ...prevCampaign,
         characters: prevCampaign.characters.map((c) =>
-          c.id === charId ? { ...c, sheetData: nextSheetData as any } : c
+          c.id === charId
+            ? {
+                ...c,
+                ...(next.vitals ? { vitals: next.vitals } : {}),
+                sheetData: nextSheetData as any,
+              }
+            : c
         ),
       };
       latestCampaignRef.current = nextCampaign;
@@ -894,9 +908,13 @@ async function handleDeliverItemToCharacter(
       ...(next.dyingTurns !== undefined ? { dyingTurns: next.dyingTurns } : {}),
       ...(next.deathAt !== undefined ? { deathAt: next.deathAt } : {}),
       ...(next.conditions !== undefined ? { conditions: next.conditions } : {}),
+      ...(next.vitals ? { vitals: next.vitals } : {}),
     });
     try {
-      await updateCharacter(charId, { sheetData: nextSheetData as any });
+      await updateCharacter(charId, {
+        ...(next.vitals ? { vitals: next.vitals } : {}),
+        sheetData: nextSheetData as any,
+      });
       onBroadcastCharacterSync(charId);
     } catch (err: any) {
       alert(err.message);
@@ -912,15 +930,33 @@ async function handleDeliverItemToCharacter(
     if (!hasDyingCondition(raw.conditions) || deathAtOf(raw)) return;
     const turns = Math.min(DYING_TURNS_TO_DIE, dyingTurnsOf(raw) + 1);
     const dies = turns >= DYING_TURNS_TO_DIE;
-    updateDyingState(char.id, { dyingTurns: turns, ...(dies ? { deathAt: Date.now() } : {}) });
+    const isConsciousApego =
+      hasApegoAngustiado(raw.abilities) &&
+      !(Array.isArray(raw.conditions) && raw.conditions.some(isUnconsciousCondition));
+    const nextVitals = isConsciousApego
+      ? char.vitals.map((v) =>
+          v.id === 'san' ? { ...v, current: Math.max(0, v.current - 2) } : v
+        )
+      : undefined;
+
+    updateDyingState(char.id, {
+      dyingTurns: turns,
+      ...(dies ? { deathAt: Date.now() } : {}),
+      ...(nextVitals ? { vitals: nextVitals } : {}),
+    });
     onLogActivity?.({
       characterId: char.id,
       characterName: char.name,
       actorLabel: 'Mestre',
       category: 'condition',
       summary: dies
-        ? 'Morreu: iniciou o terceiro turno morrendo nesta cena'
-        : `Iniciou o turno morrendo (${turns} de ${DYING_TURNS_TO_DIE})`,
+        ? `Morreu: iniciou o terceiro turno morrendo nesta cena${
+            isConsciousApego ? ' (-2 SAN por Apego Angustiado)' : ''
+          }`
+        : `Iniciou o turno morrendo (${turns} de ${DYING_TURNS_TO_DIE})${
+            isConsciousApego ? ' • Apego Angustiado (-2 SAN)' : ''
+          }`,
+      costText: isConsciousApego ? '-2 SAN' : undefined,
       tone: 'danger',
     });
   }
@@ -1078,11 +1114,13 @@ async function handleDeliverItemToCharacter(
         : rawSheet;
 
     // Regra dos 0 PV (Ordem, p. 311): caiu a 0 → morrendo + inconsciente; curou → sai inconsciente.
+    const skipUnconscious = hasApegoAngustiado(abilities);
     const zeroHp = applyZeroHpRule(
       targetChar.system,
       currentPvOf(targetChar.vitals),
       currentPvOf(updatedVitals),
-      conditions
+      conditions,
+      { skipUnconscious }
     );
     const nextSheetData =
       zeroHp.transition && zeroHp.conditions !== conditions
@@ -1094,7 +1132,9 @@ async function handleDeliverItemToCharacter(
         characterName: targetChar.name,
         actorLabel: 'Mestre',
         category: 'condition',
-        summary: 'Caiu a 0 PV: ficou morrendo e inconsciente',
+        summary: skipUnconscious
+          ? 'Caiu a 0 PV: ficou morrendo (Apego Angustiado — permanece consciente)'
+          : 'Caiu a 0 PV: ficou morrendo e inconsciente',
         tone: 'danger',
       });
     }

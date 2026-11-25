@@ -368,6 +368,7 @@ export function CharacterWizardModal({
         if (ordemClassId === 'combatente') {
           return (
             e.id.startsWith('ord-pwr-comb') ||
+            e.id.startsWith('sah-pwr-comb') ||
             req.includes('combatente') ||
             (!req.includes('especialista') && !req.includes('ocultista'))
           );

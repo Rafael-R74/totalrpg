@@ -52,6 +52,7 @@ import {
   dyingTurnsOf,
   deathAtOf,
   hasDyingCondition,
+  hasApegoAngustiado,
   DYING_TURNS_TO_DIE,
 } from '@totalrpg/shared';
 import {
@@ -239,12 +240,21 @@ export function SheetContainer({
     const prevPv = currentPvOf(prevChar.vitals);
     const nextPv = currentPvOf(nextChar.vitals);
     const nextRaw = (nextChar.sheetData || {}) as Record<string, any>;
-    const { conditions, transition } = applyZeroHpRule(nextChar.system, prevPv, nextPv, nextRaw.conditions);
+    const skipUnconscious = hasApegoAngustiado(nextRaw.abilities);
+    const { conditions, transition } = applyZeroHpRule(
+      nextChar.system,
+      prevPv,
+      nextPv,
+      nextRaw.conditions,
+      { skipUnconscious }
+    );
     if (!transition || conditions === nextRaw.conditions) return nextChar;
     if (transition === 'fell') {
       logSheetActivity({
         category: 'condition',
-        summary: 'Caiu a 0 PV: ficou morrendo e inconsciente',
+        summary: skipUnconscious
+          ? 'Caiu a 0 PV: ficou morrendo (Apego Angustiado — permanece consciente)'
+          : 'Caiu a 0 PV: ficou morrendo e inconsciente',
         tone: 'danger',
       });
     } else {
@@ -550,12 +560,15 @@ export function SheetContainer({
             // Sincroniza poderes de Combatente e Especialista já existentes com as novas regras automáticas do motor
             const officialClassPower = ORDEM_COMPENDIUM_ENTRIES.find(
               (ce) =>
-                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
+                (ce.id.startsWith('ord-pwr-comb-') ||
+                  ce.id.startsWith('sah-pwr-comb-') ||
+                  ce.id.startsWith('ord-pwr-esp-')) &&
                 ce.name.toLowerCase() === lowerAbName
             );
             if (officialClassPower) {
               return {
                 ...ab,
+                sourceId: officialClassPower.metadata?.sourceId || ab.sourceId,
                 cost: officialClassPower.cost,
                 modifiers: officialClassPower.modifiers || [],
               };
@@ -610,7 +623,9 @@ export function SheetContainer({
           .map((entry) => {
             const officialClassEntry = ORDEM_COMPENDIUM_ENTRIES.find(
               (ce) =>
-                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
+                (ce.id.startsWith('ord-pwr-comb-') ||
+                  ce.id.startsWith('sah-pwr-comb-') ||
+                  ce.id.startsWith('ord-pwr-esp-')) &&
                 ce.name.toLowerCase() === entry.name.toLowerCase()
             );
             return officialClassEntry

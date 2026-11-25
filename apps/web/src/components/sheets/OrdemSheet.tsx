@@ -4,10 +4,12 @@ import {
   OrdemAttributes,
   OrdemSkill,
   CharacterAbility,
+  ActiveCondition,
   SceneEffect,
   CursePricePrompt,
   DiceRollResult,
   createDefaultOrdemSheet,
+  hasDyingCondition,
   ComputedBonuses,
   SystemSkillDefinition,
   ORDEM_ORIGINS,
@@ -201,6 +203,29 @@ export function OrdemSheet({
     (a) =>
       a.id === 'trail-infiltrador-65' ||
       a.name.toLowerCase().includes('assassinar')
+  );
+  const hasMochileiro = abilities.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.toLowerCase().includes('mochileiro') ||
+        a.name.toLowerCase().includes('mochileiro'))
+  );
+  const hasApegoAngustiadoSheet = abilities.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.toLowerCase().includes('apego-angustiado') ||
+        a.name.toLowerCase().includes('apego angustiado'))
+  );
+  const isDyingNow = hasDyingCondition(
+    (safeData as { conditions?: ActiveCondition[] }).conditions ||
+      safeData.activeConditions
+  );
+  const hasValentao = abilities.some(
+    (a) =>
+      a.isActive !== false &&
+      (a.id.toLowerCase().includes('valentao') ||
+        a.name.toLowerCase().includes('valentão') ||
+        a.name.toLowerCase().includes('valentao'))
   );
   const primeiraImpressaoUsedInScene = Boolean(
     isInCampaign && sceneEffects.some((e) => e.id === 'pwr-scene-primeira-impressao')
@@ -905,7 +930,7 @@ export function OrdemSheet({
 
           {bonuses.vestimentaLimitExceeded && (
             <div className="bg-amber-950/50 border border-amber-600/70 rounded-lg px-3 py-1.5 text-[11px] text-amber-200 font-semibold">
-              <strong>Limite de Vestimentas (p. 63):</strong> Você tem mais de 2 vestimentas equipadas. Apenas as 2 primeiras concedem bônus simultaneamente.
+              <strong>Limite de Vestimentas (p. 63):</strong> Você tem mais de {bonuses.maxVestimentas} vestimentas equipadas. Apenas as {bonuses.maxVestimentas} primeiras concedem bônus simultaneamente.
             </div>
           )}
 
@@ -963,6 +988,8 @@ export function OrdemSheet({
           hasPeritoExplosivos ||
           hasAssassinar ||
           hasInabalavel ||
+          hasMochileiro ||
+          (hasApegoAngustiadoSheet && isDyingNow) ||
           resistirPowers.length > 0 ||
           Boolean(sangueFerventeAb) ||
           Boolean(sangueVivoAb)) && (
@@ -1072,6 +1099,16 @@ export function OrdemSheet({
             {hasInquebravel && isMachucado && (
               <span className="px-2.5 py-1 rounded-lg bg-red-950/80 border border-red-600/80 text-red-200 text-xs font-bold animate-pulse">
                 <Icon name="sangue" /> Inquebrável Ativo (Machucado): +5 na Defesa e RD 5 (Não fica indefeso se Morrendo)
+              </span>
+            )}
+            {hasApegoAngustiadoSheet && isDyingNow && (
+              <span className="px-2.5 py-1 rounded-lg bg-red-950/80 border border-red-600/80 text-red-200 text-xs font-bold animate-pulse">
+                <Icon name="heart-pulse" /> Apego Angustiado: Consciente morrendo (-2 SAN/turno)
+              </span>
+            )}
+            {hasMochileiro && (
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-700/70 text-emerald-200 text-xs font-bold">
+                <Icon name="backpack" /> Mochileiro: +5 carga • até 3 vestimentas
               </span>
             )}
           </div>
@@ -1755,7 +1792,13 @@ export function OrdemSheet({
             const meta = ORDEM_SKILLS_METADATA.find((m) => m.id === skill.id);
             const canUseConhecimentoAplicadoHere =
               armConhecimentoAplicado && skill.id !== 'luta' && skill.id !== 'pontaria';
-            const attrForSkill = canUseConhecimentoAplicadoHere ? 'int' : skill.attribute;
+            const useForForIntimidacao =
+              skill.id === 'intimidacao' && hasValentao && effectiveFor >= effectivePre;
+            const attrForSkill = canUseConhecimentoAplicadoHere
+              ? 'int'
+              : useForForIntimidacao
+              ? 'for'
+              : skill.attribute;
             const baseAttr =
               safeData.attributes[attrForSkill] +
               (bonuses.attributes[attrForSkill] || 0);
@@ -1970,7 +2013,7 @@ export function OrdemSheet({
                 rawDiceCount,
                 20,
                 rollMod,
-                buildCursePricePromptForAttr(skill.attribute),
+                buildCursePricePromptForAttr(attrForSkill),
                 extraDiceForSkill || mapaCelestePayload
                   ? {
                       extraDice: extraDiceForSkill,
@@ -2092,6 +2135,14 @@ export function OrdemSheet({
                           title="Primeira Impressão: +2d20 no primeiro teste social/intuição da cena"
                         >
                           <Icon name="sparkles" /> 1ª Impressão (+2d20)
+                        </span>
+                      )}
+                      {useForForIntimidacao && (
+                        <span
+                          className="text-[9px] font-black px-1.5 py-0.5 rounded bg-red-950 text-red-200 border border-red-700/80"
+                          title="Valentão: usando Força no lugar de Presença para Intimidação"
+                        >
+                          Valentão (FOR)
                         </span>
                       )}
                     </div>

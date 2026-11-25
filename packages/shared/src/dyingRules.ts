@@ -33,6 +33,22 @@ export function hasDyingCondition(conditions: ActiveCondition[] | undefined | nu
   return Array.isArray(conditions) && conditions.some(isDyingCondition);
 }
 
+/**
+ * Apego Angustiado (Sobrevivendo ao Horror v1.3, p. 14):
+ * Não fica inconsciente por estar morrendo; ao terminar/iniciar turno nessa condição e consciente, perde 2 SAN.
+ */
+export function hasApegoAngustiado(
+  abilities?: Array<{ id?: string; name?: string; isActive?: boolean }> | null
+): boolean {
+  if (!Array.isArray(abilities)) return false;
+  return abilities.some((ab) => {
+    if (ab.isActive === false) return false;
+    const idNorm = (ab.id || '').toLowerCase();
+    const nameNorm = normalizeName(ab.name);
+    return idNorm.includes('apego-angustiado') || nameNorm.includes('apego angustiado');
+  });
+}
+
 export const DYING_CONDITION_DESCRIPTION =
   'Com 0 pontos de vida. Se iniciar três turnos morrendo na mesma cena (não necessariamente seguidos), o personagem morre. A condição só termina com um teste de Medicina (DT 20, +5 por vez que já foi estabilizado na cena) ou por efeitos específicos.';
 
@@ -75,7 +91,8 @@ export function applyZeroHpRule(
   system: string,
   prevPv: number,
   nextPv: number,
-  conditions: ActiveCondition[] | undefined | null
+  conditions: ActiveCondition[] | undefined | null,
+  options?: { skipUnconscious?: boolean }
 ): { conditions: ActiveCondition[]; transition: ZeroHpTransition } {
   const current = Array.isArray(conditions) ? conditions : [];
   if (system !== 'ordem-paranormal' || prevPv === nextPv) return { conditions: current, transition: null };
@@ -83,7 +100,9 @@ export function applyZeroHpRule(
   if (prevPv > 0 && nextPv <= 0) {
     const next = [...current];
     if (!next.some(isDyingCondition)) next.push(createDyingCondition());
-    if (!next.some(isUnconsciousCondition)) next.push(createUnconsciousCondition());
+    if (!options?.skipUnconscious && !next.some(isUnconsciousCondition)) {
+      next.push(createUnconsciousCondition());
+    }
     return { conditions: next, transition: 'fell' };
   }
 

@@ -363,6 +363,8 @@ export function checkOrdemPowerRequirements(
     { token: 'furtividade', skillId: 'furtividade', label: 'Treinado em Furtividade' },
     { token: 'pilotagem', skillId: 'pilotagem', label: 'Treinado em Pilotagem' },
     { token: 'intimidação', skillId: 'intimidacao', label: 'Treinado em Intimidação' },
+    { token: 'intuição', skillId: 'intuicao', label: 'Treinado em Intuição' },
+    { token: 'intuicao', skillId: 'intuicao', label: 'Treinado em Intuição' },
     { token: 'ocultismo', skillId: 'ocultismo', label: 'Treinado em Ocultismo' },
   ];
   if (lowerReq.includes('treinado')) {
@@ -1261,6 +1263,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       abilities.push({
         id: `build-pwr-${idx}-${pEntry.id}`,
         name: pEntry.name,
+        sourceId: pEntry.metadata?.sourceId,
         category: pEntry.category === 'paranormal_power' ? 'poder_paranormal' : 'poder',
         cost: pEntry.cost,
         element: pEntry.metadata?.element,

@@ -34,6 +34,7 @@ export interface ComputedBonuses {
   missingSkillKits: Array<{ skillId: string; skillName: string }>;
   cursePriceByAttr: Record<keyof OrdemAttributes, OrdemCursePriceByAttr | null>;
   totalCursesCarried: number;
+  maxVestimentas: number;
   vestimentaLimitExceeded: boolean;
   hasFearCurse: boolean;
   effectiveProficiencies: string[];
@@ -82,6 +83,7 @@ export function calculateActiveBonuses(
       vig: null,
     },
     totalCursesCarried: derived?.totalCursesCarried || 0,
+    maxVestimentas: derived?.maxVestimentas ?? 2,
     vestimentaLimitExceeded: derived?.vestimentaLimitExceeded || false,
     hasFearCurse: derived?.hasFearCurse || false,
     effectiveProficiencies: derived?.effectiveProficiencies || [],
@@ -191,6 +193,43 @@ export function calculateActiveBonuses(
       case 'load_limit':
         result.loadLimit += finalValue;
         break;
+    }
+  }
+
+  // Regra específica: Engolir o Choro (Combatente — Sobrevivendo ao Horror v1.3, p. 14)
+  // Neutraliza penalidades de condições em testes de Furtividade
+  const hasEngolirChoro =
+    system === 'ordem-paranormal' &&
+    abilities.some(
+      (ab) =>
+        ab.isActive !== false &&
+        (ab.id.toLowerCase().includes('engolir-o-choro') ||
+          ab.name.toLowerCase().includes('engolir o choro'))
+    );
+  if (hasEngolirChoro) {
+    for (const cond of conditions) {
+      if (!Array.isArray(cond.modifiers)) continue;
+      for (const mod of cond.modifiers) {
+        const finalValue = mod.scaleWithLevel ? mod.value * multiplier : mod.value;
+        if (finalValue >= 0) continue;
+        const key = mod.targetKey.toLowerCase().trim();
+        if (
+          mod.targetType === 'skill_bonus' &&
+          (key === 'furtividade' || key === 'all' || key === 'todas')
+        ) {
+          result.skillBonus['furtividade'] =
+            (result.skillBonus['furtividade'] || 0) + Math.abs(finalValue);
+        } else if (
+          mod.targetType === 'skill_dice' &&
+          (key === 'furtividade' || key === 'all' || key === 'todas' || key === 'agi')
+        ) {
+          result.skillDice['furtividade'] =
+            (result.skillDice['furtividade'] || 0) + Math.abs(finalValue);
+        } else if (mod.targetType === 'attribute' && key === 'agi') {
+          result.skillDice['furtividade'] =
+            (result.skillDice['furtividade'] || 0) + Math.abs(finalValue);
+        }
+      }
     }
   }
 
