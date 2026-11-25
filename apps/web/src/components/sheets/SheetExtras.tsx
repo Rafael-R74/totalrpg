@@ -15,6 +15,8 @@ import {
   matchesContentSourceFilter,
   resolveEntrySourceId,
   checkOrdemPowerRequirements,
+  isOrdemGeneralPower,
+  hasInventarioOrganizado,
   getOrdemOcultismoAttr,
   getCatalystType,
   getCatalystElement,
@@ -68,6 +70,7 @@ import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilte
 import { SahCombatentePowerControls, isSahCombatenteControlled } from './SahCombatentePowers';
 import { SahEspecialistaPowerControls, isSahEspecialistaControlled } from './SahEspecialistaPowers';
 import { SahOcultistaPowerControls, isSahOcultistaControlled } from './SahOcultistaPowers';
+import { SahGeraisPowerControls, isSahGeraisControlled } from './SahGeraisPowers';
 import type { FlashbackChoice, SahPowerProps } from './sahPowerKit';
 interface SheetExtrasProps {
   system: SystemId;
@@ -498,7 +501,12 @@ export function SheetExtras({
     const lowerName = (ab.name || '').toLowerCase();
 
     // Poderes do Sobrevivendo ao Horror (controles em SahCombatentePowers / SahEspecialistaPowers / SahOcultistaPowers)
-    if (isSahCombatenteControlled(ab) || isSahEspecialistaControlled(ab) || isSahOcultistaControlled(ab)) {
+    if (
+      isSahCombatenteControlled(ab) ||
+      isSahEspecialistaControlled(ab) ||
+      isSahOcultistaControlled(ab) ||
+      isSahGeraisControlled(ab)
+    ) {
       return true;
     }
 
@@ -947,7 +955,7 @@ export function SheetExtras({
   const [modalMode, setModalMode] = useState<'compendium' | 'custom'>('compendium');
   const [searchQuery, setSearchQuery] = useState('');
   const [compendiumSourceFilter, setCompendiumSourceFilter] = useState<string[]>([]);
-  const [compendiumPowerTypeFilter, setCompendiumPowerTypeFilter] = useState<'ALL' | 'power' | 'paranormal_power'>('ALL');
+  const [compendiumPowerTypeFilter, setCompendiumPowerTypeFilter] = useState<'ALL' | 'power' | 'general' | 'paranormal_power'>('ALL');
   const [compendiumElementFilter, setCompendiumElementFilter] = useState<string>('ALL');
   const [compendiumCircleFilter, setCompendiumCircleFilter] = useState<number | 'ALL'>('ALL');
   const [compendiumItemRealmTab, setCompendiumItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
@@ -995,8 +1003,11 @@ export function SheetExtras({
   const effectiveMaxSlots = maxLoadSlots + bonuses.loadLimit;
   const currentLoad = inventory.reduce((acc, item) => {
     const qty = item.quantity || 1;
-    const effectiveSlots =
+    const rawSlots =
       system === 'ordem-paranormal' ? getOrdemItemEffectiveSlots(item) : item.slots;
+    // Inventário Organizado (Geral, SaH): itens de 0,5 espaço ocupam 0,25
+    const effectiveSlots =
+      system === 'ordem-paranormal' && rawSlots === 0.5 && hasInventarioOrganizado(abilities) ? 0.25 : rawSlots;
     if (hasMochilaUtilidades && item.isUtilityBackpackItem) {
       const reducedFirst = Math.max(0, effectiveSlots - 1);
       return acc + reducedFirst + effectiveSlots * Math.max(0, qty - 1);
@@ -1338,7 +1349,12 @@ export function SheetExtras({
           entry.category === 'paranormal_power' ||
           entry.category === 'origin';
         if (!isPowerCat) return false;
-        if (powerTypeFilter !== 'ALL' && entry.category !== powerTypeFilter) {
+        if (powerTypeFilter === 'general') {
+          // Poderes gerais (SaH p. 33): para todas as classes
+          if (!isOrdemGeneralPower(entry)) return false;
+        } else if (powerTypeFilter === 'power') {
+          if (entry.category !== 'power' || isOrdemGeneralPower(entry)) return false;
+        } else if (powerTypeFilter !== 'ALL' && entry.category !== powerTypeFilter) {
           return false;
         }
         if (
@@ -1547,6 +1563,7 @@ export function SheetExtras({
                       {[
                         { id: 'ALL', label: 'Todos' },
                         { id: 'power', label: 'Poderes de Classe' },
+                        { id: 'general', label: 'Poderes Gerais' },
                         { id: 'paranormal_power', label: 'Poderes Paranormais' },
                       ].map((tab) => (
                         <button
@@ -5253,6 +5270,7 @@ export function SheetExtras({
                                 onRoll(label, count, sides, modifier, undefined, undefined, undefined, extraDice ? { extraDice } : undefined),
                               onLoseSanity,
                               pvDamageTaken,
+                              onTakePvDamage,
                               onSpendResource,
                               onAddSceneEffect,
                               onUpdateSceneEffects,
@@ -5266,6 +5284,7 @@ export function SheetExtras({
                                 <SahCombatentePowerControls {...sahProps} />
                                 <SahEspecialistaPowerControls {...sahProps} />
                                 <SahOcultistaPowerControls {...sahProps} />
+                                <SahGeraisPowerControls {...sahProps} />
                               </>
                             );
                           })()}

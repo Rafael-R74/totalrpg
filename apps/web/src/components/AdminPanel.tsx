@@ -46,6 +46,7 @@ const TARGET_TYPE_LABELS: Record<ModifierTargetType, string> = {
   damage_bonus: 'Bônus em Rolagem de Dano',
   load_limit: 'Capacidade de Carga (Espaços)',
   ritual_dt: 'DT de Rituais',
+  displacement: 'Deslocamento (m)',
 };
 
 export function AdminPanel() {

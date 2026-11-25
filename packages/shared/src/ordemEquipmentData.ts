@@ -1904,6 +1904,28 @@ export function computeOrdemInventoryDerivedEffects(
   ) {
     addRd('Geral (Dano)', 2, 'Mutação (Experimento)');
   }
+
+  // Poderes gerais (Sobrevivendo ao Horror, p. 33-36) que dependem de atributos
+  const hasGeneral = (slug: string, name: string) =>
+    abilities.some(
+      (ab) =>
+        ab.isActive !== false &&
+        (ab.id.toLowerCase().includes(slug) || ab.name.toLowerCase().startsWith(name))
+    );
+  const attrInt = Number(sheetData?.attributes?.int ?? 0);
+  const attrPre = Number(sheetData?.attributes?.pre ?? 0);
+  if (hasGeneral('sah-pwr-gen-observador', 'observador') && attrInt > 0) {
+    dynamicModifiers.push({ id: 'dyn-observador-intuicao', targetType: 'skill_bonus', targetKey: 'intuicao', value: attrInt });
+  }
+  if (hasGeneral('sah-pwr-gen-inventario-organizado', 'inventário organizado') && attrInt > 0) {
+    dynamicModifiers.push({ id: 'dyn-inventario-organizado', targetType: 'load_limit', targetKey: 'load', value: attrInt });
+  }
+  // Racionalidade Inflexível: Intelecto no lugar de Presença para os PE (diferença por grau de NEX)
+  if (hasGeneral('sah-pwr-gen-racionalidade-inflexivel', 'racionalidade inflexível') && attrInt > attrPre) {
+    const nexVal = Number(sheetData?.nex ?? 5);
+    const steps = nexVal <= 5 ? 1 : nexVal === 99 ? 20 : Math.max(1, Math.floor(nexVal / 5));
+    dynamicModifiers.push({ id: 'dyn-racionalidade-pe', targetType: 'vital_max', targetKey: 'pe', value: (attrInt - attrPre) * steps });
+  }
   for (const ab of abilities) {
     if (ab.isActive === false) continue;
     const al = ab.name.toLowerCase();
@@ -1918,6 +1940,7 @@ export function computeOrdemInventoryDerivedEffects(
     if (desc.includes('rd morte 10')) addRd('Morte', 10, se.name);
     if (desc.includes('rd conhecimento 10')) addRd('Conhecimento', 10, se.name);
     if (desc.includes('rd energia 10')) addRd('Energia', 10, se.name);
+    if (desc.includes('rd mental 5')) addRd('Mental', 5, se.name);
   }
 
   // Aplica o MAIOR bônus de item por perícia (regra de não-acúmulo p. 63)

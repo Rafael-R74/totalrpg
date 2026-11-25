@@ -142,7 +142,9 @@ export function calculateActiveBonuses(
 
   // 3. Processa cada modificador somando no alvo correspondente
   for (const mod of activeModifiers) {
-    const finalValue = mod.scaleWithLevel ? mod.value * multiplier : mod.value;
+    const finalValue = mod.scaleWithLevel
+      ? mod.value * (mod.scaleEvery ? Math.floor(multiplier / mod.scaleEvery) : multiplier)
+      : mod.value;
     const key = mod.targetKey.toLowerCase().trim();
 
     switch (mod.targetType) {
@@ -196,6 +198,10 @@ export function calculateActiveBonuses(
 
       case 'ritual_dt':
         result.ritualDtBonus += finalValue;
+        break;
+
+      case 'displacement':
+        result.displacementBonus += finalValue;
         break;
     }
   }

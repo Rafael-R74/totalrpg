@@ -13,7 +13,7 @@ import {
   ComputedBonuses,
   SystemSkillDefinition,
   ORDEM_ORIGINS,
-  getOrdemOcultismoAttr,
+  getOrdemSkillAttrOverride,
   type OrdemOriginDefinition,
   ORDEM_TRAILS,
   ORDEM_PATENTS,
@@ -1817,16 +1817,17 @@ export function OrdemSheet({
               armConhecimentoAplicado && skill.id !== 'luta' && skill.id !== 'pontaria';
             const useForForIntimidacao =
               skill.id === 'intimidacao' && hasValentao && effectiveFor >= effectivePre;
-            // Olhar Sinistro (Ocultista, SaH): Presença no lugar de Intelecto em Ocultismo
-            const usePreForOcultismo =
-              skill.id === 'ocultismo' &&
-              getOrdemOcultismoAttr(abilities, effectiveInt, effectivePre).attr === 'pre';
+            // Olhar Sinistro (Ocultismo com PRE) e Racionalidade Inflexível (Vontade com INT), SaH
+            const attrOverride = getOrdemSkillAttrOverride(skill.id, abilities, {
+              int: effectiveInt,
+              pre: effectivePre,
+            });
             const attrForSkill = canUseConhecimentoAplicadoHere
               ? 'int'
               : useForForIntimidacao
               ? 'for'
-              : usePreForOcultismo
-              ? 'pre'
+              : attrOverride
+              ? attrOverride.attr
               : skill.attribute;
             const baseAttr =
               safeData.attributes[attrForSkill] +
@@ -2176,12 +2177,12 @@ export function OrdemSheet({
                           Valentão (FOR)
                         </span>
                       )}
-                      {usePreForOcultismo && (
+                      {attrOverride && (
                         <span
                           className="text-[9px] font-black px-1.5 py-0.5 rounded bg-purple-950 text-purple-200 border border-purple-700/80"
-                          title="Olhar Sinistro: usando Presença no lugar de Intelecto para Ocultismo"
+                          title={`${attrOverride.source}: usando ${attrOverride.attr.toUpperCase()} nesta perícia`}
                         >
-                          Olhar Sinistro (PRE)
+                          {attrOverride.source} ({attrOverride.attr.toUpperCase()})
                         </span>
                       )}
                     </div>

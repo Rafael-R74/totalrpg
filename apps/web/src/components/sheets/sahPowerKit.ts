@@ -46,6 +46,7 @@ export interface SahPowerProps {
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
   onGrantTempPe?: (amount: number, reason?: string) => void;
   onLoseSanity?: (amount: number, reason: string) => void;
+  onTakePvDamage?: (amount: number, reason?: string) => void;
   /** Dano sofrido nos PV (máximo - atual), para poderes que exigem estar ferido */
   pvDamageTaken?: number;
   onUpdateAbilities: (abilities: CharacterAbility[]) => void;

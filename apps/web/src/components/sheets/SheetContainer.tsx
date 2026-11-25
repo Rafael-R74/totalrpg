@@ -17,6 +17,9 @@ import {
   calculateActiveBonuses,
   buildOrdemOriginModifiers,
   getOrdemOcultismoAttr,
+  ORDEM_RENAMED_POWERS,
+  applyGeneralPowerSkillGrants,
+  hasInventarioOrganizado,
   getCatalystType,
   getCatalystElement,
   addOneDieToFormula,
@@ -564,6 +567,9 @@ export function SheetContainer({
                 }
               }
             }
+            // Poderes reclassificados como gerais (SaH): atualiza o nome antigo
+            const renamedTo = ORDEM_RENAMED_POWERS[ab.name.trim()];
+            if (renamedTo) ab = { ...ab, name: renamedTo };
             // Sincroniza habilidades iniciais de Especialista (Eclético e Perito) já existentes
             const lowerAbName = ab.name.trim().toLowerCase();
             if (lowerAbName === 'eclético' || lowerAbName === 'ecletico' || lowerAbName === 'perito') {
@@ -2613,7 +2619,9 @@ export function SheetContainer({
   );
   const currentLoadSlots = (character.inventory || []).reduce((acc, item) => {
     const qty = item.quantity || 1;
-    const effectiveSlots = getOrdemItemEffectiveSlots(item);
+    const rawSlots = getOrdemItemEffectiveSlots(item);
+    // Inventário Organizado (Geral, SaH): itens de 0,5 espaço ocupam 0,25
+    const effectiveSlots = rawSlots === 0.5 && hasInventarioOrganizado(characterAbilities) ? 0.25 : rawSlots;
     if (hasMochilaUtilidadesSheet && item.isUtilityBackpackItem) {
       const reducedFirst = Math.max(0, effectiveSlots - 1);
       return acc + reducedFirst + effectiveSlots * Math.max(0, qty - 1);
@@ -6435,6 +6443,20 @@ export function SheetContainer({
         onUpdateAbilities={(newAbilities) =>
           applyLocalCharacterUpdate((base) => {
             const baseRaw = (base.sheetData || {}) as Record<string, any>;
+            // Poderes gerais (SaH): "recebe treinamento na perícia ou, se já for treinado, +2"
+            if (base.system === 'ordem-paranormal' && Array.isArray(baseRaw.skills)) {
+              const grants = applyGeneralPowerSkillGrants(
+                Array.isArray(baseRaw.abilities) ? baseRaw.abilities : [],
+                newAbilities,
+                baseRaw.skills
+              );
+              if (grants.changed) {
+                return {
+                  ...base,
+                  sheetData: { ...baseRaw, abilities: grants.abilities, skills: grants.skills },
+                };
+              }
+            }
             return {
               ...base,
               sheetData: { ...baseRaw, abilities: newAbilities },

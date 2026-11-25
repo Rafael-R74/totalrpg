@@ -5,6 +5,7 @@ import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddlew
 import { IS_PRODUCTION } from '../config';
 import {
   ORDEM_COMPENDIUM_ENTRIES,
+  ORDEM_RENAMED_POWERS,
   ORDEM_SKILLS_METADATA,
   isContentPackLoaded,
 } from '@totalrpg/shared';
@@ -27,6 +28,19 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
   ordemSeedPromise = (async () => {
     try {
       const hasPack = isContentPackLoaded();
+      // Poderes reclassificados como gerais (SaH): renomeia a entrada antiga em vez de duplicar
+      for (const [oldName, newName] of Object.entries(ORDEM_RENAMED_POWERS)) {
+        const hasNew = await prisma.compendiumEntry.findFirst({
+          where: { system: 'ordem-paranormal', name: newName },
+          select: { id: true },
+        });
+        if (!hasNew) {
+          await prisma.compendiumEntry.updateMany({
+            where: { system: 'ordem-paranormal', name: oldName },
+            data: { name: newName },
+          });
+        }
+      }
       const existingOrdemEntries = await prisma.compendiumEntry.findMany({
         where: { system: 'ordem-paranormal' },
         select: { id: true, name: true },

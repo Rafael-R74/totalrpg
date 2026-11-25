@@ -31,6 +31,7 @@ import {
   ORDEM_RITUAL_MECHANICS,
 } from './ordemRituals';
 import { ORDEM_COMPENDIUM_ENTRIES } from './ordemCompendiumData';
+import { applyGeneralPowerSkillGrants } from './sahRules';
 import {
   isOrdemCompendiumItemParanormal,
   isOrdemItemWeaponEntry,
@@ -372,6 +373,7 @@ export function checkOrdemPowerRequirements(
     { token: 'enganação', skillId: 'enganacao', label: 'Treinado em Enganação' },
     { token: 'investigação', skillId: 'investigacao', label: 'Treinado em Investigação' },
     { token: 'vontade', skillId: 'vontade', label: 'Treinado em Vontade' },
+    { token: 'diplomacia', skillId: 'diplomacia', label: 'Treinado em Diplomacia' },
   ];
   if (lowerReq.includes('treinado')) {
     if (lowerReq.includes('luta ou pontaria')) {
@@ -1437,6 +1439,11 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     originIdOrName: origin.id,
     transcendedCount,
   });
+
+  // Poderes gerais (SaH): "treina a perícia ou, se já for treinado, +2"
+  const generalGrants = applyGeneralPowerSkillGrants([], abilities, skills);
+  abilities.splice(0, abilities.length, ...generalGrants.abilities);
+  skills.splice(0, skills.length, ...generalGrants.skills);
 
   const sheetData: OrdemSheetData = {
     origin: origin.name,

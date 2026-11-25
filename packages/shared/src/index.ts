@@ -655,6 +655,8 @@ export interface CharacterAbility {
   damageFormula?: string;
   element?: string;
   chosenElement?: string;
+  chosenSkill?: string;      // Foco em Perícia (Geral, SaH): perícia escolhida
+  trainingGranted?: boolean; // Poder geral "treina ou +2": true = treinou a perícia; false = recebeu +2
   hasAffinityUpgrade?: boolean;
   isFavoriteRitual?: boolean; // Ocultista — Ritual Predileto (-1 PE)
   isGrimoireRitual?: boolean; // Graduado — Grimório Ritualístico
@@ -677,7 +679,8 @@ export type ModifierTargetType =
   | 'attack_bonus'   // Soma no acerto de ataques
   | 'damage_bonus'   // Soma no dano de ataques
   | 'load_limit'     // Altera espaços máximos da mochila
-  | 'ritual_dt';     // Soma na DT para resistir aos rituais (ex.: Traçado Conjuratório)
+  | 'ritual_dt'      // Soma na DT para resistir aos rituais (ex.: Traçado Conjuratório)
+  | 'displacement';  // Soma no deslocamento em metros (ex.: Atlético)
 
 export interface RuleModifier {
   id: string;
@@ -685,6 +688,7 @@ export interface RuleModifier {
   targetKey: string; // Ex: 'luta', 'pv', 'for', 'all', 'defense'
   value: number;     // Ex: +2, -2, +5
   scaleWithLevel?: boolean; // Se true, multiplica o valor pelo Nível (T20) ou escalona por NEX (Ordem)
+  scaleEvery?: number;      // Com scaleWithLevel: aplica 1x a cada N graus (ex.: 2 = a cada 10% de NEX)
 }
 
 export interface CompendiumEntryData {
@@ -716,6 +720,8 @@ export interface CompendiumEntryData {
     uses?: number;          // Cargas padrão (Spray de Pimenta = 2, Taser = 2, etc.)
     sourceId?: string;      // Livro/suplemento de origem (ex.: 'ordem-base', 'sobrevivendo-ao-horror')
     requiresElementChoice?: boolean; // Item escolhe o elemento ao ser adicionado (ex.: Catalisador Ritualístico)
+    isGeneralPower?: boolean;        // Poder geral (SaH p. 33): disponível para todas as classes
+    grantsSkillTraining?: string;    // Poder geral: treina a perícia ou dá +2 se já for treinado
   };
 }
 

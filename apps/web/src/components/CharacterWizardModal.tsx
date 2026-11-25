@@ -11,6 +11,7 @@ import {
   ORDEM_SKILLS_METADATA,
   ORDEM_COMPENDIUM_ENTRIES,
   checkOrdemPowerRequirements,
+  isOrdemGeneralPower,
   T20_RACES,
   T20_CLASSES,
   T20_ORIGINS,
@@ -349,6 +350,11 @@ export function CharacterWizardModal({
     [allowedSources]
   );
 
+  // Aba da escolha de poderes: de classe, gerais (SaH) ou paranormais (Transcender)
+  const [powerPickTab, setPowerPickTab] = useState<'class' | 'general' | 'paranormal'>('class');
+  const powerTabOf = (e: { id: string; category: string; metadata?: any }) =>
+    e.category === 'paranormal_power' ? 'paranormal' : isOrdemGeneralPower(e as any) ? 'general' : 'class';
+
   const selectableClassAndParanormalPowers = useMemo(
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter((e) => {
@@ -364,6 +370,8 @@ export function CharacterWizardModal({
         }
         if (e.category === 'paranormal_power') return true;
         if (e.category !== 'power') return false;
+        // Poderes gerais (SaH p. 33): valem para todas as classes
+        if (isOrdemGeneralPower(e)) return true;
         const req = (e.metadata?.requirements || '').toLowerCase();
         if (ordemClassId === 'combatente') {
           return (
@@ -1867,8 +1875,48 @@ export function CharacterWizardModal({
                     compact
                   />
 
+                  <div role="tablist" aria-label="Tipo de poder" className="trpg-tabs -mx-1">
+                    {(
+                      [
+                        ['class', 'De classe'],
+                        ['general', 'Gerais'],
+                        ['paranormal', 'Paranormais'],
+                      ] as const
+                    )
+                      .filter(
+                        ([id]) =>
+                          id === 'class' ||
+                          selectableClassAndParanormalPowers.some((pw) => powerTabOf(pw) === id)
+                      )
+                      .map(([id, label]) => {
+                        const picked = chosenClassPowerIds.filter((pid) => {
+                          const pw = selectableClassAndParanormalPowers.find((x) => x.id === pid);
+                          return pw && powerTabOf(pw) === id;
+                        }).length;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            role="tab"
+                            aria-selected={powerPickTab === id}
+                            onClick={() => setPowerPickTab(id)}
+                            className="trpg-tab"
+                          >
+                            {label}
+                            {picked > 0 && <span className="trpg-tab-count">{picked}</span>}
+                          </button>
+                        );
+                      })}
+                  </div>
+                  {powerPickTab === 'general' && (
+                    <p className="text-[11px] text-zinc-400">
+                      Poderes gerais valem para todas as classes e ocupam a mesma escolha de um poder de classe.
+                    </p>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
                     {selectableClassAndParanormalPowers
+                      .filter((pw) => powerTabOf(pw) === powerPickTab)
                       .filter((pw) => {
                         const q = classPowerSearch.trim().toLowerCase();
                         if (!q) return true;
