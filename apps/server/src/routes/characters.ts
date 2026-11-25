@@ -20,7 +20,7 @@ charactersRouter.get('/', async (req: AuthenticatedRequest, res) => {
     const characters = await prisma.character.findMany({
       where: { ownerId: req.userId },
       include: {
-        campaign: { select: { id: true, name: true } },
+        campaign: { select: { id: true, name: true, allowedSources: true } as any },
       },
       orderBy: { name: 'asc' },
     });

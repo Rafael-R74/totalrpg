@@ -11,6 +11,8 @@ import {
   getContentPackStats,
   isContentPackLoaded,
   TotalRpgContentPack,
+  matchesContentSourceFilter,
+  resolveEntrySourceId,
 } from '@totalrpg/shared';
 import {
   fetchCompendium,
@@ -22,6 +24,7 @@ import {
 } from '../services/api';
 
 import { Icon } from './ui/Icon';
+import { ContentSourceFilterBar } from './ui/ContentSourceFilterBar';
 import { AdminBestiaryPanel } from './admin/AdminBestiaryPanel';
 const CATEGORY_LABELS: Record<CompendiumCategory, string> = {
   power: 'Poderes de Classe / Gerais',
@@ -42,6 +45,7 @@ const TARGET_TYPE_LABELS: Record<ModifierTargetType, string> = {
   attack_bonus: 'Bônus de Acerto em Ataques',
   damage_bonus: 'Bônus em Rolagem de Dano',
   load_limit: 'Capacidade de Carga (Espaços)',
+  ritual_dt: 'DT de Rituais',
 };
 
 export function AdminPanel() {
@@ -65,6 +69,7 @@ export function AdminPanel() {
   const [element, setElement] = useState('');
   const [requirements, setRequirements] = useState('');
   const [adminSearch, setAdminSearch] = useState('');
+  const [adminSourceFilter, setAdminSourceFilter] = useState<string[]>([]);
   const [adminItemRealmTab, setAdminItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
   const [itemIsParanormal, setItemIsParanormal] = useState(false);
   const [modifiers, setModifiers] = useState<RuleModifier[]>([]);
@@ -227,6 +232,16 @@ export function AdminPanel() {
 
   const filteredEntries = entries.filter((e) => {
     if (e.category !== activeSection) return false;
+    if (
+      !matchesContentSourceFilter(
+        resolveEntrySourceId(e, selectedSystem),
+        adminSourceFilter,
+        null,
+        selectedSystem
+      )
+    ) {
+      return false;
+    }
     if (activeSection === 'item' && selectedSystem === 'ordem-paranormal') {
       const isPara = isOrdemCompendiumItemParanormal(e);
       if (adminItemRealmTab === 'normal' && isPara) return false;
@@ -776,6 +791,13 @@ export function AdminPanel() {
                 className="px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white"
               />
             </div>
+
+            <ContentSourceFilterBar
+              system={selectedSystem}
+              selectedSources={adminSourceFilter}
+              onChange={setAdminSourceFilter}
+              compact
+            />
 
             {activeSection === 'item' && selectedSystem === 'ordem-paranormal' && (
               <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">

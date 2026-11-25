@@ -8,6 +8,8 @@ export * from './dyingRules';
 export * from './characterBuilder';
 export * from './ordemBestiaryData';
 export * from './contentPack';
+export * from './contentSources';
+export * from './sahRules';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
 
@@ -109,6 +111,9 @@ export interface RPGItem {
   storedPe?: number;               // Coletora (até 20 PE)
   dailyUses?: number;              // Contador diário para DT crescente (Crânio Espiral, Coração Pulsante, etc.)
   remainingCharges?: number;       // Cargas restantes (Spray de Pimenta, Taser, Pistola de Dardos/Sinalizadora)
+  sourceId?: string;               // Livro/suplemento de origem do item
+  isParanormalInvention?: boolean; // Inventor Paranormal — Invento Paranormal (Cat. 0, 1 espaço)
+  jammed?: boolean;                // Invento Paranormal enguiçado até manutenção no interlúdio
   modifiers?: RuleModifier[];
 }
 
@@ -189,6 +194,23 @@ export interface CursePricePrompt {
   sanLossOnFail: number; // 2 * curseCount
 }
 
+export interface MapaCelesteRollOption {
+  rolls: number[];
+  formula: string;
+  modifier: number;
+  total: number;
+}
+
+export interface MapaCelestePayload {
+  canReroll: boolean;
+  diceCount: number;
+  sides: number;
+  modifier: number;
+  firstRoll?: MapaCelesteRollOption;
+  secondRoll?: MapaCelesteRollOption;
+  chosenIndex?: 1 | 2;
+}
+
 // Rolagem de dados
 export interface DiceRollResult {
   id: string;
@@ -210,6 +232,7 @@ export interface DiceRollResult {
   hasAfortunado?: boolean;
   hasAfortunadoAffinity?: boolean;
   rerolledAfortunado?: boolean;
+  mapaCelestePayload?: MapaCelestePayload;
   attackDamagePayload?: AttackDamageRollPayload;
   forcaOpressoraPayload?: ForcaOpressoraRollPayload;
   cursePricePrompt?: CursePricePrompt;
@@ -319,7 +342,7 @@ export interface ServerToClientEvents {
     patches: CharacterLivePatch[];
   }) => void;
   'campaign:permissionsUpdated': (permissions: SheetPermissions) => void;
-  'combat:initiativeRequested': (payload: { campaignId: string }) => void;
+  'combat:initiativeRequested': (payload: { campaignId: string; characterIds?: string[] }) => void;
   'combat:initiativeSubmitted': (payload: {
     characterId: string;
     characterName: string;
@@ -376,6 +399,7 @@ export interface ClientToServerEvents {
     extraDice?: Array<{ count: number; sides: number; label: string }>;
     hasAfortunado?: boolean;
     hasAfortunadoAffinity?: boolean;
+    mapaCelestePayload?: MapaCelestePayload;
     attackDamagePayload?: AttackDamageRollPayload;
     forcaOpressoraPayload?: ForcaOpressoraRollPayload;
     cursePricePrompt?: CursePricePrompt;
@@ -392,7 +416,8 @@ export interface ClientToServerEvents {
     patches: CharacterLivePatch[];
   }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;
-  'combat:requestInitiative': (payload: { campaignId: string }) => void;
+  /** Sem `characterIds`: todos os jogadores. Com a lista: só esses personagens rolam. */
+  'combat:requestInitiative': (payload: { campaignId: string; characterIds?: string[] }) => void;
   'postit:share': (payload: {
     campaignId: string;
     postIt: StickyPostIt;
@@ -413,6 +438,15 @@ export interface ClientToServerEvents {
     campaignId: string;
     rollResult: DiceRollResult;
     dieIndex?: number;
+  }) => void;
+  'dice:mapaCelesteReroll': (payload: {
+    campaignId: string;
+    rollResult: DiceRollResult;
+  }) => void;
+  'dice:mapaCelesteChoose': (payload: {
+    campaignId: string;
+    rollResult: DiceRollResult;
+    chosenIndex: 1 | 2;
   }) => void;
   'presence:update': (payload: PresenceUpdatePayload) => void;
   'admin:watch': (payload: { token: string; active: boolean }) => void;
@@ -500,6 +534,23 @@ export interface CharacterPersonalProfile {
   personalNotes?: string;
 }
 
+export interface OrdemOriginMeta {
+  amigoAnimaisSkillId?: string;
+  amigoAnimaisName?: string;
+  amigoAnimaisDead?: boolean;
+  experimentoSkillId?: string;
+  inventorRitualId?: string;
+  luckyNumber?: number;
+  extraLuckyNumbers?: number[];
+  bestFriendName?: string;
+  bestFriendDead?: boolean;
+  cosplayDescription?: string;
+  profetizadoSkillId?: string;
+  eatenCreatureParts?: string[];
+  /** Flashback (Especialista, SaH): segunda origem cujo poder o personagem recebe */
+  flashbackOriginId?: string;
+}
+
 export interface OrdemSheetData {
   origin: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -513,6 +564,8 @@ export interface OrdemSheetData {
   transcendedCount?: number;
   workToolWeaponName?: string;
   sangueFerventeAttr?: 'for' | 'agi';
+  useSeparateNexAndLevel?: boolean;
+  originMeta?: OrdemOriginMeta;
   tempHp?: number;
   tempHpMax?: number;
   tempPe?: number;
@@ -607,6 +660,8 @@ export interface CharacterAbility {
   isGrimoireRitual?: boolean; // Graduado — Grimório Ritualístico
   isSustainedActive?: boolean; // Ritual sustentado ativo no turno
   isActive?: boolean;        // Se true, aplica os modificadores passivos/sustentados na ficha
+  sourceId?: string;         // Livro/suplemento de origem
+  grantedBy?: string;        // Poder que concedeu esta habilidade (ex.: Flashback, Especialista Diletante)
   modifiers?: RuleModifier[]; // Modificadores herdados do Compêndio
 }
 
@@ -621,7 +676,8 @@ export type ModifierTargetType =
   | 'defense'        // Altera a Defesa do personagem
   | 'attack_bonus'   // Soma no acerto de ataques
   | 'damage_bonus'   // Soma no dano de ataques
-  | 'load_limit';    // Altera espaços máximos da mochila
+  | 'load_limit'     // Altera espaços máximos da mochila
+  | 'ritual_dt';     // Soma na DT para resistir aos rituais (ex.: Traçado Conjuratório)
 
 export interface RuleModifier {
   id: string;
@@ -658,6 +714,8 @@ export interface CompendiumEntryData {
     itemSubtype?: OrdemItemKind;
     isWeapon?: boolean;     // Diferencia armas de consumíveis/granadas que também têm damageFormula
     uses?: number;          // Cargas padrão (Spray de Pimenta = 2, Taser = 2, etc.)
+    sourceId?: string;      // Livro/suplemento de origem (ex.: 'ordem-base', 'sobrevivendo-ao-horror')
+    requiresElementChoice?: boolean; // Item escolhe o elemento ao ser adicionado (ex.: Catalisador Ritualístico)
   };
 }
 

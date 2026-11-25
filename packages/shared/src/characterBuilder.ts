@@ -2,6 +2,7 @@ import {
   CharacterAbility,
   CompendiumEntryData,
   OrdemAttributes,
+  OrdemOriginMeta,
   OrdemSheetData,
   PreparedAttack,
   RPGItem,
@@ -19,6 +20,7 @@ import {
   ORDEM_ORIGINS,
   ORDEM_PATENTS,
   ORDEM_TRAILS,
+  OrdemOriginDefinition,
   T20_CLASSES,
   T20_ORIGINS,
   T20_RACES,
@@ -293,7 +295,8 @@ export function getOrdemMaxLoad(
 export function checkOrdemPowerRequirements(
   entry: CompendiumEntryData,
   sheetData: OrdemSheetData,
-  abilities: CharacterAbility[]
+  abilities: CharacterAbility[],
+  opts?: { ignoreClass?: boolean }
 ): { met: boolean; missing: string[] } {
   const reqText = entry.metadata?.requirements?.trim();
   if (!reqText) return { met: true, missing: [] };
@@ -301,8 +304,10 @@ export function checkOrdemPowerRequirements(
   const missing: string[] = [];
   const lowerReq = reqText.toLowerCase();
 
-  // 1. Classe
-  if (lowerReq.includes('combatente ou especialista')) {
+  // 1. Classe (Especialista Diletante aprende poderes de outra classe ignorando este item)
+  if (opts?.ignoreClass) {
+    // nada
+  } else if (lowerReq.includes('combatente ou especialista')) {
     if (
       sheetData.characterClass !== 'combatente' &&
       sheetData.characterClass !== 'especialista'
@@ -361,7 +366,12 @@ export function checkOrdemPowerRequirements(
     { token: 'furtividade', skillId: 'furtividade', label: 'Treinado em Furtividade' },
     { token: 'pilotagem', skillId: 'pilotagem', label: 'Treinado em Pilotagem' },
     { token: 'intimidação', skillId: 'intimidacao', label: 'Treinado em Intimidação' },
+    { token: 'intuição', skillId: 'intuicao', label: 'Treinado em Intuição' },
+    { token: 'intuicao', skillId: 'intuicao', label: 'Treinado em Intuição' },
     { token: 'ocultismo', skillId: 'ocultismo', label: 'Treinado em Ocultismo' },
+    { token: 'enganação', skillId: 'enganacao', label: 'Treinado em Enganação' },
+    { token: 'investigação', skillId: 'investigacao', label: 'Treinado em Investigação' },
+    { token: 'vontade', skillId: 'vontade', label: 'Treinado em Vontade' },
   ];
   if (lowerReq.includes('treinado')) {
     if (lowerReq.includes('luta ou pontaria')) {
@@ -901,6 +911,113 @@ export function parseOrdemRitualForms(
   return forms;
 }
 
+export function buildOrdemOriginModifiers(
+  origin: OrdemOriginDefinition,
+  originMeta?: OrdemOriginMeta
+): RuleModifier[] {
+  const baseMods = [...(origin.modifiers || [])];
+
+  if (origin.id === 'amigo_animais') {
+    if (!originMeta?.amigoAnimaisDead && originMeta?.amigoAnimaisSkillId) {
+      baseMods.push({
+        id: 'orig-choice-amigo-animais',
+        targetType: 'skill_bonus',
+        targetKey: originMeta.amigoAnimaisSkillId,
+        value: 2,
+      });
+    }
+    return baseMods;
+  }
+
+  if (origin.id === 'experimento') {
+    const chosenPhys = originMeta?.experimentoSkillId || 'atletismo';
+    baseMods.push({
+      id: 'orig-choice-experimento',
+      targetType: 'skill_bonus',
+      targetKey: chosenPhys,
+      value: 2,
+    });
+    return baseMods;
+  }
+
+  if (origin.id === 'colegial') {
+    if (originMeta?.bestFriendDead) {
+      return [
+        {
+          id: 'orig-colegial-grief',
+          targetType: 'vital_max',
+          targetKey: 'pe',
+          value: -1,
+          scaleWithLevel: true,
+        },
+      ];
+    }
+    return baseMods;
+  }
+
+  return baseMods;
+}
+
+/** Habilidade do poder de uma origem (origem principal ou recebida por Flashback). */
+export function buildOrdemOriginAbility(
+  origin: OrdemOriginDefinition,
+  originMeta?: OrdemOriginMeta,
+  grantedBy?: string
+): CharacterAbility {
+  return {
+    id: `orig-${origin.id}`,
+    name: `${origin.powerName} (Poder de ${origin.name})`,
+    category: 'origem',
+    cost: origin.powerCost,
+    description: origin.powerDescription,
+    isActive: origin.powerCost === 0 && !origin.requiresManualActivation,
+    sourceId: origin.sourceId || 'ordem-base',
+    ...(grantedBy ? { grantedBy } : {}),
+    modifiers: buildOrdemOriginModifiers(origin, originMeta),
+  };
+}
+
+/** IDs das origens cujo poder o personagem possui: a sua e a do Flashback (Especialista, SaH). */
+export function getOrdemOriginIds(sheetData?: { origin?: string; originMeta?: OrdemOriginMeta } | null): string[] {
+  const norm = String(sheetData?.origin || '').trim().toLowerCase();
+  const main = ORDEM_ORIGINS.find((o) => o.id === norm || o.name.toLowerCase() === norm)?.id;
+  const fb = sheetData?.originMeta?.flashbackOriginId;
+  return [main, fb].filter((id, i, arr): id is string => Boolean(id) && arr.indexOf(id) === i);
+}
+
+/** Invento Paranormal (Inventor Paranormal, SaH): item Cat. 0 que guarda um ritual de 1º círculo. */
+export function buildParanormalInventionItem(ritualChoiceId?: string): RPGItem | null {
+  const chosenRitId = ritualChoiceId || 'ord-rit-amaldicoar-tecnologia';
+  const [rBaseId, rChosenEl] = chosenRitId.split(':');
+  const rEntry =
+    ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === rBaseId && e.category === 'spell') ||
+    ORDEM_COMPENDIUM_ENTRIES.find((e) => e.category === 'spell' && e.metadata?.circle === 1);
+  if (!rEntry) return null;
+  const baseName = rEntry.name.replace(/\s*\(1º Círculo\)/i, '');
+  const ritLabel = rChosenEl ? `${baseName} — ${rChosenEl}` : baseName;
+  return {
+    id: 'item-invento-paranormal',
+    name: `Invento Paranormal (${ritLabel})`,
+    slots: 1,
+    baseSlots: 1,
+    quantity: 1,
+    category: 0,
+    baseCategory: 0,
+    isEquipped: true,
+    isParanormal: true,
+    isParanormalInvention: true,
+    jammed: false,
+    dailyUses: 0,
+    sourceId: 'sobrevivendo-ao-horror',
+    storedRitualName: ritLabel,
+    storedRitualCircle: 1,
+    storedRitualCost: rEntry.cost || 1,
+    storedRitualElement: rChosenEl || rEntry.metadata?.element,
+    storedRitualDescription: rEntry.description,
+    description: `Invento Paranormal (Cat. 0, 1 espaço): ativa o efeito básico de ${ritLabel} com teste de Profissão (engenheiro) DT 15 (+5 por ativação na missão) sem custo de PE. Se falhar, enguiça até manutenção no interlúdio.`,
+  };
+}
+
 export interface BuildOrdemCharacterInput {
   originId: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -920,6 +1037,7 @@ export interface BuildOrdemCharacterInput {
   chosenClassPowerIds?: string[];
   versatilityTrailId?: string;
   skillTrainingDegrees?: Record<string, 5 | 10 | 15>;
+  originMeta?: OrdemOriginMeta;
 }
 
 export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
@@ -969,15 +1087,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
   let transcendedCount = 0;
 
   const abilities: CharacterAbility[] = [
-    {
-      id: `orig-${origin.id}`,
-      name: `${origin.powerName} (Poder de ${origin.name})`,
-      category: 'origem',
-      cost: origin.powerCost,
-      description: origin.powerDescription,
-      isActive: isOriginPassive,
-      modifiers: origin.modifiers || [],
-    },
+    { ...buildOrdemOriginAbility(origin, input.originMeta), isActive: isOriginPassive },
     ...cls.initialAbilities.map((ab, idx) => ({
       id: `cls-${cls.id}-${idx}`,
       name: ab.name,
@@ -985,6 +1095,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       cost: ab.cost,
       description: ab.description,
       isActive: ab.cost === 0,
+      sourceId: cls.sourceId || 'ordem-base',
       modifiers: ab.modifiers || [],
     })),
   ];
@@ -1003,6 +1114,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         description: pEntry.description,
         element: pEntry.metadata?.element,
         isActive: pEntry.cost === 0,
+        sourceId: pEntry.metadata?.sourceId || 'ordem-base',
         modifiers: pEntry.modifiers || [],
       });
     }
@@ -1010,6 +1122,12 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
 
   const extraInventoryFromGrants: RPGItem[] = [];
   const extraAttacksFromGrants: PreparedAttack[] = [];
+
+  // Inventor Paranormal — cria Invento Paranormal (Cat. 0, 1 espaço) com o ritual de 1º círculo escolhido
+  if (origin.grantsParanormalInvention) {
+    const invento = buildParanormalInventionItem(input.originMeta?.inventorRitualId);
+    if (invento) extraInventoryFromGrants.push(invento);
+  }
 
   function applyBuildPowerAutoGrants(entry: CompendiumEntryData) {
     const lowerName = entry.name.toLowerCase();
@@ -1173,6 +1291,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       abilities.push({
         id: `build-pwr-${idx}-${pEntry.id}`,
         name: pEntry.name,
+        sourceId: pEntry.metadata?.sourceId,
         category: pEntry.category === 'paranormal_power' ? 'poder_paranormal' : 'poder',
         cost: pEntry.cost,
         element: pEntry.metadata?.element,
@@ -1265,6 +1384,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       isParanormal: isPara,
       isCursedSpecial: isCursed,
       itemKind,
+      sourceId: itemEntry.metadata?.sourceId || 'ordem-base',
       remainingCharges: itemEntry.metadata?.uses,
       accessoryConfig:
         isUtensilio || isVestimenta
@@ -1330,6 +1450,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     peritoSkills: input.peritoSkillIds || [],
     proficiencies: finalProficiencies,
     transcendedCount,
+    originMeta: input.originMeta ? { ...input.originMeta } : undefined,
     displacement: 9,
     attributes: { ...input.attributes },
     skills,

@@ -38,6 +38,7 @@ model Campaign {
   allowEditAttributes Boolean @default(false)
   requiredNex         Int?
   requiredPatent      String?
+  allowedSources      Json?
 
   // Dados Persistentes do Escudo do Mestre (Etapa 4D - Usando Json? compatível com SQLite)
   dmNotes       String @default("")

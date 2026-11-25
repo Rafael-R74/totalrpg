@@ -178,6 +178,8 @@ export default function App() {
     timestamp: number;
   } | null>(null);
   const [initiativeRequestSignal, setInitiativeRequestSignal] = useState<number>(0);
+  // Pedido para um grupo: só esses personagens recebem (null = todos)
+  const [initiativeRequestTargets, setInitiativeRequestTargets] = useState<string[] | null>(null);
   const [lastInitiativeSubmission, setLastInitiativeSubmission] = useState<{
     characterId: string;
     characterName: string;
@@ -253,7 +255,11 @@ export default function App() {
     socket.on('connect', handleJoin);
 
     socket.on('dice:rolled', (newRoll) => {
-      setRollHistory((prev) => [newRoll, ...prev]);
+      setRollHistory((prev) =>
+        prev.some((r) => r.id === newRoll.id)
+          ? prev.map((r) => (r.id === newRoll.id ? newRoll : r))
+          : [newRoll, ...prev]
+      );
 
       if (newRoll.rollerUserId === currentUser.id) {
         if (newRoll.batchId) {
@@ -318,7 +324,8 @@ export default function App() {
       );
     });
 
-    socket.on('combat:initiativeRequested', () => {
+    socket.on('combat:initiativeRequested', (payload) => {
+      setInitiativeRequestTargets(payload?.characterIds?.length ? payload.characterIds : null);
       setInitiativeRequestSignal(Date.now());
     });
 
@@ -466,6 +473,7 @@ export default function App() {
       explodingDieSide?: number;
       extraDice?: Array<{ count: number; sides: number; label: string }>;
       cursePricePrompt?: CursePricePrompt;
+      mapaCelestePayload?: DiceRollResult['mapaCelestePayload'];
     },
     hasAfortunadoAffinity?: boolean,
     ritualEffectPayload?: RitualEffectRollPayload
@@ -497,6 +505,7 @@ export default function App() {
       extraDice: extraRollOpts?.extraDice,
       hasAfortunado,
       hasAfortunadoAffinity,
+      mapaCelestePayload: extraRollOpts?.mapaCelestePayload,
       attackDamagePayload,
       forcaOpressoraPayload,
       cursePricePrompt: extraRollOpts?.cursePricePrompt,
@@ -611,6 +620,25 @@ export default function App() {
             campaignId: activeRoomId,
             rollResult,
             dieIndex,
+          });
+        }}
+        onMapaCelesteReroll={(rollResult) => {
+          if (!activeRoomId) return false;
+          if (sheetSpendResourceRef.current && !sheetSpendResourceRef.current(2)) {
+            return false;
+          }
+          socket.emit('dice:mapaCelesteReroll', {
+            campaignId: activeRoomId,
+            rollResult,
+          });
+          return true;
+        }}
+        onMapaCelesteChoose={(rollResult, chosenIndex) => {
+          if (!activeRoomId) return;
+          socket.emit('dice:mapaCelesteChoose', {
+            campaignId: activeRoomId,
+            rollResult,
+            chosenIndex,
           });
         }}
         onTriggerSegurarGatilhoShot={(
@@ -983,6 +1011,7 @@ export default function App() {
           externalCombatState={liveCombatState}
           externalReloadSignal={lastUpdatedCharSignal}
           initiativeRequestSignal={initiativeRequestSignal}
+          initiativeRequestTargets={initiativeRequestTargets}
           onCharacterSaved={(charId, campId) => {
             const room = campId || openedCharacter.campaignId;
             if (room) {
@@ -1092,9 +1121,10 @@ export default function App() {
               })),
             })
           }
-          onRequestPlayersInitiative={() =>
+          onRequestPlayersInitiative={(characterIds) =>
             socket.emit('combat:requestInitiative', {
               campaignId: currentCampaignSession.campaignId,
+              ...(characterIds && characterIds.length > 0 ? { characterIds } : {}),
             })
           }
           onSharePostIt={(postIt, action) =>

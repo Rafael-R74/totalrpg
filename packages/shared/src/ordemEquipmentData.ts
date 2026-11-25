@@ -798,6 +798,8 @@ export function isOrdemCompendiumItemParanormal(entry: CompendiumEntryData): boo
     ln.includes('medidor de estabilidade') ||
     ln.includes('scanner de manifestação') ||
     ln.includes('scanner de manifestacao') ||
+    ln.includes('ingrediente paranormal') ||
+    ln.includes('catalisador ritual') ||
     ln.includes('selo paranormal') ||
     ln.includes('amaldiçoado') ||
     ln.includes('paranormal')
@@ -1279,6 +1281,7 @@ export interface OrdemInventoryDerivedEffects {
   ritualDtBonus: number;
   ignoresLoadPenaltySkills: string[];
   equippedVestimentaCount: number;
+  maxVestimentas: number;
   vestimentaLimitExceeded: boolean;
   missingSkillKits: Array<{ skillId: string; skillName: string }>;
   curseCountsByElement: Record<OrdemElement, number>;
@@ -1678,6 +1681,22 @@ export function computeOrdemInventoryDerivedEffects(
       (ab.id.toLowerCase().includes('tanque-guerra') ||
         ab.name.toLowerCase().includes('tanque de guerra'))
   );
+  const hasMochileiro = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('mochileiro') ||
+        ab.name.toLowerCase().includes('mochileiro'))
+  );
+  const maxVestimentas = hasMochileiro ? 3 : 2;
+  const hasCorreriaDesesperada = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('correria-desesperada') ||
+        ab.name.toLowerCase().includes('correria desesperada'))
+  );
+  if (hasCorreriaDesesperada) {
+    displacementBonus += 3;
+  }
 
   // Kits presentes na mochila (não precisam estar equipados, basta possuir no inventário — ou acessório Instrumental)
   const ownedKitSkills = new Set<string>();
@@ -1732,14 +1751,14 @@ export function computeOrdemInventoryDerivedEffects(
       });
     }
 
-    // Vestimentas: limite de 2 simultâneas (p. 63)
+    // Vestimentas: limite de 2 simultâneas (p. 63) ou 3 com Mochileiro (SaH, p. 14)
     const isVestimenta =
       kind === 'accessory' &&
       (item.accessoryConfig?.accessoryType === 'vestimenta' || ln.includes('vestimenta'));
     let vestimentaAllowed = true;
     if (isVestimenta) {
       equippedVestimentaCount += 1;
-      if (equippedVestimentaCount > 2) {
+      if (equippedVestimentaCount > maxVestimentas) {
         vestimentaAllowed = false;
       }
     }
@@ -1869,10 +1888,21 @@ export function computeOrdemInventoryDerivedEffects(
     }
   }
 
-  // Poderes que concedem RD (ex.: Eu Já Sabia — Teórico da Conspiração, Resistir a <Elemento>)
-  if (sheetData?.origin?.toLowerCase().includes('teórico') || sheetData?.origin === 'teorico_conspiracao') {
-    const intVal = Number(sheetData.attributes?.int ?? 0);
+  // Poderes que concedem RD (ex.: Eu Já Sabia — Teórico da Conspiração, Mutação — Experimento, Resistir a <Elemento>)
+  const normOrig = (sheetData?.origin || '').trim().toLowerCase();
+  if (
+    normOrig.includes('teórico') ||
+    normOrig === 'teorico_conspiracao' ||
+    sheetData?.originMeta?.flashbackOriginId === 'teorico_conspiracao'
+  ) {
+    const intVal = Number(sheetData?.attributes?.int ?? 0);
     if (intVal > 0) addRd('Mental', intVal, 'Eu Já Sabia (INT)');
+  }
+  if (
+    normOrig === 'experimento' ||
+    abilities.some((ab) => ab.id === 'orig-experimento' && ab.isActive !== false)
+  ) {
+    addRd('Geral (Dano)', 2, 'Mutação (Experimento)');
   }
   for (const ab of abilities) {
     if (ab.isActive === false) continue;
@@ -1881,6 +1911,13 @@ export function computeOrdemInventoryDerivedEffects(
     if (al.includes('resistir a morte')) addRd('Morte', 10, ab.name);
     if (al.includes('resistir a conhecimento')) addRd('Conhecimento', 10, ab.name);
     if (al.includes('resistir a energia')) addRd('Energia', 10, ab.name);
+  }
+  for (const se of sheetData?.sceneEffects || []) {
+    const desc = `${se.name || ''} ${se.description || ''}`.toLowerCase();
+    if (desc.includes('rd sangue 10')) addRd('Sangue', 10, se.name);
+    if (desc.includes('rd morte 10')) addRd('Morte', 10, se.name);
+    if (desc.includes('rd conhecimento 10')) addRd('Conhecimento', 10, se.name);
+    if (desc.includes('rd energia 10')) addRd('Energia', 10, se.name);
   }
 
   // Aplica o MAIOR bônus de item por perícia (regra de não-acúmulo p. 63)
@@ -1994,7 +2031,8 @@ export function computeOrdemInventoryDerivedEffects(
     ritualDtBonus,
     ignoresLoadPenaltySkills: Array.from(ignoresLoadPenaltySkills),
     equippedVestimentaCount,
-    vestimentaLimitExceeded: equippedVestimentaCount > 2,
+    maxVestimentas,
+    vestimentaLimitExceeded: equippedVestimentaCount > maxVestimentas,
     missingSkillKits,
     curseCountsByElement,
     cursePriceByAttr,

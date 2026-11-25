@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   OrdemSheetData,
+  OrdemOriginMeta,
   OrdemSkill,
   OrdemElement,
   T20SheetData,
@@ -14,6 +15,16 @@ import {
   RPGItem,
   PreparedAttack,
   calculateActiveBonuses,
+  buildOrdemOriginModifiers,
+  getOrdemOcultismoAttr,
+  getCatalystType,
+  getCatalystElement,
+  addOneDieToFormula,
+  CATALYST_INFO,
+  buildOrdemOriginAbility,
+  buildParanormalInventionItem,
+  matchesContentSourceFilter,
+  resolveEntrySourceId,
   ORDEM_CLASSES,
   ORDEM_ORIGINS,
   ORDEM_NEX_PROGRESSION,
@@ -48,6 +59,7 @@ import {
   dyingTurnsOf,
   deathAtOf,
   hasDyingCondition,
+  hasApegoAngustiado,
   DYING_TURNS_TO_DIE,
 } from '@totalrpg/shared';
 import {
@@ -62,6 +74,7 @@ import {
 import { OrdemSheet } from './OrdemSheet';
 import { TormentaSheet } from './TormentaSheet';
 import { SheetExtras } from './SheetExtras';
+import { FLASHBACK_GRANT, type FlashbackChoice } from './SahEspecialistaPowers';
 import { ImageUploadField } from '../ImageUploadField';
 import { TempVitalBar } from '../TempVitalBar';
 import { useTheme } from '../../theme/themeEngine';
@@ -70,6 +83,7 @@ import { Icon, stripEmoji } from '../ui/Icon';
 import { DyingTracker } from '../ui/DyingTracker';
 import { DeathModal } from '../ui/DeathModal';
 import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
+import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilterBar';
 interface SheetContainerProps {
   characterId: string;
   currentUserId: string;
@@ -93,6 +107,7 @@ interface SheetContainerProps {
       explodingDieSide?: number;
       extraDice?: Array<{ count: number; sides: number; label: string }>;
       cursePricePrompt?: CursePricePrompt;
+      mapaCelestePayload?: DiceRollResult['mapaCelestePayload'];
     },
     hasAfortunadoAffinity?: boolean,
     ritualEffectPayload?: RitualEffectRollPayload
@@ -111,6 +126,8 @@ interface SheetContainerProps {
   externalPermissions?: SheetPermissions | null;
   externalReloadSignal?: { characterId: string; timestamp: number } | null;
   initiativeRequestSignal?: number;
+  /** Personagens chamados no último pedido (null = todos) */
+  initiativeRequestTargets?: string[] | null;
   externalCombatState?: {
     combatants: any[];
     currentTurnIndex: number;
@@ -131,6 +148,7 @@ export function SheetContainer({
   externalPermissions,
   externalReloadSignal,
   initiativeRequestSignal,
+  initiativeRequestTargets,
   externalCombatState,
 }: SheetContainerProps) {
   const { setActiveSystem } = useTheme();
@@ -233,12 +251,21 @@ export function SheetContainer({
     const prevPv = currentPvOf(prevChar.vitals);
     const nextPv = currentPvOf(nextChar.vitals);
     const nextRaw = (nextChar.sheetData || {}) as Record<string, any>;
-    const { conditions, transition } = applyZeroHpRule(nextChar.system, prevPv, nextPv, nextRaw.conditions);
+    const skipUnconscious = hasApegoAngustiado(nextRaw.abilities);
+    const { conditions, transition } = applyZeroHpRule(
+      nextChar.system,
+      prevPv,
+      nextPv,
+      nextRaw.conditions,
+      { skipUnconscious }
+    );
     if (!transition || conditions === nextRaw.conditions) return nextChar;
     if (transition === 'fell') {
       logSheetActivity({
         category: 'condition',
-        summary: 'Caiu a 0 PV: ficou morrendo e inconsciente',
+        summary: skipUnconscious
+          ? 'Caiu a 0 PV: ficou morrendo (Apego Angustiado — permanece consciente)'
+          : 'Caiu a 0 PV: ficou morrendo e inconsciente',
         tone: 'danger',
       });
     } else {
@@ -358,8 +385,14 @@ export function SheetContainer({
   const [interludeMaintenanceSealRitualId, setInterludeMaintenanceSealRitualId] = useState<string>('');
   const [interludeReviewCase, setInterludeReviewCase] = useState(false);
   const [interludeReviewSkillId, setInterludeReviewSkillId] = useState<string>('investigacao');
+  const [interludeParanormalDish, setInterludeParanormalDish] = useState(false);
+  const [interludeParanormalElement, setInterludeParanormalElement] = useState<
+    'Sangue' | 'Morte' | 'Conhecimento' | 'Energia'
+  >('Sangue');
+  const [interludeParanormalNewPart, setInterludeParanormalNewPart] = useState(true);
 
   const [isNexEvolutionOpen, setIsNexEvolutionOpen] = useState(false);
+  const [evoSourceFilter, setEvoSourceFilter] = useState<string[]>([]);
   const [evoTrailId, setEvoTrailId] = useState<string>('');
   const [evoChoiceMode, setEvoChoiceMode] = useState<'class_power' | 'transcend' | 'versatility'>('class_power');
   const [evoSelectedPowerId, setEvoSelectedPowerId] = useState<string>('');
@@ -396,7 +429,12 @@ export function SheetContainer({
   } | null>(null);
 
   useEffect(() => {
-    if (initiativeRequestSignal && character && character.ownerId === currentUserId) {
+    if (
+      initiativeRequestSignal &&
+      character &&
+      character.ownerId === currentUserId &&
+      (!initiativeRequestTargets || initiativeRequestTargets.includes(character.id))
+    ) {
       setShowInitiativePrompt(true);
     }
   }, [initiativeRequestSignal]);
@@ -538,32 +576,43 @@ export function SheetContainer({
             // Sincroniza poderes de Combatente e Especialista já existentes com as novas regras automáticas do motor
             const officialClassPower = ORDEM_COMPENDIUM_ENTRIES.find(
               (ce) =>
-                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
+                (ce.id.startsWith('ord-pwr-comb-') ||
+                  ce.id.startsWith('sah-pwr-comb-') ||
+                  ce.id.startsWith('ord-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-ocu-')) &&
                 ce.name.toLowerCase() === lowerAbName
             );
             if (officialClassPower) {
               return {
                 ...ab,
+                sourceId: officialClassPower.metadata?.sourceId || ab.sourceId,
                 cost: officialClassPower.cost,
                 modifiers: officialClassPower.modifiers || [],
               };
             }
-            // Sincroniza poderes de Origem de fichas já criadas com as definições oficiais v1.3
+            // Sincroniza poderes de Origem de fichas já criadas com as definições oficiais v1.3 e suplementos
             if (ab.id.startsWith('orig-')) {
               const origId = ab.id.replace('orig-', '');
               const origDef = ORDEM_ORIGINS.find((o) => o.id === origId);
               if (origDef) {
+                const dynamicMods = buildOrdemOriginModifiers(origDef, raw.originMeta);
+                const keepToggle = origId === 'colegial' || origId === 'cosplayer';
                 const isPassive =
                   origDef.powerCost === 0 && !origDef.requiresManualActivation;
                 return {
                   ...ab,
                   name: `${origDef.powerName} (Poder de ${origDef.name})`,
+                  sourceId: origDef.sourceId || ab.sourceId,
                   cost: origDef.powerCost,
-                  modifiers: origDef.modifiers || [],
-                  isActive:
-                    origDef.powerCost > 0 || origDef.requiresManualActivation
-                      ? false
-                      : isPassive,
+                  modifiers: dynamicMods,
+                  isActive: keepToggle
+                    ? origId === 'colegial' && Boolean(raw.originMeta?.bestFriendDead)
+                      ? true
+                      : Boolean(ab.isActive)
+                    : origDef.powerCost > 0 || origDef.requiresManualActivation
+                    ? false
+                    : isPassive,
                 };
               }
             }
@@ -592,7 +641,11 @@ export function SheetContainer({
           .map((entry) => {
             const officialClassEntry = ORDEM_COMPENDIUM_ENTRIES.find(
               (ce) =>
-                (ce.id.startsWith('ord-pwr-comb-') || ce.id.startsWith('ord-pwr-esp-')) &&
+                (ce.id.startsWith('ord-pwr-comb-') ||
+                  ce.id.startsWith('sah-pwr-comb-') ||
+                  ce.id.startsWith('ord-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-ocu-')) &&
                 ce.name.toLowerCase() === entry.name.toLowerCase()
             );
             return officialClassEntry
@@ -895,6 +948,10 @@ export function SheetContainer({
   }
 
   const campaign = character.campaign;
+  const campaignAllowedSources = (campaign as any)?.allowedSources as
+    | string[]
+    | null
+    | undefined;
   const isDM = campaign ? campaign.dmId === currentUserId : false;
   const isFreeVault = !campaign;
   const canMasterControl = isDM || viewerIsAdmin;
@@ -1027,6 +1084,7 @@ export function SheetContainer({
       explodingDieSide?: number;
       extraDice?: Array<{ count: number; sides: number; label: string }>;
       cursePricePrompt?: CursePricePrompt;
+      mapaCelestePayload?: DiceRollResult['mapaCelestePayload'];
     },
     ritualEffectPayload?: RitualEffectRollPayload
   ) {
@@ -1061,6 +1119,126 @@ export function SheetContainer({
       ),
     }));
     showHoverToast(`${reason}: -${amount} SAN descontados.`);
+  }
+
+  function handleLosePermanentSanity(amount: number, reason: string) {
+    if (!latestCharacterRef.current || amount <= 0) return;
+    applyLocalCharacterUpdate((base) => ({
+      ...base,
+      vitals: base.vitals.map((v) => {
+        if (v.id !== 'san') return v;
+        const nextMax = Math.max(1, v.max - amount);
+        return {
+          ...v,
+          max: nextMax,
+          current: Math.max(0, Math.min(nextMax, v.current - amount)),
+        };
+      }),
+    }));
+    logSheetActivity({
+      category: 'vital',
+      summary: `${reason}: -${amount} de Sanidade Máxima Permanente`,
+      costText: `-${amount} SAN Máx`,
+      tone: 'danger',
+    });
+    showHoverToast(`${reason}: -${amount} SAN Máxima Permanente.`);
+  }
+
+  function handleUpdateOriginMeta(patch: Partial<OrdemOriginMeta>) {
+    applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      const nextMeta: OrdemOriginMeta = {
+        ...(baseRaw.originMeta || {}),
+        ...patch,
+      };
+      const normOrig = String(baseRaw.origin || '').trim().toLowerCase();
+      const origDef = ORDEM_ORIGINS.find(
+        (o) => o.id === normOrig || o.name.toLowerCase() === normOrig
+      );
+      const prevAbs: CharacterAbility[] = Array.isArray(baseRaw.abilities)
+        ? baseRaw.abilities
+        : [];
+      const fbDef = nextMeta.flashbackOriginId
+        ? ORDEM_ORIGINS.find((o) => o.id === nextMeta.flashbackOriginId)
+        : undefined;
+      const nextAbs = origDef || fbDef
+        ? prevAbs.map((ab) => {
+            const def =
+              origDef && ab.id === `orig-${origDef.id}`
+                ? origDef
+                : fbDef && ab.id === `orig-${fbDef.id}`
+                ? fbDef
+                : undefined;
+            if (!def) return ab;
+            const rebuiltMods = buildOrdemOriginModifiers(def, nextMeta);
+            return {
+              ...ab,
+              modifiers: rebuiltMods,
+              isActive:
+                def.id === 'colegial' && nextMeta.bestFriendDead
+                  ? true
+                  : ab.isActive,
+            };
+          })
+        : prevAbs;
+      return {
+        ...base,
+        sheetData: {
+          ...baseRaw,
+          originMeta: nextMeta,
+          abilities: nextAbs,
+        },
+      };
+    });
+  }
+
+  /**
+   * Flashback (Especialista, SaH): recebe o poder de uma segunda origem.
+   * Troca o poder anterior do Flashback (e o invento, se era Inventor Paranormal).
+   */
+  function handleApplyFlashback(choice: FlashbackChoice | null) {
+    applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      const prevMeta: OrdemOriginMeta = baseRaw.originMeta || {};
+      const prevAbs: CharacterAbility[] = Array.isArray(baseRaw.abilities) ? baseRaw.abilities : [];
+      const prevInv: RPGItem[] = Array.isArray(base.inventory) ? (base.inventory as RPGItem[]) : [];
+      const prevFb = prevMeta.flashbackOriginId;
+      const nextMeta: OrdemOriginMeta = { ...prevMeta, ...(choice?.meta || {}) };
+      if (choice) nextMeta.flashbackOriginId = choice.originId;
+      else delete nextMeta.flashbackOriginId;
+
+      let nextAbs = prevAbs.filter((ab) => ab.grantedBy !== FLASHBACK_GRANT);
+      let nextInv = prevInv;
+      // O invento antigo do Flashback sai junto (o da origem principal fica)
+      const mainNorm = String(baseRaw.origin || '').trim().toLowerCase();
+      const mainIsInventor = mainNorm === 'inventor_paranormal' || mainNorm === 'inventor paranormal';
+      if (prevFb === 'inventor_paranormal' && !mainIsInventor) {
+        nextInv = nextInv.filter((it) => !it.isParanormalInvention);
+      }
+
+      const def = choice ? ORDEM_ORIGINS.find((o) => o.id === choice.originId) : undefined;
+      if (def) {
+        nextAbs = [...nextAbs, buildOrdemOriginAbility(def, nextMeta, FLASHBACK_GRANT)];
+        if (def.grantsParanormalInvention && !nextInv.some((it) => it.isParanormalInvention)) {
+          const invento = buildParanormalInventionItem(choice?.inventorRitualId);
+          if (invento) nextInv = [...nextInv, { ...invento, id: `item-invento-flashback-${Date.now()}` }];
+        }
+      }
+
+      return {
+        ...base,
+        inventory: nextInv as any,
+        sheetData: { ...baseRaw, originMeta: nextMeta, abilities: nextAbs },
+      };
+    });
+    if (choice) {
+      const def = ORDEM_ORIGINS.find((o) => o.id === choice.originId);
+      logSheetActivity({
+        category: 'ability',
+        summary: `Flashback: recebeu ${def?.powerName || 'poder'} (Poder de ${def?.name || choice.originId})`,
+        tone: 'purple',
+      });
+    }
   }
 
   function handleHealPv(amount: number, label?: string) {
@@ -1484,6 +1662,7 @@ export function SheetContainer({
       camuflar?: boolean;
       ampliar?: boolean;
       acelerar?: boolean;
+      catalystItemIds?: string[];
     }
   ) {
     if (!character) return;
@@ -1544,7 +1723,10 @@ export function SheetContainer({
     const dt = 20 + form.totalCost;
     const intAttr = Number(rawSheet.attributes?.int ?? 1) + (bonuses.attributes['int'] || 0);
     const ocultismoSkill = (rawSheet.skills || []).find((s: any) => s.id === 'ocultismo');
-    const ocultismoDice = intAttr + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0);
+    // Olhar Sinistro (Ocultista, SaH): Presença no lugar de Intelecto em Ocultismo
+    const ocultismoAttr = getOrdemOcultismoAttr(characterAbilities, intAttr, preAttrForLimit);
+    const ocultismoDice =
+      ocultismoAttr.value + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0);
     const ocultismoMod =
       Number(ocultismoSkill?.trainingDegree ?? 0) +
       Number(ocultismoSkill?.otherModifier ?? 0) +
@@ -1753,6 +1935,38 @@ export function SheetContainer({
       }
     }
 
+    // Catalisadores Ritualísticos (SaH p. 44): precisam ser do elemento do ritual e são consumidos
+    const consumedCatalystIds: string[] = [];
+    const skippedCatalysts: string[] = [];
+    const castDuration = (form.duration || ritualDef?.duration || '').toLowerCase();
+    for (const catalystId of castOptions?.catalystItemIds || []) {
+      const item = ((character.inventory || []) as RPGItem[]).find((it) => it.id === catalystId);
+      const type = getCatalystType(item);
+      if (!item || !type) continue;
+      const label = `Catalisador ${CATALYST_INFO[type].label}`;
+      const itemEl = getCatalystElement(item).toLowerCase();
+      if (itemEl && !ritualElementLower.includes(itemEl)) {
+        skippedCatalysts.push(`${label} (${getCatalystElement(item)}) não serve para ritual de ${form.element || ritual.element || ritualDef?.element || 'outro elemento'}`);
+        continue;
+      }
+      if (type === 'potencializador') {
+        if (effectType !== 'damage' || !effectFormula) {
+          skippedCatalysts.push(`${label}: este ritual não causa dano`);
+          continue;
+        }
+        effectFormula = addOneDieToFormula(effectFormula);
+      }
+      if (type === 'prolongador' && (isSustainedForm || castDuration.includes('instant'))) {
+        skippedCatalysts.push(`${label}: não funciona em ritual instantâneo ou sustentado`);
+        continue;
+      }
+      consumedCatalystIds.push(item.id);
+      effectNotes.push(`${label}: ${CATALYST_INFO[type].effect}`);
+    }
+    if (skippedCatalysts.length > 0) {
+      showHoverToast(`Catalisador não usado (não foi consumido): ${skippedCatalysts.join(' • ')}`);
+    }
+
     const ritualEffectPayload: RitualEffectRollPayload = {
       ritualId: ritual.id,
       ritualName: ritual.name,
@@ -1864,9 +2078,22 @@ export function SheetContainer({
           )
         : baseAbilities;
 
+      const baseInventory = (base.inventory || []) as RPGItem[];
+      const inventoryAfterCast =
+        consumedCatalystIds.length > 0
+          ? baseInventory.flatMap((it) =>
+              !consumedCatalystIds.includes(it.id)
+                ? [it]
+                : (it.quantity ?? 1) > 1
+                ? [{ ...it, quantity: (it.quantity ?? 1) - 1 }]
+                : []
+            )
+          : baseInventory;
+
       return {
         ...base,
         vitals: vitalsAfterCast,
+        inventory: inventoryAfterCast as any,
         sheetData: {
           ...baseRaw,
           abilities: updatedBaseAbilities,
@@ -1899,7 +2126,11 @@ export function SheetContainer({
 
     logSheetActivity({
       category: 'ability',
-      summary: `Conjurou ${ritual.name} [${form.label}]`,
+      summary: `Conjurou ${ritual.name} [${form.label}]${
+        consumedCatalystIds.length > 0
+          ? ` com ${consumedCatalystIds.length} catalisador${consumedCatalystIds.length > 1 ? 'es' : ''}`
+          : ''
+      }`,
       costText: usePoderDoFlagelo ? `-${pvCostFlagelo} PV` : `-${form.totalCost} PE`,
       details: isMedoRitual
         ? `Invocando o Medo: -${sanLost} SAN e -${permSanLost} SAN Máx Permanente`
@@ -2190,6 +2421,129 @@ export function SheetContainer({
         `Sentido Tático ativado (-2 PE)! +${intAttr} na Defesa e Resistências nesta cena.`
       );
       setTimeout(() => setFeedbackMsg(''), 4000);
+      return;
+    }
+
+    if (originId === 'astronauta') {
+      const existing = activeSceneEffects.find((e) => e.id === 'orig-scene-astronauta');
+      const prevUses = Number(existing?.source?.replace(/\D/g, '') || 0);
+      const cost = 1 + prevUses;
+      if (
+        !handleSpendResource(cost, {
+          id: 'orig-scene-astronauta',
+          name: 'Acostumado ao Extremo (Astronauta)',
+          source: `${prevUses + 1}x`,
+          description: `Reduziu dano de fogo, frio ou mental em 5 (${prevUses + 1}x nesta cena • próx.: ${cost + 1} PE)`,
+        })
+      ) {
+        return;
+      }
+      logSheetActivity({
+        category: 'ability',
+        summary: `Usou Acostumado ao Extremo (-5 de dano de fogo/frio/mental • ${prevUses + 1}º uso na cena)`,
+        costText: `-${cost} PE`,
+        tone: 'info',
+      });
+      showHoverToast(
+        `Acostumado ao Extremo (-${cost} PE): dano de fogo, frio ou mental reduzido em 5!`
+      );
+      return;
+    }
+
+    if (originId === 'profetizado') {
+      handleGrantTempPe(2, 'Luta ou Fuga (Profetizado)');
+      handleAddSceneEffect({
+        id: 'orig-scene-profetizado',
+        name: 'Luta ou Fuga (Profetizado)',
+        source: 'Cena',
+        description: '+2 PE temporários recebidos pelo gatilho de premonição nesta cena',
+      });
+      logSheetActivity({
+        category: 'ability',
+        summary: 'Ativou Luta ou Fuga (Profetizado): +2 PE Temporários na cena',
+        tone: 'purple',
+      });
+      return;
+    }
+
+    if (originId === 'jovem_mistico') {
+      const inCamp = Boolean(character?.campaignId);
+      if (
+        inCamp &&
+        activeSceneEffects.some((e) => e.id === 'orig-scene-culpa-estrelas-used')
+      ) {
+        showHoverToast('A Culpa é das Estrelas só pode ser utilizada 1 vez por cena!');
+        return;
+      }
+      if (
+        !handleSpendResource(
+          1,
+          inCamp
+            ? {
+                id: 'orig-scene-culpa-estrelas-used',
+                name: 'A Culpa é das Estrelas (Consultado)',
+                source: '1x/Cena',
+                description: 'Já consultou os astros nesta cena',
+              }
+            : undefined
+        )
+      ) {
+        return;
+      }
+      const d6 = Math.floor(Math.random() * 6) + 1;
+      const baseLucky = Number(rawSheet.originMeta?.luckyNumber || 6);
+      const extraLucky: number[] = Array.isArray(rawSheet.originMeta?.extraLuckyNumbers)
+        ? rawSheet.originMeta.extraLuckyNumbers
+        : [];
+      const allLucky = Array.from(new Set([baseLucky, ...extraLucky]));
+      const matched = allLucky.includes(d6);
+
+      triggerCharacterRoll(
+        `A Culpa é das Estrelas (Nº da Sorte: ${allLucky.join(', ')})`,
+        1,
+        6,
+        0,
+        false,
+        false,
+        [d6]
+      );
+
+      if (matched) {
+        handleAddSceneEffect({
+          id: 'orig-scene-culpa-estrelas',
+          name: 'A Culpa é das Estrelas (Alinhamento Astral!)',
+          source: 'Cena',
+          description: `+2 em todos os testes de perícia até o fim da cena (Rolou ${d6})`,
+          modifiers: [
+            {
+              id: 'mod-culpa-estrelas-all',
+              targetType: 'skill_bonus',
+              targetKey: 'all',
+              value: 2,
+            },
+          ],
+        });
+        handleUpdateOriginMeta({ extraLuckyNumbers: [] });
+        showHoverToast(
+          `Alinhamento Astral (${d6})! +2 em todos os testes de perícia até o fim da cena!`
+        );
+      } else {
+        const nextCandidate = [1, 2, 3, 4, 5, 6].find((n) => !allLucky.includes(n));
+        if (nextCandidate !== undefined) {
+          handleUpdateOriginMeta({
+            extraLuckyNumbers: [...extraLucky, nextCandidate],
+          });
+          showHoverToast(
+            `Rolou ${d6}. Não saiu seu número, mas ${nextCandidate} foi adicionado aos seus números da sorte até acertar!`
+          );
+        }
+      }
+      logSheetActivity({
+        category: 'ability',
+        summary: `Usou A Culpa é das Estrelas (1d6 = ${d6} vs [${allLucky.join(', ')}])`,
+        costText: '-1 PE',
+        tone: matched ? 'success' : 'info',
+      });
     }
   }
 
@@ -2386,13 +2740,26 @@ export function SheetContainer({
     setInterludeMaintenanceSealRitualId(rituals[0]?.id || '');
     setInterludeReviewCase(false);
     setInterludeReviewSkillId(defaultSkill?.id || 'investigacao');
+    setInterludeParanormalDish(false);
+    setInterludeParanormalNewPart(true);
     setIsInterludeModalOpen(true);
   }
 
   function handleApplyInterludeRecovery() {
     if (!character) return;
+    const normOrig = String(rawSheet.origin || '').trim().toLowerCase();
+    const charOriginObj = ORDEM_ORIGINS.find(
+      (o) => o.id === normOrig || o.name.toLowerCase() === normOrig
+    );
+    const charOriginId = charOriginObj?.id || '';
+    const upgradesPrecariousSleep =
+      charOriginId === 'explorador' || charOriginId === 'mateiro';
+    const effectiveSleepComfort =
+      interludeComfort === 0.5 && upgradesPrecariousSleep ? 1 : interludeComfort;
+
     const peLimit = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
-    const baseRecovery = Math.max(1, Math.floor(peLimit * interludeComfort));
+    const sleepBaseRecovery = Math.max(1, Math.floor(peLimit * effectiveSleepComfort));
+    const relaxBaseRecovery = Math.max(1, Math.floor(peLimit * interludeComfort));
 
     const dishes = [interludeDish, interludeSecondDish].filter(Boolean);
     const extraPv =
@@ -2401,9 +2768,9 @@ export function SheetContainer({
       dishes.filter((d) => d === 'energetico').length * (interludeSleep ? peLimit : 0);
     const extraSan = dishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0);
 
-    const pvGain = (interludeSleep ? baseRecovery : 0) + extraPv;
-    const peGain = (interludeSleep ? baseRecovery : 0) + extraPe;
-    const sanGain = (interludeRelax ? baseRecovery : 0) + extraSan;
+    const pvGain = (interludeSleep ? sleepBaseRecovery : 0) + extraPv;
+    const peGain = (interludeSleep ? sleepBaseRecovery : 0) + extraPe;
+    const sanGain = (interludeRelax ? relaxBaseRecovery : 0) + extraSan;
 
     const summaryParts: string[] = [];
     if (pvGain > 0 || peGain > 0 || sanGain > 0) {
@@ -2459,8 +2826,19 @@ export function SheetContainer({
         if (interludeMaintenanceMode === 'repair') {
           const targetItem = nextInventory.find((it) => it.id === interludeMaintenanceItemId);
           if (targetItem) {
+            const isParaInvention = Boolean(
+              targetItem.isParanormalInvention ||
+                targetItem.name.toLowerCase().startsWith('invento paranormal')
+            );
             const maxC = getItemDefaultMaxCharges(targetItem);
-            if (maxC || typeof targetItem.remainingCharges === 'number') {
+            if (isParaInvention) {
+              nextInventory = nextInventory.map((it) =>
+                it.id === targetItem.id ? { ...it, jammed: false, dailyUses: 0 } : it
+              );
+              summaryParts.push(
+                `${targetItem.name} consertado (enguiço removido e DT resetada para 15)`
+              );
+            } else if (maxC || typeof targetItem.remainingCharges === 'number') {
               const restored = maxC ?? Math.max(2, targetItem.remainingCharges || 0);
               nextInventory = nextInventory.map((it) =>
                 it.id === targetItem.id ? { ...it, remainingCharges: restored } : it
@@ -2516,6 +2894,93 @@ export function SheetContainer({
         }
       }
 
+      let permSanPenalty = 0;
+      let nextSceneEffectsList: SceneEffect[] = Array.isArray(baseRaw.sceneEffects)
+        ? [...baseRaw.sceneEffects]
+        : [];
+      let nextNexAfterDish = Number(baseRaw.nex ?? 5);
+
+      if (charOriginId === 'chef_outro_lado' && interludeParanormalDish) {
+        permSanPenalty = 1;
+        const ingIdx = nextInventory.findIndex(
+          (it) =>
+            it.id.includes('ingrediente-paranormal') ||
+            it.name.toLowerCase().includes('ingrediente paranormal')
+        );
+        if (ingIdx >= 0) {
+          const curQty = nextInventory[ingIdx].quantity || 1;
+          if (curQty > 1) {
+            nextInventory = nextInventory.map((it, idx) =>
+              idx === ingIdx ? { ...it, quantity: curQty - 1 } : it
+            );
+          } else {
+            nextInventory = nextInventory.filter((_, idx) => idx !== ingIdx);
+          }
+        }
+
+        const skillsListLocal: OrdemSkill[] = Array.isArray(baseRaw.skills) ? baseRaw.skills : [];
+        const cookSk =
+          skillsListLocal.find((s) => s.id === 'profissao') ||
+          skillsListLocal.find((s) => s.id === 'ocultismo');
+        const intVal =
+          Number(baseRaw.attributes?.int || 1) + (bonuses.attributes['int'] || 0);
+        const cookDice =
+          intVal + bonuses.skillDiceAll + (bonuses.skillDice[cookSk?.id || 'profissao'] || 0);
+        const cookMod =
+          Number(cookSk?.trainingDegree || 0) +
+          Number(cookSk?.otherModifier || 0) +
+          bonuses.skillBonusAll +
+          (bonuses.skillBonus[cookSk?.id || 'profissao'] || 0);
+        const numD20 = cookDice <= 0 ? Math.abs(cookDice) + 2 : cookDice;
+        const cookRolls: number[] = [];
+        for (let i = 0; i < numD20; i++) {
+          cookRolls.push(Math.floor(Math.random() * 20) + 1);
+        }
+        const keptCook = cookDice <= 0 ? Math.min(...cookRolls) : Math.max(...cookRolls);
+        const cookTotal = keptCook + cookMod;
+        const secretDt = 15 + (Math.floor(Math.random() * 20) + 1);
+        const dishPassed = cookTotal >= secretDt;
+
+        triggerCharacterRoll(
+          `Fome do Outro Lado — Preparo (${interludeParanormalElement})`,
+          cookDice,
+          20,
+          cookMod,
+          true,
+          false,
+          cookRolls
+        );
+
+        nextSceneEffectsList = [
+          ...nextSceneEffectsList.filter((e) => e.id !== 'orig-fome-outro-lado'),
+          dishPassed
+            ? {
+                id: 'orig-fome-outro-lado',
+                name: `Prato do Outro Lado (${interludeParanormalElement})`,
+                source: 'Próxima Cena',
+                description: `RD ${interludeParanormalElement} 10 até o fim da próxima cena`,
+              }
+            : {
+                id: 'orig-fome-outro-lado',
+                name: `Prato Instável do Outro Lado (${interludeParanormalElement})`,
+                source: 'Próxima Cena',
+                description: `Vulnerabilidade a dano de ${interludeParanormalElement} até o fim da próxima cena`,
+              },
+        ];
+
+        const gainedOptionalNex =
+          Boolean(baseRaw.useSeparateNexAndLevel) && interludeParanormalNewPart;
+        if (gainedOptionalNex) {
+          nextNexAfterDish = Math.min(99, nextNexAfterDish + 3);
+        }
+
+        summaryParts.push(
+          `Fome do Outro Lado (${interludeParanormalElement}): -1 SAN Máx Perm.${
+            gainedOptionalNex ? ' e +3% NEX (Regra Opcional)' : ''
+          }`
+        );
+      }
+
       const nextVitals = base.vitals.map((bar) => {
         const bonusMax = bonuses.vitalMax[bar.id] || 0;
         const effectiveMax = Math.max(1, bar.max + bonusMax);
@@ -2527,7 +2992,13 @@ export function SheetContainer({
           return { ...bar, current: Math.max(0, afterGain - sealPeCost) };
         }
         if (bar.id === 'san') {
-          return { ...bar, current: Math.min(effectiveMax, bar.current + sanGain) };
+          const newBaseMax = Math.max(1, bar.max - permSanPenalty);
+          const newEffMax = Math.max(1, newBaseMax + bonusMax);
+          return {
+            ...bar,
+            max: newBaseMax,
+            current: Math.max(0, Math.min(newEffMax, bar.current + sanGain - permSanPenalty)),
+          };
         }
         return bar;
       });
@@ -2538,6 +3009,8 @@ export function SheetContainer({
         inventory: nextInventory,
         sheetData: {
           ...baseRaw,
+          nex: nextNexAfterDish,
+          sceneEffects: nextSceneEffectsList,
           interludeBonusDice: nextBonusDice,
           pendingInterlude: null,
         },
@@ -2588,6 +3061,7 @@ export function SheetContainer({
 
   function handleOpenNexEvolutionModal() {
     if (!character || character.system !== 'ordem-paranormal') return;
+    setEvoSourceFilter([]);
     setEvoTrailId(rawSheet.trail || '');
     setEvoChoiceMode('class_power');
     setEvoSelectedPowerId('');
@@ -2699,6 +3173,12 @@ export function SheetContainer({
           : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'spell');
       const hasUnlearnedRitual = spellPool.some(
         (r) =>
+          matchesContentSourceFilter(
+            resolveEntrySourceId(r, 'ordem-paranormal'),
+            [],
+            campaignAllowedSources,
+            'ordem-paranormal'
+          ) &&
           (r.metadata?.circle || 1) <= maxCircle &&
           !isOrdemRitualAlreadyOwned(r, characterAbilities)
       );
@@ -2998,6 +3478,7 @@ export function SheetContainer({
             nextAbilities.push({
               id: `nex-${nextNex}-${pEntry.id}`,
               name: pEntry.name,
+              sourceId: resolveEntrySourceId(pEntry, 'ordem-paranormal'),
               category:
                 pEntry.category === 'paranormal_power' || evoChoiceMode === 'transcend'
                   ? 'poder_paranormal'
@@ -3090,6 +3571,7 @@ export function SheetContainer({
             ? `rit-nex-${nextNex}-${rEntry.id}-${chosenEl.toLowerCase()}`
             : `rit-nex-${nextNex}-${rEntry.id}`,
           name: finalName,
+          sourceId: resolveEntrySourceId(rEntry, 'ordem-paranormal'),
           category: 'ritual',
           cost: rEntry.cost,
           element: chosenEl || rEntry.metadata?.element,
@@ -4087,21 +4569,36 @@ export function SheetContainer({
 
       {/* MODAL DE CENA DE INTERLÚDIO (ORDEM PARANORMAL v1.3, p. 92-93) */}
       {isInterludeModalOpen && character.system === 'ordem-paranormal' && (() => {
+        const normOrigModal = String(rawSheet.origin || '').trim().toLowerCase();
+        const modalOriginObj = ORDEM_ORIGINS.find(
+          (o) => o.id === normOrigModal || o.name.toLowerCase() === normOrigModal
+        );
+        const modalOriginId = modalOriginObj?.id || '';
+        const upgradesPrecariousSleepModal =
+          modalOriginId === 'explorador' || modalOriginId === 'mateiro';
+        const effectiveSleepComfortModal =
+          interludeComfort === 0.5 && upgradesPrecariousSleepModal ? 1 : interludeComfort;
+
         const peLimitInterlude = getOrdemPeLimit(levelOrNex, rawSheet.origin, characterAbilities);
-        const baseRec = Math.max(1, Math.floor(peLimitInterlude * interludeComfort));
+        const sleepBaseRec = Math.max(1, Math.floor(peLimitInterlude * effectiveSleepComfortModal));
+        const relaxBaseRec = Math.max(1, Math.floor(peLimitInterlude * interludeComfort));
         const selectedDishes = [interludeDish, interludeSecondDish].filter(Boolean);
         const previewPv =
-          (interludeSleep ? baseRec : 0) +
+          (interludeSleep ? sleepBaseRec : 0) +
           selectedDishes.filter((d) => d === 'nutritivo').length * (interludeSleep ? peLimitInterlude : 0);
         const previewPe =
-          (interludeSleep ? baseRec : 0) +
+          (interludeSleep ? sleepBaseRec : 0) +
           selectedDishes.filter((d) => d === 'energetico').length * (interludeSleep ? peLimitInterlude : 0);
         const previewSan =
-          (interludeRelax ? baseRec : 0) +
+          (interludeRelax ? relaxBaseRec : 0) +
           selectedDishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0);
         const previewRapido = selectedDishes.filter((d) => d === 'rapido').length * 5;
 
-        const hasChefOrigin = (rawSheet.origin || '').toLowerCase().includes('chef');
+        const hasChefOrigin =
+          modalOriginId === 'chef' ||
+          (normOrigModal.includes('chef') && modalOriginId !== 'chef_outro_lado');
+        const hasChefOutroLadoOrigin = modalOriginId === 'chef_outro_lado';
+        const isNerdEntusiastaOrigin = modalOriginId === 'nerd_entusiasta';
         const hasCriarSeloPower = characterAbilities.some(
           (a) => a.id.includes('criar-selo') || a.name.toLowerCase().includes('criar selo')
         );
@@ -4133,7 +4630,7 @@ export function SheetContainer({
         const totalActionsCount =
           (interludeSleep ? 1 : 0) +
           (interludeRelax ? 1 : 0) +
-          (interludeDish ? 1 : 0) +
+          (interludeDish || interludeParanormalDish ? 1 : 0) +
           interludeExerciseCount +
           interludeReadCount +
           (interludeMaintenance ? 1 : 0) +
@@ -4233,6 +4730,11 @@ export function SheetContainer({
                       Recupera <strong className="text-emerald-300">+{previewPv} PV</strong> e{' '}
                       <strong className="text-amber-300">+{previewPe} PE</strong> (Limite {peLimitInterlude} PE).
                     </span>
+                    {interludeComfort === 0.5 && upgradesPrecariousSleepModal && (
+                      <span className="block text-[10px] font-bold text-emerald-400 mt-0.5">
+                        ✓ {modalOriginObj?.name}: descanso precário elevado para Normal (1x)!
+                      </span>
+                    )}
                   </div>
                 </label>
 
@@ -4288,6 +4790,60 @@ export function SheetContainer({
                     ))}
                   </select>
                 </div>
+
+                {hasChefOutroLadoOrigin && (
+                  <div className="pt-2.5 border-t border-purple-800/60 space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={interludeParanormalDish}
+                        onChange={(e) => setInterludeParanormalDish(e.target.checked)}
+                      />
+                      <span className="text-xs font-extrabold text-purple-300">
+                        <Icon name="sparkles" /> Fome do Outro Lado: Cozinhar Ingrediente Paranormal (-1 SAN Máx Perm.)
+                      </span>
+                    </label>
+                    {interludeParanormalDish && (
+                      <div className="pl-5 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] text-zinc-300 font-semibold">
+                            Elemento da Criatura:
+                          </span>
+                          {(['Sangue', 'Morte', 'Conhecimento', 'Energia'] as const).map((el) => (
+                            <button
+                              key={el}
+                              type="button"
+                              onClick={() => setInterludeParanormalElement(el)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${elementChoiceClasses(
+                                el,
+                                interludeParanormalElement === el
+                              )}`}
+                            >
+                              {el}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Rola Profissão secreta (DT 15 + 1d20 oculto): concede RD 10 ou vulnerabilidade ao elemento na próxima cena e consome 1 Ingrediente Paranormal (se houver na mochila).
+                        </p>
+                        {rawSheet.useSeparateNexAndLevel ? (
+                          <label className="flex items-center gap-2 text-[11px] text-amber-300 font-semibold cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={interludeParanormalNewPart}
+                              onChange={(e) => setInterludeParanormalNewPart(e.target.checked)}
+                            />
+                            Parte de criatura nunca consumida antes (+3% NEX — Regra Opcional Nível/NEX)
+                          </label>
+                        ) : (
+                          <p className="text-[10px] text-zinc-500">
+                            Nota: O ganho de +3% NEX por criatura inédita aplica-se apenas quando a regra opcional de Nível e NEX separados está ativa na ficha.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 4. Exercitar-se & Ler */}
@@ -4328,7 +4884,9 @@ export function SheetContainer({
                     </span>
                   </div>
                   <p className="text-[11px] text-zinc-400">
-                    Concede +1d20 em testes mentais (INT/PRE) para uso futuro.
+                    {isNerdEntusiastaOrigin
+                      ? 'Concede +2d6 (O Inteligente) em testes mentais (INT/PRE) para uso futuro.'
+                      : 'Concede +1d6 em testes mentais (INT/PRE) para uso futuro.'}
                   </p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {([0, 1, 2] as const).map((cnt) => (
@@ -4342,7 +4900,9 @@ export function SheetContainer({
                             : 'bg-zinc-900 text-zinc-400 border-zinc-800'
                         }`}
                       >
-                        {cnt === 0 ? 'Não' : `+${cnt}d20`}
+                        {cnt === 0
+                          ? 'Não'
+                          : `+${cnt * (isNerdEntusiastaOrigin ? 2 : 1)}d6`}
                       </button>
                     ))}
                   </div>
@@ -4542,7 +5102,16 @@ export function SheetContainer({
         const currentNex = Number(rawSheet.nex ?? 5);
         const nextNex = currentNex === 0 ? 5 : currentNex === 95 ? 99 : Math.min(99, currentNex + 5);
         const milestone = ORDEM_NEX_PROGRESSION.find((m) => m.nex === nextNex);
-        const classTrails = ORDEM_TRAILS.filter((t) => t.classId === rawSheet.characterClass);
+        const classTrails = ORDEM_TRAILS.filter(
+          (t) =>
+            t.classId === rawSheet.characterClass &&
+            matchesContentSourceFilter(
+              t.sourceId,
+              evoSourceFilter,
+              campaignAllowedSources,
+              'ordem-paranormal'
+            )
+        );
         const activeTrailId = evoTrailId || rawSheet.trail || '';
         const selectedTrailObj = ORDEM_TRAILS.find((t) => t.id === activeTrailId);
         const unlockedTrailPowerAtThisNex = selectedTrailObj?.powers.find((p) => p.nex === nextNex);
@@ -4598,6 +5167,14 @@ export function SheetContainer({
         };
 
         const classPowerOptions = allPowerEntries
+          .filter((e) =>
+            matchesContentSourceFilter(
+              resolveEntrySourceId(e, 'ordem-paranormal'),
+              evoSourceFilter,
+              campaignAllowedSources,
+              'ordem-paranormal'
+            )
+          )
           .filter((e) => {
             const lowerName = e.name.trim().toLowerCase();
             const lowerReq = (e.metadata?.requirements || '').toLowerCase();
@@ -4633,6 +5210,14 @@ export function SheetContainer({
             : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'paranormal_power');
 
         const paranormalPowerOptions = rawParanormalPowers
+          .filter((e) =>
+            matchesContentSourceFilter(
+              resolveEntrySourceId(e, 'ordem-paranormal'),
+              evoSourceFilter,
+              campaignAllowedSources,
+              'ordem-paranormal'
+            )
+          )
           .filter(
             (e) =>
               e.name.trim().toLowerCase() !== 'resistir a <elemento> (poder paranormal)' &&
@@ -4658,6 +5243,14 @@ export function SheetContainer({
             ? compendiumEntries.filter((e) => e.category === 'spell')
             : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'spell')
         )
+          .filter((r) =>
+            matchesContentSourceFilter(
+              resolveEntrySourceId(r, 'ordem-paranormal'),
+              evoSourceFilter,
+              campaignAllowedSources,
+              'ordem-paranormal'
+            )
+          )
           .filter((r) => (r.metadata?.circle || 1) <= maxCircleUnlocked)
           .filter(
             (r) =>
@@ -4710,6 +5303,14 @@ export function SheetContainer({
               </div>
 
               <div className="p-6 overflow-y-auto space-y-5">
+                <ContentSourceFilterBar
+                  system="ordem-paranormal"
+                  selectedSources={evoSourceFilter}
+                  onChange={setEvoSourceFilter}
+                  allowedSources={campaignAllowedSources}
+                  compact
+                />
+
                 <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/40">
                   <span className="text-[10px] font-black uppercase text-amber-300">
                     Marco de NEX {nextNex}% para {clsObj.name}
@@ -4990,8 +5591,12 @@ export function SheetContainer({
                                 }`}
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <span className="font-bold text-xs text-white">{pw.name}</span>
+                                    <SourceTagBadge
+                                      sourceId={resolveEntrySourceId(pw, 'ordem-paranormal')}
+                                      system="ordem-paranormal"
+                                    />
                                     {pw.metadata?.element && (
                                       <ElementBadge element={pw.metadata.element} />
                                     )}
@@ -5115,6 +5720,14 @@ export function SheetContainer({
                                 ? compendiumEntries.filter((e) => e.category === 'spell')
                                 : ORDEM_COMPENDIUM_ENTRIES.filter((e) => e.category === 'spell')
                             )
+                              .filter((r) =>
+                                matchesContentSourceFilter(
+                                  resolveEntrySourceId(r, 'ordem-paranormal'),
+                                  evoSourceFilter,
+                                  campaignAllowedSources,
+                                  'ordem-paranormal'
+                                )
+                              )
                               .filter((r) => (r.metadata?.circle || 1) <= maxAprenderCircle)
                               .sort((a, b) => {
                                 const ownedA = isOrdemRitualAlreadyOwned(a, characterAbilities, eligibleKnownSet) ? 1 : 0;
@@ -5163,6 +5776,14 @@ export function SheetContainer({
                               return null;
                             }
                             const otherClassPowers = allPowerEntries
+                              .filter((e) =>
+                                matchesContentSourceFilter(
+                                  resolveEntrySourceId(e, 'ordem-paranormal'),
+                                  evoSourceFilter,
+                                  campaignAllowedSources,
+                                  'ordem-paranormal'
+                                )
+                              )
                               .filter((e) => {
                                 const ln = e.name.toLowerCase();
                                 const lr = (e.metadata?.requirements || '').toLowerCase();
@@ -5459,12 +6080,16 @@ export function SheetContainer({
                             }`}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-bold text-xs text-white">
                                   {isPicked ? '✓ ' : ''}
                                   {r.name}
                                   {pickedElement ? ` (${pickedElement})` : ''}
                                 </span>
+                                <SourceTagBadge
+                                  sourceId={resolveEntrySourceId(r, 'ordem-paranormal')}
+                                  system="ordem-paranormal"
+                                />
                                 <span className="text-xs text-zinc-400 trpg-num">{r.metadata?.circle || 1}º círculo</span>
                                 <ElementBadge element={r.metadata?.element || 'Paranormal'} />
                                 <span className="text-[10px] font-mono bg-blue-950 text-blue-300 border border-blue-800 px-1.5 py-0.5 rounded">
@@ -5573,6 +6198,7 @@ export function SheetContainer({
           bonuses={bonuses}
           customSkills={customSkills}
           abilities={characterAbilities}
+          allowedSources={campaignAllowedSources}
           isInCampaign={Boolean(character.campaignId)}
           isOverloaded={isCharacterOverloaded}
           isMachucado={isCharacterMachucado}
@@ -5686,6 +6312,9 @@ export function SheetContainer({
                   sceneEffects: updatedData.sceneEffects ?? prevRaw.sceneEffects ?? [],
                   proficiencies: updatedData.proficiencies ?? prevRaw.proficiencies,
                   personalProfile: updatedData.personalProfile ?? prevRaw.personalProfile,
+                  originMeta: updatedData.originMeta ?? prevRaw.originMeta,
+                  useSeparateNexAndLevel:
+                    updatedData.useSeparateNexAndLevel ?? prevRaw.useSeparateNexAndLevel,
                   interludeBonusDice: updatedData.interludeBonusDice ?? prevRaw.interludeBonusDice,
                   pendingInterlude:
                     updatedData.pendingInterlude !== undefined
@@ -5696,7 +6325,8 @@ export function SheetContainer({
             })
           }
           onLoseSanity={handleLoseSanity}
-          onRoll={(label, count, sides, mod, cursePricePrompt) =>
+          onTriggerOriginSpecial={handleTriggerOriginSpecial}
+          onRoll={(label, count, sides, mod, cursePricePrompt, extraOpts) =>
             triggerCharacterRoll(
               label,
               count,
@@ -5707,7 +6337,12 @@ export function SheetContainer({
               undefined,
               undefined,
               undefined,
-              cursePricePrompt ? { cursePricePrompt } : undefined
+              cursePricePrompt || extraOpts
+                ? {
+                    ...(extraOpts || {}),
+                    ...(cursePricePrompt ? { cursePricePrompt } : {}),
+                  }
+                : undefined
             )
           }
         />
@@ -5755,6 +6390,11 @@ export function SheetContainer({
       {/* Abas Inferiores integradas com Troca entre Jogadores */}
       <SheetExtras
         system={character.system}
+        pvDamageTaken={(() => {
+          const pv = character.vitals.find((b) => b.id === 'pv');
+          return pv ? Math.max(0, pv.max - pv.current) : 0;
+        })()}
+        allowedSources={campaignAllowedSources}
         ordemSheetData={
           character.system === 'ordem-paranormal'
             ? (character.sheetData as OrdemSheetData)
@@ -5836,6 +6476,9 @@ export function SheetContainer({
           }
         }}
         onTriggerOriginSpecial={handleTriggerOriginSpecial}
+        onUpdateOriginMeta={handleUpdateOriginMeta}
+        onApplyFlashback={handleApplyFlashback}
+        onLosePermanentSanity={handleLosePermanentSanity}
         vislumbresSuccessPending={Boolean(
           vislumbresResult?.passed && !vislumbresResult?.peGranted
         )}

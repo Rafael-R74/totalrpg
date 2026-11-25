@@ -343,6 +343,118 @@ export function InventoryItemActionBar({
   }
 
   // ============================================================================
+  // 3B. INVENTO PARANORMAL (Origem: Inventor Paranormal — SaH, p. 11)
+  // ============================================================================
+  if (item.isParanormalInvention || ln.startsWith('invento paranormal')) {
+    const uses = item.dailyUses || 0;
+    const currentDt = 15 + uses * 5;
+    const isJammed = Boolean(item.jammed);
+    const ritualTitle = item.storedRitualName || 'Ritual de 1º Círculo';
+    const ritualComp = compendiumEntries.find(
+      (e) =>
+        e.category === 'spell' &&
+        (e.name.toLowerCase() === ritualTitle.toLowerCase() ||
+          e.name.toLowerCase().startsWith(ritualTitle.toLowerCase()))
+    );
+    const dmgFormula = ritualComp?.metadata?.damageFormula;
+
+    if (isJammed) {
+      buttons.push(
+        <span
+          key="invento-jammed"
+          className="px-2.5 py-1 bg-red-950/80 text-red-200 border border-red-700 rounded-lg text-[11px] font-bold"
+        >
+          <Icon name="warning" /> Enguiçado (Use Manutenção no Interlúdio)
+        </span>,
+        <button
+          key="invento-repair-manual"
+          type="button"
+          onClick={() => {
+            onUpdateItem({ ...item, jammed: false, dailyUses: 0 });
+            onFeedback(`${item.name} consertado! DT de ativação redefinida para 15.`);
+          }}
+          className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-300 border border-emerald-700/60 rounded-lg text-[10px] font-bold cursor-pointer"
+          title="Consertar manualmente e redefinir DT para 15"
+        >
+          <Icon name="wrench" /> Consertar (DT → 15)
+        </button>
+      );
+    } else {
+      buttons.push(
+        <button
+          key="activate-invento"
+          type="button"
+          onClick={() => {
+            rollSkill(
+              'profissao',
+              'int',
+              `Invenção Paranormal (${ritualTitle}) — Profissão DT ${currentDt} [0 PE]`
+            );
+            onUpdateItem({ ...item, dailyUses: uses + 1 });
+            onFeedback(
+              `Invento Paranormal (${ritualTitle}): teste de Profissão DT ${currentDt} rolado (0 PE)! Se passar, executa a forma básica; se falhar, marque Enguiçar. Próxima DT: ${currentDt + 5}.`
+            );
+          }}
+          className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-700 text-purple-100 border border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
+        >
+          <Icon name="zap" /> Ativar: {ritualTitle} (Profissão DT {currentDt} • 0 PE)
+        </button>,
+        <button
+          key="jam-invento"
+          type="button"
+          onClick={() => {
+            onUpdateItem({ ...item, jammed: true });
+            onFeedback(`${item.name} enguiçou! Realize Manutenção no Interlúdio para consertá-lo.`);
+          }}
+          className="px-2 py-1 bg-zinc-900 hover:bg-red-950 text-red-300 border border-red-800/60 rounded-lg text-[10px] font-bold cursor-pointer"
+          title="Marcar invento como enguiçado caso tenha falhado no teste de Profissão"
+        >
+          Falhou (Enguiçar)
+        </button>
+      );
+      if (dmgFormula) {
+        const m = dmgFormula.toLowerCase().replace(/\s+/g, '').match(/^(\d+)d(\d+)([+-]\d+)?$/);
+        if (m) {
+          buttons.push(
+            <button
+              key="invento-dmg"
+              type="button"
+              onClick={() =>
+                onRoll(
+                  `Invento Paranormal (${ritualTitle}) — Efeito Básico [0 PE]`,
+                  parseInt(m[1], 10),
+                  parseInt(m[2], 10),
+                  m[3] ? parseInt(m[3], 10) : 0,
+                  true
+                )
+              }
+              className="px-2 py-1 bg-amber-950/70 hover:bg-amber-700 text-amber-200 border border-amber-700/70 rounded-lg text-[10px] font-mono font-bold cursor-pointer"
+            >
+              <Icon name="d20" /> Efeito ({dmgFormula})
+            </button>
+          );
+        }
+      }
+      if (uses > 0) {
+        buttons.push(
+          <button
+            key="invento-reset-dt"
+            type="button"
+            onClick={() => {
+              onUpdateItem({ ...item, dailyUses: 0 });
+              onFeedback(`DT de ativação de ${item.name} redefinida para 15.`);
+            }}
+            className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-700 rounded-lg text-[10px] font-bold cursor-pointer"
+            title="Redefinir DT para 15 (nova missão / manutenção)"
+          >
+            ↺ DT 15
+          </button>
+        );
+      }
+    }
+  }
+
+  // ============================================================================
   // 4. OPERACIONAIS ATIVOS (Taser, Spray de Pimenta, Lanterna, Pistolas)
   // ============================================================================
   if (ln.includes('taser')) {

@@ -7,6 +7,7 @@ import {
   ActiveCondition,
   CharacterAbility,
   RPGItem,
+  VitalBar,
   PreparedAttack,
   CampaignThreat,
   CampaignMerchant,
@@ -21,6 +22,8 @@ import {
   currentPvOf,
   hasDyingCondition,
   isDyingCondition,
+  isUnconsciousCondition,
+  hasApegoAngustiado,
   dyingTurnsOf,
   deathAtOf,
   DYING_TURNS_TO_DIE,
@@ -40,6 +43,7 @@ import { LootAndMerchantsManager, CampaignStoredItem } from './dm/LootAndMerchan
 import { NotesAndPostItsManager, FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
 import { MonitorDirectorPanel } from './dm/MonitorPanel';
 import { DyingTracker } from './ui/DyingTracker';
+import { RequestInitiativeDialog, ManualInitiativeDialog } from './dm/InitiativeDialogs';
 import { TempVitalBar } from './TempVitalBar';
 import { useTheme } from '../theme/themeEngine';
 
@@ -97,7 +101,8 @@ interface DMScreenProps {
   onBroadcastBatchCharacterPatch?: (
     patches: Array<Omit<CharacterLivePatch, 'campaignId' | 'patchTimestamp'>>
   ) => void;
-  onRequestPlayersInitiative: () => void;
+  /** Sem lista: todos os jogadores. Com lista: só esses personagens rolam. */
+  onRequestPlayersInitiative: (characterIds?: string[]) => void;
   onSharePostIt: (postIt: StickyPostIt, action: 'show' | 'hide') => void;
   onNotifyItemGiven: (targetCharacterId: string, item: RPGItem, attack?: PreparedAttack) => void;
   lastUpdatedCharSignal: { characterId: string; timestamp: number } | null;
@@ -251,6 +256,7 @@ export function DMScreen({
   const [fullLogCategoryFilter, setFullLogCategoryFilter] = useState<'all' | SessionActivityCategory>('all');
   const [fullLogCharFilter, setFullLogCharFilter] = useState<string>('ALL');
   const [fullLogSearch, setFullLogSearch] = useState<string>('');
+  const [initiativeDialog, setInitiativeDialog] = useState<'request' | 'manual' | null>(null);
   const [conditionPickerCharId, setConditionPickerCharId] = useState<string | null>(null);
   const [initFeedback, setInitFeedback] = useState('');
   const [sceneEndToast, setSceneEndToast] = useState('');
@@ -849,9 +855,58 @@ async function handleDeliverItemToCharacter(
     loadScreenData(true);
   }
 
-  function handleRequestInitiativeClick() {
-    onRequestPlayersInitiative();
-    setInitFeedback('Pedido de Iniciativa enviado para a tela dos jogadores!');
+  function handleRequestInitiative(characterIds: string[]) {
+    const all = campaign ? characterIds.length >= campaign.characters.length : true;
+    onRequestPlayersInitiative(all ? undefined : characterIds);
+    setInitiativeDialog(null);
+    setInitFeedback(
+      all
+        ? 'Pedido de iniciativa enviado para todos os jogadores.'
+        : `Pedido de iniciativa enviado para ${characterIds.length} jogador${characterIds.length === 1 ? '' : 'es'}.`
+    );
+    setTimeout(() => setInitFeedback(''), 4000);
+  }
+
+  /** Coloca jogadores em combate com a iniciativa digitada pelo mestre (ou altera a de quem já está). */
+  function handleManualPlayersInitiative(entries: Array<{ characterId: string; initiative: number }>) {
+    if (!campaign || entries.length === 0) return;
+    setCombatants((prev) => {
+      let next = [...prev];
+      for (const entry of entries) {
+        const char = campaign.characters.find((c) => c.id === entry.characterId);
+        if (!char) continue;
+        if (next.some((c) => !c.isNPC && c.characterId === entry.characterId)) {
+          next = next.map((c) =>
+            !c.isNPC && c.characterId === entry.characterId ? { ...c, initiative: entry.initiative } : c
+          );
+        } else {
+          next.push({
+            id: Math.random().toString(36).substring(2, 9),
+            characterId: char.id,
+            name: char.name,
+            initiative: entry.initiative,
+            isNPC: false,
+          });
+        }
+      }
+      return next.sort((a, b) => b.initiative - a.initiative);
+    });
+    for (const entry of entries) {
+      const char = campaign.characters.find((c) => c.id === entry.characterId);
+      if (!char) continue;
+      onLogActivity?.({
+        characterId: char.id,
+        characterName: char.name,
+        actorLabel: 'Mestre',
+        category: 'system',
+        summary: `Entrou em combate com iniciativa manual (INI ${entry.initiative})`,
+        tone: 'info',
+      });
+    }
+    setInitiativeDialog(null);
+    setInitFeedback(
+      `${entries.length} jogador${entries.length === 1 ? '' : 'es'} em combate com iniciativa manual.`
+    );
     setTimeout(() => setInitFeedback(''), 4000);
   }
 
@@ -868,7 +923,12 @@ async function handleDeliverItemToCharacter(
    */
   async function updateDyingState(
     charId: string,
-    next: { dyingTurns?: number; deathAt?: number | null; conditions?: ActiveCondition[] }
+    next: {
+      dyingTurns?: number;
+      deathAt?: number | null;
+      conditions?: ActiveCondition[];
+      vitals?: VitalBar[];
+    }
   ) {
     const current = latestCampaignRef.current?.characters.find((c) => c.id === charId);
     if (!current) return;
@@ -883,7 +943,13 @@ async function handleDeliverItemToCharacter(
       const nextCampaign: DMScreenCampaignData = {
         ...prevCampaign,
         characters: prevCampaign.characters.map((c) =>
-          c.id === charId ? { ...c, sheetData: nextSheetData as any } : c
+          c.id === charId
+            ? {
+                ...c,
+                ...(next.vitals ? { vitals: next.vitals } : {}),
+                sheetData: nextSheetData as any,
+              }
+            : c
         ),
       };
       latestCampaignRef.current = nextCampaign;
@@ -894,9 +960,13 @@ async function handleDeliverItemToCharacter(
       ...(next.dyingTurns !== undefined ? { dyingTurns: next.dyingTurns } : {}),
       ...(next.deathAt !== undefined ? { deathAt: next.deathAt } : {}),
       ...(next.conditions !== undefined ? { conditions: next.conditions } : {}),
+      ...(next.vitals ? { vitals: next.vitals } : {}),
     });
     try {
-      await updateCharacter(charId, { sheetData: nextSheetData as any });
+      await updateCharacter(charId, {
+        ...(next.vitals ? { vitals: next.vitals } : {}),
+        sheetData: nextSheetData as any,
+      });
       onBroadcastCharacterSync(charId);
     } catch (err: any) {
       alert(err.message);
@@ -912,15 +982,33 @@ async function handleDeliverItemToCharacter(
     if (!hasDyingCondition(raw.conditions) || deathAtOf(raw)) return;
     const turns = Math.min(DYING_TURNS_TO_DIE, dyingTurnsOf(raw) + 1);
     const dies = turns >= DYING_TURNS_TO_DIE;
-    updateDyingState(char.id, { dyingTurns: turns, ...(dies ? { deathAt: Date.now() } : {}) });
+    const isConsciousApego =
+      hasApegoAngustiado(raw.abilities) &&
+      !(Array.isArray(raw.conditions) && raw.conditions.some(isUnconsciousCondition));
+    const nextVitals = isConsciousApego
+      ? char.vitals.map((v) =>
+          v.id === 'san' ? { ...v, current: Math.max(0, v.current - 2) } : v
+        )
+      : undefined;
+
+    updateDyingState(char.id, {
+      dyingTurns: turns,
+      ...(dies ? { deathAt: Date.now() } : {}),
+      ...(nextVitals ? { vitals: nextVitals } : {}),
+    });
     onLogActivity?.({
       characterId: char.id,
       characterName: char.name,
       actorLabel: 'Mestre',
       category: 'condition',
       summary: dies
-        ? 'Morreu: iniciou o terceiro turno morrendo nesta cena'
-        : `Iniciou o turno morrendo (${turns} de ${DYING_TURNS_TO_DIE})`,
+        ? `Morreu: iniciou o terceiro turno morrendo nesta cena${
+            isConsciousApego ? ' (-2 SAN por Apego Angustiado)' : ''
+          }`
+        : `Iniciou o turno morrendo (${turns} de ${DYING_TURNS_TO_DIE})${
+            isConsciousApego ? ' • Apego Angustiado (-2 SAN)' : ''
+          }`,
+      costText: isConsciousApego ? '-2 SAN' : undefined,
       tone: 'danger',
     });
   }
@@ -1078,11 +1166,13 @@ async function handleDeliverItemToCharacter(
         : rawSheet;
 
     // Regra dos 0 PV (Ordem, p. 311): caiu a 0 → morrendo + inconsciente; curou → sai inconsciente.
+    const skipUnconscious = hasApegoAngustiado(abilities);
     const zeroHp = applyZeroHpRule(
       targetChar.system,
       currentPvOf(targetChar.vitals),
       currentPvOf(updatedVitals),
-      conditions
+      conditions,
+      { skipUnconscious }
     );
     const nextSheetData =
       zeroHp.transition && zeroHp.conditions !== conditions
@@ -1094,7 +1184,9 @@ async function handleDeliverItemToCharacter(
         characterName: targetChar.name,
         actorLabel: 'Mestre',
         category: 'condition',
-        summary: 'Caiu a 0 PV: ficou morrendo e inconsciente',
+        summary: skipUnconscious
+          ? 'Caiu a 0 PV: ficou morrendo (Apego Angustiado — permanece consciente)'
+          : 'Caiu a 0 PV: ficou morrendo e inconsciente',
         tone: 'danger',
       });
     }
@@ -1652,6 +1744,29 @@ async function handleDeliverItemToCharacter(
         <div className="lg:col-span-8 flex flex-col gap-6">
           {activeDMTab === 'table' && (
             <>
+              <RequestInitiativeDialog
+                open={initiativeDialog === 'request'}
+                characters={campaign.characters}
+                inCombatIds={
+                  new Set(combatants.filter((c) => !c.isNPC && c.characterId).map((c) => c.characterId!))
+                }
+                onClose={() => setInitiativeDialog(null)}
+                onConfirm={handleRequestInitiative}
+              />
+              <ManualInitiativeDialog
+                open={initiativeDialog === 'manual'}
+                characters={campaign.characters}
+                currentInitiative={
+                  new Map(
+                    combatants
+                      .filter((c) => !c.isNPC && c.characterId)
+                      .map((c) => [c.characterId!, c.initiative] as [string, number])
+                  )
+                }
+                onClose={() => setInitiativeDialog(null)}
+                onConfirm={handleManualPlayersInitiative}
+              />
+
               {/* RASTREADOR DE INICIATIVA */}
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 shadow-lg">
                 <div className="flex flex-wrap justify-between items-center gap-3 border-b border-zinc-800 pb-3">
@@ -1674,10 +1789,18 @@ async function handleDeliverItemToCharacter(
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleRequestInitiativeClick}
+                      onClick={() => setInitiativeDialog('request')}
                       className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-amber-900/30"
                     >
                       <Icon name="zap" /> Pedir Iniciativa aos Jogadores
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setInitiativeDialog('manual')}
+                      className="px-3 py-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                    >
+                      <Icon name="pencil" /> Iniciativa Manual
                     </button>
 
                     <button
@@ -1706,7 +1829,7 @@ async function handleDeliverItemToCharacter(
 
                 {combatants.length === 0 ? (
                   <p className="text-xs text-zinc-500 text-center py-4">
-                    Nenhum combate em andamento. Peça iniciativa aos jogadores ou envie criaturas pela aba Ameaças.
+                    Nenhum combate em andamento. Peça iniciativa aos jogadores, digite a iniciativa manualmente ou envie criaturas pela aba Ameaças.
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -2300,6 +2423,7 @@ async function handleDeliverItemToCharacter(
           {activeDMTab === 'loot' && (
             <LootAndMerchantsManager
               system={campaign.system}
+              allowedSources={(campaign as any).allowedSources}
               characters={campaign.characters}
               compendiumEntries={compendiumEntries}
               campaignItems={campaignItems}
