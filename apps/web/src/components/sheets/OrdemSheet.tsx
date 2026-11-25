@@ -13,6 +13,7 @@ import {
   ComputedBonuses,
   SystemSkillDefinition,
   ORDEM_ORIGINS,
+  getOrdemOcultismoAttr,
   type OrdemOriginDefinition,
   ORDEM_TRAILS,
   ORDEM_PATENTS,
@@ -1816,10 +1817,16 @@ export function OrdemSheet({
               armConhecimentoAplicado && skill.id !== 'luta' && skill.id !== 'pontaria';
             const useForForIntimidacao =
               skill.id === 'intimidacao' && hasValentao && effectiveFor >= effectivePre;
+            // Olhar Sinistro (Ocultista, SaH): Presença no lugar de Intelecto em Ocultismo
+            const usePreForOcultismo =
+              skill.id === 'ocultismo' &&
+              getOrdemOcultismoAttr(abilities, effectiveInt, effectivePre).attr === 'pre';
             const attrForSkill = canUseConhecimentoAplicadoHere
               ? 'int'
               : useForForIntimidacao
               ? 'for'
+              : usePreForOcultismo
+              ? 'pre'
               : skill.attribute;
             const baseAttr =
               safeData.attributes[attrForSkill] +
@@ -2167,6 +2174,14 @@ export function OrdemSheet({
                           title="Valentão: usando Força no lugar de Presença para Intimidação"
                         >
                           Valentão (FOR)
+                        </span>
+                      )}
+                      {usePreForOcultismo && (
+                        <span
+                          className="text-[9px] font-black px-1.5 py-0.5 rounded bg-purple-950 text-purple-200 border border-purple-700/80"
+                          title="Olhar Sinistro: usando Presença no lugar de Intelecto para Ocultismo"
+                        >
+                          Olhar Sinistro (PRE)
                         </span>
                       )}
                     </div>

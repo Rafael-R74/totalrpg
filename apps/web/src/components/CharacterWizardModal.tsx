@@ -377,7 +377,7 @@ export function CharacterWizardModal({
           return e.id.startsWith('ord-pwr-esp') || e.id.startsWith('sah-pwr-esp') || req.includes('especialista');
         }
         if (ordemClassId === 'ocultista') {
-          return e.id.startsWith('ord-pwr-ocu') || req.includes('ocultista');
+          return e.id.startsWith('ord-pwr-ocu') || e.id.startsWith('sah-pwr-ocu') || req.includes('ocultista');
         }
         return false;
       }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),

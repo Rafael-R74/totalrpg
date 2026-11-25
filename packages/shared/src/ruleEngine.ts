@@ -193,6 +193,10 @@ export function calculateActiveBonuses(
       case 'load_limit':
         result.loadLimit += finalValue;
         break;
+
+      case 'ritual_dt':
+        result.ritualDtBonus += finalValue;
+        break;
     }
   }
 

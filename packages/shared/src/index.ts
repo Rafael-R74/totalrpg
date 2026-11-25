@@ -9,6 +9,7 @@ export * from './characterBuilder';
 export * from './ordemBestiaryData';
 export * from './contentPack';
 export * from './contentSources';
+export * from './sahRules';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
 
@@ -675,7 +676,8 @@ export type ModifierTargetType =
   | 'defense'        // Altera a Defesa do personagem
   | 'attack_bonus'   // Soma no acerto de ataques
   | 'damage_bonus'   // Soma no dano de ataques
-  | 'load_limit';    // Altera espaços máximos da mochila
+  | 'load_limit'     // Altera espaços máximos da mochila
+  | 'ritual_dt';     // Soma na DT para resistir aos rituais (ex.: Traçado Conjuratório)
 
 export interface RuleModifier {
   id: string;
@@ -713,6 +715,7 @@ export interface CompendiumEntryData {
     isWeapon?: boolean;     // Diferencia armas de consumíveis/granadas que também têm damageFormula
     uses?: number;          // Cargas padrão (Spray de Pimenta = 2, Taser = 2, etc.)
     sourceId?: string;      // Livro/suplemento de origem (ex.: 'ordem-base', 'sobrevivendo-ao-horror')
+    requiresElementChoice?: boolean; // Item escolhe o elemento ao ser adicionado (ex.: Catalisador Ritualístico)
   };
 }
 

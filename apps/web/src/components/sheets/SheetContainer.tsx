@@ -16,6 +16,11 @@ import {
   PreparedAttack,
   calculateActiveBonuses,
   buildOrdemOriginModifiers,
+  getOrdemOcultismoAttr,
+  getCatalystType,
+  getCatalystElement,
+  addOneDieToFormula,
+  CATALYST_INFO,
   buildOrdemOriginAbility,
   buildParanormalInventionItem,
   matchesContentSourceFilter,
@@ -574,7 +579,8 @@ export function SheetContainer({
                 (ce.id.startsWith('ord-pwr-comb-') ||
                   ce.id.startsWith('sah-pwr-comb-') ||
                   ce.id.startsWith('ord-pwr-esp-') ||
-                  ce.id.startsWith('sah-pwr-esp-')) &&
+                  ce.id.startsWith('sah-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-ocu-')) &&
                 ce.name.toLowerCase() === lowerAbName
             );
             if (officialClassPower) {
@@ -638,7 +644,8 @@ export function SheetContainer({
                 (ce.id.startsWith('ord-pwr-comb-') ||
                   ce.id.startsWith('sah-pwr-comb-') ||
                   ce.id.startsWith('ord-pwr-esp-') ||
-                  ce.id.startsWith('sah-pwr-esp-')) &&
+                  ce.id.startsWith('sah-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-ocu-')) &&
                 ce.name.toLowerCase() === entry.name.toLowerCase()
             );
             return officialClassEntry
@@ -1655,6 +1662,7 @@ export function SheetContainer({
       camuflar?: boolean;
       ampliar?: boolean;
       acelerar?: boolean;
+      catalystItemIds?: string[];
     }
   ) {
     if (!character) return;
@@ -1715,7 +1723,10 @@ export function SheetContainer({
     const dt = 20 + form.totalCost;
     const intAttr = Number(rawSheet.attributes?.int ?? 1) + (bonuses.attributes['int'] || 0);
     const ocultismoSkill = (rawSheet.skills || []).find((s: any) => s.id === 'ocultismo');
-    const ocultismoDice = intAttr + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0);
+    // Olhar Sinistro (Ocultista, SaH): Presença no lugar de Intelecto em Ocultismo
+    const ocultismoAttr = getOrdemOcultismoAttr(characterAbilities, intAttr, preAttrForLimit);
+    const ocultismoDice =
+      ocultismoAttr.value + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0);
     const ocultismoMod =
       Number(ocultismoSkill?.trainingDegree ?? 0) +
       Number(ocultismoSkill?.otherModifier ?? 0) +
@@ -1924,6 +1935,38 @@ export function SheetContainer({
       }
     }
 
+    // Catalisadores Ritualísticos (SaH p. 44): precisam ser do elemento do ritual e são consumidos
+    const consumedCatalystIds: string[] = [];
+    const skippedCatalysts: string[] = [];
+    const castDuration = (form.duration || ritualDef?.duration || '').toLowerCase();
+    for (const catalystId of castOptions?.catalystItemIds || []) {
+      const item = ((character.inventory || []) as RPGItem[]).find((it) => it.id === catalystId);
+      const type = getCatalystType(item);
+      if (!item || !type) continue;
+      const label = `Catalisador ${CATALYST_INFO[type].label}`;
+      const itemEl = getCatalystElement(item).toLowerCase();
+      if (itemEl && !ritualElementLower.includes(itemEl)) {
+        skippedCatalysts.push(`${label} (${getCatalystElement(item)}) não serve para ritual de ${form.element || ritual.element || ritualDef?.element || 'outro elemento'}`);
+        continue;
+      }
+      if (type === 'potencializador') {
+        if (effectType !== 'damage' || !effectFormula) {
+          skippedCatalysts.push(`${label}: este ritual não causa dano`);
+          continue;
+        }
+        effectFormula = addOneDieToFormula(effectFormula);
+      }
+      if (type === 'prolongador' && (isSustainedForm || castDuration.includes('instant'))) {
+        skippedCatalysts.push(`${label}: não funciona em ritual instantâneo ou sustentado`);
+        continue;
+      }
+      consumedCatalystIds.push(item.id);
+      effectNotes.push(`${label}: ${CATALYST_INFO[type].effect}`);
+    }
+    if (skippedCatalysts.length > 0) {
+      showHoverToast(`Catalisador não usado (não foi consumido): ${skippedCatalysts.join(' • ')}`);
+    }
+
     const ritualEffectPayload: RitualEffectRollPayload = {
       ritualId: ritual.id,
       ritualName: ritual.name,
@@ -2035,9 +2078,22 @@ export function SheetContainer({
           )
         : baseAbilities;
 
+      const baseInventory = (base.inventory || []) as RPGItem[];
+      const inventoryAfterCast =
+        consumedCatalystIds.length > 0
+          ? baseInventory.flatMap((it) =>
+              !consumedCatalystIds.includes(it.id)
+                ? [it]
+                : (it.quantity ?? 1) > 1
+                ? [{ ...it, quantity: (it.quantity ?? 1) - 1 }]
+                : []
+            )
+          : baseInventory;
+
       return {
         ...base,
         vitals: vitalsAfterCast,
+        inventory: inventoryAfterCast as any,
         sheetData: {
           ...baseRaw,
           abilities: updatedBaseAbilities,
@@ -2070,7 +2126,11 @@ export function SheetContainer({
 
     logSheetActivity({
       category: 'ability',
-      summary: `Conjurou ${ritual.name} [${form.label}]`,
+      summary: `Conjurou ${ritual.name} [${form.label}]${
+        consumedCatalystIds.length > 0
+          ? ` com ${consumedCatalystIds.length} catalisador${consumedCatalystIds.length > 1 ? 'es' : ''}`
+          : ''
+      }`,
       costText: usePoderDoFlagelo ? `-${pvCostFlagelo} PV` : `-${form.totalCost} PE`,
       details: isMedoRitual
         ? `Invocando o Medo: -${sanLost} SAN e -${permSanLost} SAN Máx Permanente`
@@ -6330,6 +6390,10 @@ export function SheetContainer({
       {/* Abas Inferiores integradas com Troca entre Jogadores */}
       <SheetExtras
         system={character.system}
+        pvDamageTaken={(() => {
+          const pv = character.vitals.find((b) => b.id === 'pv');
+          return pv ? Math.max(0, pv.max - pv.current) : 0;
+        })()}
         allowedSources={campaignAllowedSources}
         ordemSheetData={
           character.system === 'ordem-paranormal'

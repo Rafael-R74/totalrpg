@@ -33,11 +33,21 @@ export interface SahPowerProps {
   campaignId?: string;
   characterId?: string;
   characterName?: string;
-  onRoll: (label: string, count: number, sides: number, modifier: number) => void;
+  /** `extraDice`: dados que não são d20 somados ao teste (ex.: +1d6 de Minha Dor me Impulsiona) */
+  onRoll: (
+    label: string,
+    count: number,
+    sides: number,
+    modifier: number,
+    extraDice?: Array<{ count: number; sides: number; label: string }>
+  ) => void;
   onSpendResource: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
   onAddSceneEffect?: (effect: SceneEffect) => void;
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
   onGrantTempPe?: (amount: number, reason?: string) => void;
+  onLoseSanity?: (amount: number, reason: string) => void;
+  /** Dano sofrido nos PV (máximo - atual), para poderes que exigem estar ferido */
+  pvDamageTaken?: number;
   onUpdateAbilities: (abilities: CharacterAbility[]) => void;
   onApplyFlashback?: (choice: FlashbackChoice | null) => void;
   onFeedback: (msg: string) => void;

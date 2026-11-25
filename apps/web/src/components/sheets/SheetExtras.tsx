@@ -15,6 +15,11 @@ import {
   matchesContentSourceFilter,
   resolveEntrySourceId,
   checkOrdemPowerRequirements,
+  getOrdemOcultismoAttr,
+  getCatalystType,
+  getCatalystElement,
+  hasDominioEsoterico,
+  CATALYST_INFO,
   parseOrdemRitualForms,
   OrdemRitualCastForm,
   findOrdemRitualDef,
@@ -62,6 +67,7 @@ import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilterBar';
 import { SahCombatentePowerControls, isSahCombatenteControlled } from './SahCombatentePowers';
 import { SahEspecialistaPowerControls, isSahEspecialistaControlled } from './SahEspecialistaPowers';
+import { SahOcultistaPowerControls, isSahOcultistaControlled } from './SahOcultistaPowers';
 import type { FlashbackChoice, SahPowerProps } from './sahPowerKit';
 interface SheetExtrasProps {
   system: SystemId;
@@ -96,6 +102,8 @@ interface SheetExtrasProps {
   onTakePvDamage?: (amount: number, reason?: string) => void;
   onGrantTempPe?: (amount: number, reason?: string) => void;
   onLoseSanity?: (amount: number, reason: string) => void;
+  /** Dano sofrido nos PV (máximo - atual) */
+  pvDamageTaken?: number;
   onAddSceneEffect?: (effect: SceneEffect) => void;
   onRoll: (
     label: string,
@@ -119,6 +127,7 @@ interface SheetExtrasProps {
       camuflar?: boolean;
       ampliar?: boolean;
       acelerar?: boolean;
+      catalystItemIds?: string[];
     }
   ) => void;
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
@@ -276,6 +285,7 @@ export function SheetExtras({
   onTakePvDamage,
   onGrantTempPe,
   onLoseSanity,
+  pvDamageTaken,
   onAddSceneEffect,
   onRoll,
   onCastOrdemRitual,
@@ -487,8 +497,10 @@ export function SheetExtras({
     const lowerId = (ab.id || '').toLowerCase();
     const lowerName = (ab.name || '').toLowerCase();
 
-    // Poderes do Sobrevivendo ao Horror (controles em SahCombatentePowers.tsx / SahEspecialistaPowers.tsx)
-    if (isSahCombatenteControlled(ab) || isSahEspecialistaControlled(ab)) return true;
+    // Poderes do Sobrevivendo ao Horror (controles em SahCombatentePowers / SahEspecialistaPowers / SahOcultistaPowers)
+    if (isSahCombatenteControlled(ab) || isSahEspecialistaControlled(ab) || isSahOcultistaControlled(ab)) {
+      return true;
+    }
 
     // Poderes de Origem com botão dedicado na seção de Perícias (OrdemSheet.tsx) ou controles próprios na aba Poderes
     if (
@@ -727,6 +739,8 @@ export function SheetExtras({
   const [ritualCamuflar, setRitualCamuflar] = useState(false);
   const [ritualAmpliar, setRitualAmpliar] = useState(false);
   const [ritualAcelerar, setRitualAcelerar] = useState(false);
+  // Catalisadores Ritualísticos (SaH) escolhidos para o próximo ritual (2 diferentes com Domínio Esotérico)
+  const [ritualCatalystIds, setRitualCatalystIds] = useState<string[]>([]);
   const [ritualPoderFlagelo, setRitualPoderFlagelo] = useState(false);
   const [ritualLaminaMovimentoMap, setRitualLaminaMovimentoMap] = useState<Record<string, boolean>>({});
   const [improvisarElemento, setImprovisarElemento] = useState<string>('Sangue');
@@ -1086,9 +1100,12 @@ export function SheetExtras({
         });
       const isUtensilio = entry.name.toLowerCase().includes('utensílio') || entry.name.toLowerCase().includes('utensilio');
       const isVestimenta = entry.name.toLowerCase().includes('vestimenta');
+      // Itens com elemento escolhido na hora (ex.: Catalisador Ritualístico de Sangue)
+      const elementForItem = entry.metadata?.requiresElementChoice ? chosenElement : undefined;
       const newItem: RPGItem = {
         id: newId,
-        name: entry.name,
+        name: elementForItem ? `${entry.name} (${elementForItem})` : entry.name,
+        ...(elementForItem ? { element: elementForItem as RPGItem['element'] } : {}),
         sourceId: resolveEntrySourceId(entry, system),
         slots: baseSlots,
         baseSlots,
@@ -1777,16 +1794,20 @@ export function SheetExtras({
                           </div>
 
                           {entry.id === 'ord-rit-amaldicoar-arma' ||
-                          entry.name.toLowerCase().includes('amaldiçoar arma') ? (
+                          entry.name.toLowerCase().includes('amaldiçoar arma') ||
+                          entry.metadata?.requiresElementChoice ? (
                             <div className="flex flex-col gap-1 shrink-0">
                               <span className="text-[10px] font-bold text-amber-400 text-right">
                                 Escolha o elemento:
                               </span>
                               <div className="grid grid-cols-2 gap-1">
                                 {(['Sangue', 'Morte', 'Conhecimento', 'Energia'] as const).map((el) => {
-                                  const hasThisEl = abilities.some((ab) =>
-                                    ab.name.toLowerCase().includes(`amaldiçoar arma — ${el.toLowerCase()}`)
-                                  );
+                                  // Itens (catalisadores) podem ser repetidos; o ritual, uma vez por elemento
+                                  const hasThisEl =
+                                    !entry.metadata?.requiresElementChoice &&
+                                    abilities.some((ab) =>
+                                      ab.name.toLowerCase().includes(`amaldiçoar arma — ${el.toLowerCase()}`)
+                                    );
                                   return (
                                     <button
                                       key={el}
@@ -4155,7 +4176,7 @@ export function SheetExtras({
                   ordemSheetData.origin,
                   undefined,
                   sceneEffectsBar
-                )
+                ) + (bonuses.ritualDtBonus || 0)
               : 10;
             const peRitualLimitBar = ordemSheetData
               ? getOrdemRitualPeLimit(ordemSheetData.nex, ordemSheetData.origin, abilities, effPreBar, ordemSheetData.trail)
@@ -4184,6 +4205,24 @@ export function SheetExtras({
             const hasAcelerarPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-conduite-40' || a.name.toLowerCase().includes('acelerar ritual')));
             const hasFlageloPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-flagelador-10' || a.name.toLowerCase().includes('poder do flagelo')));
             const hasLaminaMalditaPower = abilities.some((a) => a.isActive !== false && (a.id === 'trail-lamina_paranormal-10' || a.name.toLowerCase().includes('lâmina maldita')));
+            // Catalisadores Ritualísticos (SaH p. 44): 1 por ritual, ou 2 diferentes com Domínio Esotérico
+            const catalystItems = inventory.filter((it) => getCatalystType(it) && (it.quantity ?? 1) > 0);
+            const maxCatalysts = hasDominioEsoterico(abilities) ? 2 : 1;
+            const selectedCatalysts = ritualCatalystIds.filter((id) => catalystItems.some((it) => it.id === id));
+            const toggleCatalyst = (itemId: string) => {
+              const item = catalystItems.find((it) => it.id === itemId);
+              const type = getCatalystType(item);
+              setRitualCatalystIds((prev) => {
+                const current = prev.filter((id) => catalystItems.some((it) => it.id === id));
+                if (current.includes(itemId)) return current.filter((id) => id !== itemId);
+                // Com Domínio Esotérico os dois precisam ser de tipos diferentes: troca o do mesmo tipo
+                const withoutSameType = current.filter(
+                  (id) => getCatalystType(catalystItems.find((it) => it.id === id)) !== type
+                );
+                const next = [...withoutSameType, itemId];
+                return next.slice(-maxCatalysts);
+              });
+            };
 
             const rollOcultismoManeuver = (ritualTitle: string) => {
               if (!ordemSheetData) return;
@@ -4193,8 +4232,10 @@ export function SheetExtras({
                 (ocultSk?.otherModifier || 0) +
                 bonuses.skillBonusAll +
                 (bonuses.skillBonus['ocultismo'] || 0);
+              // Olhar Sinistro (Ocultista, SaH): Presença no lugar de Intelecto em Ocultismo
+              const ocultAttr = getOrdemOcultismoAttr(abilities, effInt, effPreBar);
               const ocultDice =
-                effInt + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0);
+                ocultAttr.value + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0);
               onRoll(`Manobra c/ Ocultismo (${ritualTitle})`, ocultDice, 20, ocultBonus);
             };
 
@@ -4258,7 +4299,7 @@ export function SheetExtras({
                   )}
                 </div>
 
-                {(hasCamuflarPower || hasAmpliarPower || hasAcelerarPower || hasFlageloPower || hasLaminaMalditaPower) && (
+                {(hasCamuflarPower || hasAmpliarPower || hasAcelerarPower || hasFlageloPower || hasLaminaMalditaPower || catalystItems.length > 0) && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-purple-900/60">
                     <span className="text-[10px] font-bold uppercase text-purple-400 mr-1">Modificadores de Conjuração:</span>
                     {hasCamuflarPower && (
@@ -4317,6 +4358,45 @@ export function SheetExtras({
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900/70 border border-zinc-700 text-amber-300">
                         <Icon name="sword" /> Lâmina Maldita: Amaldiçoar Arma custa -1 PE (mín. 1) na ficha
                       </span>
+                    )}
+                    {catalystItems.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 basis-full pt-1">
+                        <span className="text-[10px] font-bold text-purple-400 mr-1">
+                          Catalisador{maxCatalysts > 1 ? 'es (até 2 diferentes)' : ''}:
+                        </span>
+                        {catalystItems.map((it) => {
+                          const type = getCatalystType(it)!;
+                          const on = selectedCatalysts.includes(it.id);
+                          return (
+                            <button
+                              key={it.id}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => toggleCatalyst(it.id)}
+                              title={`${CATALYST_INFO[type].effect}. Consumido ao conjurar${
+                                getCatalystElement(it) ? `; só funciona em rituais de ${getCatalystElement(it)}` : ''
+                              }.`}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition inline-flex items-center gap-1 ${
+                                on
+                                  ? 'bg-purple-600 text-white border-purple-400'
+                                  : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-purple-500'
+                              }`}
+                            >
+                              {CATALYST_INFO[type].label}
+                              {getCatalystElement(it) ? ` · ${getCatalystElement(it)}` : ''}
+                              {(it.quantity ?? 1) > 1 ? ` (x${it.quantity})` : ''}
+                            </button>
+                          );
+                        })}
+                        {selectedCatalysts.length > 0 && (
+                          <span className="text-[10px] text-zinc-400">
+                            Próximo ritual:{' '}
+                            {selectedCatalysts
+                              .map((id) => CATALYST_INFO[getCatalystType(catalystItems.find((c) => c.id === id))!].effect)
+                              .join(' + ')}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -4508,7 +4588,7 @@ export function SheetExtras({
                           ordemSheetData.origin,
                           ritualElLabel,
                           ordemSheetData.sceneEffects
-                        )
+                        ) + (bonuses.ritualDtBonus || 0)
                       : null;
                   const isSustainedRitual = Boolean(
                     isOrdemRitual &&
@@ -4719,13 +4799,17 @@ export function SheetExtras({
                                 key={f.mode}
                                 type="button"
                                 onClick={() =>
+                                {
                                   onCastOrdemRitual(ab, f, {
                                     usePoderDoFlagelo: ritualPoderFlagelo,
                                     camuflar: ritualCamuflar,
                                     ampliar: ritualAmpliar,
                                     acelerar: ritualAcelerar,
-                                  })
-                                }
+                                    catalystItemIds: ritualCatalystIds,
+                                  });
+                                  // Catalisadores são consumidos: a seleção vale só para este ritual
+                                  setRitualCatalystIds([]);
+                                }}
                                 title={f.description}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap cursor-pointer ${
                                   f.mode === 'normal'
@@ -5165,7 +5249,10 @@ export function SheetExtras({
                               campaignId,
                               characterId,
                               characterName,
-                              onRoll: (label, count, sides, modifier) => onRoll(label, count, sides, modifier),
+                              onRoll: (label, count, sides, modifier, extraDice) =>
+                                onRoll(label, count, sides, modifier, undefined, undefined, undefined, extraDice ? { extraDice } : undefined),
+                              onLoseSanity,
+                              pvDamageTaken,
                               onSpendResource,
                               onAddSceneEffect,
                               onUpdateSceneEffects,
@@ -5178,6 +5265,7 @@ export function SheetExtras({
                               <>
                                 <SahCombatentePowerControls {...sahProps} />
                                 <SahEspecialistaPowerControls {...sahProps} />
+                                <SahOcultistaPowerControls {...sahProps} />
                               </>
                             );
                           })()}

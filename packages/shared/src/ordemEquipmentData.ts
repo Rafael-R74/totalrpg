@@ -799,6 +799,7 @@ export function isOrdemCompendiumItemParanormal(entry: CompendiumEntryData): boo
     ln.includes('scanner de manifestação') ||
     ln.includes('scanner de manifestacao') ||
     ln.includes('ingrediente paranormal') ||
+    ln.includes('catalisador ritual') ||
     ln.includes('selo paranormal') ||
     ln.includes('amaldiçoado') ||
     ln.includes('paranormal')
