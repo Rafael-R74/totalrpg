@@ -414,7 +414,7 @@ export function OrdemSheet({
     <div className="flex flex-col gap-6">
       {/* Cabeçalho Biográfico & Progressão de Ordem Paranormal v1.3 */}
       <div className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 [&>*]:min-w-0">
           {/* Origem (Fixa após a criação do personagem) */}
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
@@ -452,7 +452,7 @@ export function OrdemSheet({
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
               Exposição (NEX)
             </label>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {allowAttrEdit ? (
                 <select
                   value={safeData.nex}
@@ -486,8 +486,8 @@ export function OrdemSheet({
             </div>
           </div>
 
-          {/* Patente, Prestígio & Limite de Crédito */}
-          <div>
+          {/* Patente, Prestígio & Limite de Crédito — no modo edição ocupa a linha inteira no celular */}
+          <div className={allowAttrEdit ? 'col-span-2 md:col-span-1' : ''}>
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
               Patente & Crédito
             </label>
@@ -496,7 +496,7 @@ export function OrdemSheet({
                 <select
                   value={safeData.patent}
                   onChange={(e) => onChange({ ...safeData, patent: e.target.value })}
-                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
+                  className="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
                 >
                   {ORDEM_PATENTS.map((p) => (
                     <option key={p.id} value={p.name}>
@@ -516,7 +516,8 @@ export function OrdemSheet({
                     onChange({ ...safeData, prestigePoints: pp, patent: autoPatent });
                   }}
                   title="Pontos de Prestígio (PP)"
-                  className="w-14 bg-zinc-950 border border-zinc-700 rounded px-1.5 py-1 text-xs font-mono text-center text-amber-300"
+                  aria-label="Pontos de prestígio"
+                  className="w-16 shrink-0 bg-zinc-950 border border-zinc-700 rounded px-1.5 py-1 text-xs font-mono text-center text-amber-300"
                 />
               </div>
             ) : (

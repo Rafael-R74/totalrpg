@@ -96,6 +96,17 @@ export function CharacterWizardModal({
   const [combatDefenseSkill, setCombatDefenseSkill] = useState<'fortitude' | 'reflexos'>('fortitude');
   const [ordemFreeSkills, setOrdemFreeSkills] = useState<string[]>([]);
   const [upgradedSkillDegrees, setUpgradedSkillDegrees] = useState<Record<string, 10 | 15>>({});
+  // Se o NEX baixar depois das promoções: Expert exige NEX 70%, qualquer grau exige NEX 35%.
+  useEffect(() => {
+    setUpgradedSkillDegrees((prev) => {
+      if (ordemNex >= 70) return prev;
+      if (ordemNex < 35) return Object.keys(prev).length ? {} : prev;
+      if (!Object.values(prev).includes(15)) return prev;
+      const next: Record<string, 10 | 15> = {};
+      for (const [k, v] of Object.entries(prev)) next[k] = 10;
+      return next;
+    });
+  }, [ordemNex]);
   const [peritoSkills, setPeritoSkills] = useState<string[]>([]);
   const [chosenRitualIds, setChosenRitualIds] = useState<string[]>([]);
   const [ritualSearch, setRitualSearch] = useState<string>('');
@@ -467,29 +478,44 @@ export function CharacterWizardModal({
     });
   };
 
+  // Aviso flutuante (fica visível mesmo com a lista rolada)
+  const [wizardNotice, setWizardNotice] = useState('');
+  const noticeTimer = useRef<number>();
+  function showWizardNotice(msg: string) {
+    setWizardNotice(msg);
+    window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setWizardNotice(''), 3200);
+  }
+  useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
+
+  const ritualLimitMessage = () =>
+    `Você já escolheu o máximo de ${maxInitialRituals} rituais. Tire um da seleção para escolher outro.`;
+
   const toggleRitualChoice = (ritualId: string) => {
     if (ritualId === 'ord-rit-amaldicoar-arma') {
       setShowAmaldicoarElementPrompt((prev) => !prev);
       return;
     }
-    setChosenRitualIds((prev) => {
-      if (prev.includes(ritualId)) return prev.filter((id) => id !== ritualId);
-      if (prev.length >= maxInitialRituals) {
-        return [...prev.slice(1), ritualId];
-      }
-      return [...prev, ritualId];
-    });
+    // No limite: avisa em vez de trocar o primeiro ritual escolhido
+    if (!chosenRitualIds.includes(ritualId) && chosenRitualIds.length >= maxInitialRituals) {
+      showWizardNotice(ritualLimitMessage());
+      return;
+    }
+    setChosenRitualIds((prev) =>
+      prev.includes(ritualId) ? prev.filter((id) => id !== ritualId) : [...prev, ritualId]
+    );
   };
 
   const selectAmaldicoarArmaWithElement = (element: 'Sangue' | 'Morte' | 'Conhecimento' | 'Energia') => {
     const compositeId = `ord-rit-amaldicoar-arma:${element}`;
-    setChosenRitualIds((prev) => {
-      if (prev.includes(compositeId)) return prev.filter((id) => id !== compositeId);
-      if (prev.length >= maxInitialRituals) {
-        return [...prev.slice(1), compositeId];
-      }
-      return [...prev, compositeId];
-    });
+    if (!chosenRitualIds.includes(compositeId) && chosenRitualIds.length >= maxInitialRituals) {
+      showWizardNotice(ritualLimitMessage());
+      setShowAmaldicoarElementPrompt(false);
+      return;
+    }
+    setChosenRitualIds((prev) =>
+      prev.includes(compositeId) ? prev.filter((id) => id !== compositeId) : [...prev, compositeId]
+    );
     setShowAmaldicoarElementPrompt(false);
   };
 
@@ -1228,29 +1254,27 @@ export function CharacterWizardModal({
           {/* ============================================================== */}
           {step === 3 && system === 'ordem-paranormal' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                {ORDEM_CLASSES.map((cls) => {
+              {ordemNex === 0 && (
+                <p className="rounded-lg border border-zinc-700 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-300 flex gap-2">
+                  <Icon name="info" size={16} className="mt-0.5 shrink-0 text-zinc-400" />
+                  Com NEX 0% o personagem é um mundano: ainda não entrou na Ordem e não tem classe. Para escolher Combatente,
+                  Especialista ou Ocultista, volte à etapa 1 e suba o NEX.
+                </p>
+              )}
+              <div className={`grid grid-cols-1 gap-3 ${ordemNex === 0 ? 'md:grid-cols-1 max-w-md' : 'md:grid-cols-3'}`}>
+                {/* NEX 0% = Mundano automaticamente; com NEX > 0% só as três classes da Ordem */}
+                {ORDEM_CLASSES.filter((cls) => (ordemNex === 0 ? cls.id === 'mundano' : cls.id !== 'mundano')).map((cls) => {
                   const active = cls.id === ordemClassId;
-                  const disabledByLockedNex =
-                    typeof lockedNex === 'number' &&
-                    ((lockedNex === 0 && cls.id !== 'mundano') ||
-                      (lockedNex > 0 && cls.id === 'mundano'));
+                  const disabledByLockedNex = false;
                   return (
                     <button
                       key={cls.id}
                       type="button"
-                      disabled={disabledByLockedNex}
+                      disabled={disabledByLockedNex || cls.id === 'mundano'}
                       onClick={() => {
                         setOrdemClassId(cls.id);
                         setOrdemTrailId('');
                         setChosenClassPowerIds([]);
-                        if (cls.id === 'mundano') {
-                          setOrdemNex(0);
-                          if (!lockedPatent) setOrdemPatent('Mundano');
-                        } else if (ordemNex === 0) {
-                          setOrdemNex(5);
-                          if (!lockedPatent && ordemPatent === 'Mundano') setOrdemPatent('Recruta');
-                        }
                       }}
                       className={`p-4 rounded-xl border text-left transition-all ${
                         disabledByLockedNex
@@ -1953,22 +1977,22 @@ export function CharacterWizardModal({
                       <h4 className="text-sm font-semibold text-zinc-100">
                         <Icon name="award" /> Graus de Treinamento (Veterano +10{ordemNex >= 70 ? ' / Expert +15' : ''})
                       </h4>
-                      <p className="text-[11px] text-zinc-400">
-                        Promova até{' '}
-                        <strong>
-                          {selectedOrdemClass.freeSkillsBase + Math.max(0, ordemAttrs.int)}
-                        </strong>{' '}
-                        perícias treinadas para Veterano (+10){ordemNex >= 70 ? ' ou Expert (+15)' : ''}.
+                      <p className="text-xs text-zinc-400 max-w-[60ch]">
+                        {(() => {
+                          const per = selectedOrdemClass.trainingUpgradeBase + Math.max(0, ordemAttrs.int);
+                          return ordemNex >= 70
+                            ? `Em NEX 35% e de novo em NEX 70%, ${per} perícias treinadas sobem um grau. Cada degrau conta como uma promoção: de +5 para +10 é uma, de +10 para +15 é outra. Até ${per} perícias podem chegar a Expert.`
+                            : `Em NEX 35%, ${per} perícias treinadas sobem de Treinado (+5) para Veterano (+10).`;
+                        })()}
                       </p>
                     </div>
-                    <span className="text-[11px] font-mono font-bold text-indigo-300">
-                      Promovidas:{' '}
-                      {
-                        allOrdemTrainedList.filter(
-                          (id) => (upgradedSkillDegrees[id] || 5) >= 10
-                        ).length
-                      }{' '}
-                      / {selectedOrdemClass.freeSkillsBase + Math.max(0, ordemAttrs.int)}
+                    <span className="text-xs font-semibold text-indigo-200 trpg-num">
+                      Promoções:{' '}
+                      {allOrdemTrainedList.reduce(
+                        (acc, skId) => acc + (((upgradedSkillDegrees[skId] as 5 | 10 | 15 | undefined) ?? 5) - 5) / 5,
+                        0
+                      )}{' '}
+                      / {(selectedOrdemClass.trainingUpgradeBase + Math.max(0, ordemAttrs.int)) * (ordemNex >= 70 ? 2 : 1)}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1976,28 +2000,35 @@ export function CharacterWizardModal({
                       const meta = ORDEM_SKILLS_METADATA.find((m) => m.id === id);
                       const deg: 5 | 10 | 15 =
                         (upgradedSkillDegrees[id] as 5 | 10 | 15 | undefined) ?? 5;
-                      const maxUpgrades =
-                        selectedOrdemClass.freeSkillsBase + Math.max(0, ordemAttrs.int);
-                      const upgradedCount = allOrdemTrainedList.filter(
-                        (skId) => ((upgradedSkillDegrees[skId] as 5 | 10 | 15 | undefined) ?? 5) >= 10
-                      ).length;
+                      // Grau de Treinamento: (base da classe + INT) perícias sobem UM grau em NEX 35% e de novo em NEX 70%.
+                      const perMilestone = selectedOrdemClass.trainingUpgradeBase + Math.max(0, ordemAttrs.int);
+                      const totalPromotions = perMilestone * (ordemNex >= 70 ? 2 : 1);
+                      const degOf = (skId: string) =>
+                        ((upgradedSkillDegrees[skId] as 5 | 10 | 15 | undefined) ?? 5);
+                      const usedPromotions = allOrdemTrainedList.reduce((acc, skId) => acc + (degOf(skId) - 5) / 5, 0);
+                      const expertCount = allOrdemTrainedList.filter((skId) => degOf(skId) === 15).length;
                       return (
                         <button
                           key={id}
                           type="button"
                           onClick={() => {
+                            const curr = deg;
+                            const nextDeg: 5 | 10 | 15 =
+                              curr === 5 ? 10 : curr === 10 && ordemNex >= 70 ? 15 : 5;
+                            const isPromotion = nextDeg > curr;
+                            if (isPromotion && usedPromotions + 1 > totalPromotions) {
+                              showWizardNotice(
+                                `Você já usou as ${totalPromotions} promoções de grau. Clique numa perícia promovida para desfazer e redistribuir.`
+                              );
+                              return;
+                            }
+                            if (nextDeg === 15 && expertCount + 1 > perMilestone) {
+                              showWizardNotice(
+                                `No máximo ${perMilestone} perícias podem chegar a Expert (+15): cada marco de NEX sobe uma perícia só um grau.`
+                              );
+                              return;
+                            }
                             setUpgradedSkillDegrees((prev) => {
-                              const curr: 5 | 10 | 15 =
-                                (prev[id] as 5 | 10 | 15 | undefined) ?? 5;
-                              const nextDeg: 5 | 10 | 15 =
-                                curr === 5
-                                  ? 10
-                                  : curr === 10 && ordemNex >= 70
-                                  ? 15
-                                  : 5;
-                              if (curr === 5 && nextDeg === 10 && upgradedCount >= maxUpgrades) {
-                                return prev;
-                              }
                               const copy = { ...prev };
                               if (nextDeg === 5) delete copy[id];
                               else copy[id] = nextDeg;
@@ -2256,6 +2287,19 @@ export function CharacterWizardModal({
             </div>
           )}
         </div>
+
+        {wizardNotice && (
+          <div className="relative">
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-[min(92%,30rem)] rounded-lg border border-orange-700 bg-zinc-900 px-4 py-3 text-sm text-orange-100 shadow-2xl flex items-start gap-2"
+            >
+              <Icon name="warning" size={16} className="mt-0.5 shrink-0 text-orange-300" />
+              {wizardNotice}
+            </div>
+          </div>
+        )}
 
         {/* Rodapé de Navegação */}
         <div className="px-5 sm:px-6 py-3 bg-zinc-950/40 border-t border-zinc-800 flex items-center justify-between gap-3">

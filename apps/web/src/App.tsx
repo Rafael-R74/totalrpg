@@ -47,9 +47,12 @@ import {
 import { BACKEND_ORIGIN } from './config';
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(BACKEND_ORIGIN, {
-  auth: () => ({
-    token: localStorage.getItem('totalrpg_token') || undefined,
-  }),
+  // No socket.io-client v4, `auth` em forma de função recebe um callback e PRECISA chamá-lo.
+  // Retornar um objeto deixa o handshake pendente: o socket nunca conecta e todo emit
+  // (inclusive dice:roll) fica preso no buffer offline. Lê o token a cada (re)conexão.
+  auth: (cb) => {
+    cb({ token: localStorage.getItem('totalrpg_token') || undefined });
+  },
 });
 
 function ActiveSystemBridge({
