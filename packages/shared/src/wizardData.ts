@@ -50,19 +50,22 @@ export const ORDEM_SKILLS_METADATA: OrdemSkillMeta[] = [
 export interface OrdemOriginDefinition {
   id: string;
   name: string;
+  sourceId?: string;          // 'ordem-base' (padrão) ou 'sobrevivendo-ao-horror'
   description: string;
   skills: string[];           // IDs das 2 perícias treinadas (vazio para Amnésico)
-  freeSkillChoices?: number;  // 2 para Amnésico
+  freeSkillChoices?: number;  // 2 para Amnésico, 1 para Profetizado
   powerName: string;
   powerDescription: string;
   powerCost: number;
   modifiers: RuleModifier[];
-  requiresManualActivation?: boolean; // Poderes de custo 0 que só ativam quando o jogador aciona (ex: Magnum Opus, Vislumbres do Passado)
+  requiresManualActivation?: boolean; // Poderes de custo 0 que só ativam quando o jogador aciona (ex: Magnum Opus, Vislumbres do Passado, Cosplayer)
   oncePerScene?: boolean;             // Poderes limitados a 1x por cena (ex: Faro para Pistas, Impostor, Posição de Combate)
   halvesInitialSanity?: boolean;      // Cultista Arrependido
   grantsParanormalPower?: boolean;    // Cultista Arrependido
   extraPeOddNex?: boolean;            // Universitário (+1 PE inicial e em cada NEX ímpar)
   extraPeLimit?: number;              // Universitário (+1 no Limite de PE por turno, sem afetar DT)
+  requiresOriginSkillBonusChoice?: 'any' | 'physical'; // Amigo dos Animais ('any') / Experimento ('physical')
+  grantsParanormalInvention?: boolean; // Inventor Paranormal (escolhe 1 ritual de 1º círculo -> cria Invento Paranormal Cat 0)
 }
 
 export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
@@ -355,6 +358,249 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     powerCost: 0,
     modifiers: [{ id: 'orig-vit', targetType: 'vital_max', targetKey: 'san', value: 1, scaleWithLevel: true }],
   },
+  // --- SUPLEMENTO: SOBREVIVENDO AO HORROR v1.3 (20 Novas Origens, p. 8-14) ---
+  {
+    id: 'amigo_animais',
+    name: 'Amigo dos Animais',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['adestramento', 'percepcao'],
+    powerName: 'Companheiro Animal',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    requiresOriginSkillBonusChoice: 'any',
+    modifiers: [],
+  },
+  {
+    id: 'astronauta',
+    name: 'Astronauta',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['ciencias', 'fortitude'],
+    powerName: 'Acostumado ao Extremo',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 1,
+    requiresManualActivation: true,
+    modifiers: [],
+  },
+  {
+    id: 'chef_outro_lado',
+    name: 'Chef do Outro Lado',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['ocultismo', 'profissao'],
+    powerName: 'Fome do Outro Lado',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    modifiers: [],
+  },
+  {
+    id: 'colegial',
+    name: 'Colegial',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['atualidades', 'tecnologia'],
+    powerName: 'Poder da Amizade',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    modifiers: [{ id: 'orig-colegial-all', targetType: 'skill_bonus', targetKey: 'all', value: 2 }],
+  },
+  {
+    id: 'cosplayer',
+    name: 'Cosplayer',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['artes', 'vontade'],
+    powerName: 'Não É Fantasia, É Cosplay!',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    requiresManualActivation: true,
+    modifiers: [{ id: 'orig-cosplayer-all', targetType: 'skill_bonus', targetKey: 'all', value: 2 }],
+  },
+  {
+    id: 'diplomata',
+    name: 'Diplomata',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['atualidades', 'diplomacia'],
+    powerName: 'Conexões',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    modifiers: [{ id: 'orig-diplomata-dip', targetType: 'skill_bonus', targetKey: 'diplomacia', value: 2 }],
+  },
+  {
+    id: 'explorador',
+    name: 'Explorador',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['fortitude', 'sobrevivencia'],
+    powerName: 'Manual do Sobrevivente',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 2,
+    modifiers: [
+      { id: 'orig-exp-for', targetType: 'skill_bonus', targetKey: 'fortitude', value: 5 },
+      { id: 'orig-exp-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: 5 },
+      { id: 'orig-exp-von', targetType: 'skill_bonus', targetKey: 'vontade', value: 5 },
+    ],
+  },
+  {
+    id: 'experimento',
+    name: 'Experimento',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['atletismo', 'fortitude'],
+    powerName: 'Mutação',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    requiresOriginSkillBonusChoice: 'physical',
+    modifiers: [{ id: 'orig-experimento-dip-pen', targetType: 'skill_dice', targetKey: 'diplomacia', value: -1 }],
+  },
+  {
+    id: 'fanatico_criaturas',
+    name: 'Fanático por Criaturas',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['investigacao', 'ocultismo'],
+    powerName: 'Conhecimento Oculto',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    modifiers: [],
+  },
+  {
+    id: 'fotografo',
+    name: 'Fotógrafo',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['artes', 'percepcao'],
+    powerName: 'Através da Lente',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 2,
+    modifiers: [
+      { id: 'orig-foto-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 },
+      { id: 'orig-foto-per', targetType: 'skill_bonus', targetKey: 'percepcao', value: 5 },
+    ],
+  },
+  {
+    id: 'inventor_paranormal',
+    name: 'Inventor Paranormal',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['profissao', 'vontade'],
+    powerName: 'Invenção Paranormal',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    grantsParanormalInvention: true,
+    modifiers: [],
+  },
+  {
+    id: 'jovem_mistico',
+    name: 'Jovem Místico',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['ocultismo', 'religiao'],
+    powerName: 'A Culpa é das Estrelas',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 1,
+    oncePerScene: true,
+    requiresManualActivation: true,
+    modifiers: [],
+  },
+  {
+    id: 'legista_noturno',
+    name: 'Legista do Turno da Noite',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['ciencias', 'medicina'],
+    powerName: 'Luto Habitual',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 2,
+    modifiers: [{ id: 'orig-legista-med', targetType: 'skill_bonus', targetKey: 'medicina', value: 5 }],
+  },
+  {
+    id: 'mateiro',
+    name: 'Mateiro',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['percepcao', 'sobrevivencia'],
+    powerName: 'Mapa Celeste',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 2,
+    requiresManualActivation: true,
+    modifiers: [],
+  },
+  {
+    id: 'mergulhador',
+    name: 'Mergulhador',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['atletismo', 'fortitude'],
+    powerName: 'Fôlego de Nadador',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    modifiers: [{ id: 'orig-mergulhador-pv', targetType: 'vital_max', targetKey: 'pv', value: 5 }],
+  },
+  {
+    id: 'motorista',
+    name: 'Motorista',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['pilotagem', 'reflexos'],
+    powerName: 'Mãos no Volante',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 2,
+    modifiers: [
+      { id: 'orig-mot-pil', targetType: 'skill_bonus', targetKey: 'pilotagem', value: 5 },
+      { id: 'orig-mot-for', targetType: 'skill_bonus', targetKey: 'fortitude', value: 5 },
+      { id: 'orig-mot-ref', targetType: 'skill_bonus', targetKey: 'reflexos', value: 5 },
+      { id: 'orig-mot-von', targetType: 'skill_bonus', targetKey: 'vontade', value: 5 },
+    ],
+  },
+  {
+    id: 'nerd_entusiasta',
+    name: 'Nerd Entusiasta',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['ciencias', 'tecnologia'],
+    powerName: 'O Inteligentão',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    modifiers: [],
+  },
+  {
+    id: 'profetizado',
+    name: 'Profetizado',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['vontade'],
+    freeSkillChoices: 1,
+    powerName: 'Luta ou Fuga',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 0,
+    modifiers: [{ id: 'orig-profetizado-von', targetType: 'skill_bonus', targetKey: 'vontade', value: 2 }],
+  },
+  {
+    id: 'psicologo',
+    name: 'Psicólogo',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['intuicao', 'profissao'],
+    powerName: 'Terapia',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 2,
+    requiresManualActivation: true,
+    modifiers: [],
+  },
+  {
+    id: 'reporter_investigativo',
+    name: 'Repórter Investigativo',
+    sourceId: 'sobrevivendo-ao-horror',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    skills: ['atualidades', 'investigacao'],
+    powerName: 'Encontrar a Verdade',
+    powerDescription: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    powerCost: 2,
+    modifiers: [{ id: 'orig-rep-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 }],
+  },
 ];
 
 // ============================================================================
@@ -363,6 +609,7 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
 export interface OrdemClassDefinition {
   id: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
   name: string;
+  sourceId?: string;
   subtitle: string;
   description: string;
   initialNex: number;
@@ -527,6 +774,7 @@ export interface OrdemTrailDefinition {
   id: string;
   classId: 'combatente' | 'especialista' | 'ocultista';
   name: string;
+  sourceId?: string;
   description: string;
   requirementText?: string;
   requiredSkill?: string;

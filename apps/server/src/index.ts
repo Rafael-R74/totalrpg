@@ -228,6 +228,7 @@ io.on('connection', (socket) => {
       extraDice,
       hasAfortunado,
       hasAfortunadoAffinity,
+      mapaCelestePayload,
       attackDamagePayload,
       forcaOpressoraPayload,
       cursePricePrompt,
@@ -339,6 +340,7 @@ io.on('connection', (socket) => {
         isSecret: Boolean(isSecret),
         hasAfortunado: Boolean(hasAfortunado),
         hasAfortunadoAffinity: Boolean(hasAfortunadoAffinity),
+        mapaCelestePayload,
         attackDamagePayload,
         forcaOpressoraPayload,
         cursePricePrompt,
@@ -450,6 +452,114 @@ io.on('connection', (socket) => {
           category: 'ability',
           summary: `Usou 🍀 Afortunado para rerrolar um dado 1 (${rollResult.label})`,
           costText: `1 → ${newRollVal}`,
+          tone: 'info',
+        });
+      }
+    }
+  });
+
+  // Origem Mateiro (Mapa Celeste): gera a 2ª rolagem de Sobrevivência para escolha simultânea no modal
+  socket.on('dice:mapaCelesteReroll', ({ campaignId, rollResult }) => {
+    if (campaignId) {
+      socket.join(campaignId);
+    }
+    const mc = rollResult?.mapaCelestePayload;
+    if (!rollResult || !mc || !mc.canReroll || mc.secondRoll) return;
+
+    const rawCount = Number(mc.diceCount ?? 1);
+    const sides = Math.max(2, Number(mc.sides || 20));
+    const modifier = Number(mc.modifier || 0);
+    const isOrdemZeroDice = rollResult.system === 'ordem-paranormal' && sides === 20 && rawCount <= 0;
+    const safeCount = isOrdemZeroDice ? 2 : Math.max(1, Math.min(30, rawCount));
+
+    const rolls2: number[] = [];
+    for (let i = 0; i < safeCount; i++) {
+      rolls2.push(Math.floor(Math.random() * sides) + 1);
+    }
+    const diceTotal2 = isOrdemZeroDice
+      ? Math.min(...rolls2)
+      : rollResult.system === 'ordem-paranormal' && sides === 20
+      ? Math.max(...rolls2)
+      : rolls2.reduce((a, b) => a + b, 0);
+    const total2 = diceTotal2 + modifier;
+    const modStr = modifier !== 0 ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : '';
+    const baseFormula2 = isOrdemZeroDice ? '2d20 (menor)' : `${safeCount}d${sides}`;
+
+    const updatedResult: DiceRollResult = {
+      ...rollResult,
+      mapaCelestePayload: {
+        ...mc,
+        canReroll: false,
+        firstRoll: mc.firstRoll || {
+          rolls: rollResult.rolls,
+          formula: rollResult.formula,
+          modifier: rollResult.modifier,
+          total: rollResult.total,
+        },
+        secondRoll: {
+          rolls: rolls2,
+          formula: `${baseFormula2}${modStr}`,
+          modifier,
+          total: total2,
+        },
+      },
+    };
+
+    if (rollResult.isSecret) {
+      socket.emit('dice:rolled', updatedResult);
+    } else {
+      io.to(campaignId).emit('dice:rolled', updatedResult);
+    }
+  });
+
+  // Origem Mateiro (Mapa Celeste): confirma qual das duas rolagens simultâneas o jogador escolheu
+  socket.on('dice:mapaCelesteChoose', ({ campaignId, rollResult, chosenIndex }) => {
+    if (campaignId) {
+      socket.join(campaignId);
+    }
+    const mc = rollResult?.mapaCelestePayload;
+    if (!rollResult || !mc || !mc.secondRoll || mc.chosenIndex) return;
+
+    const firstOpt = mc.firstRoll || {
+      rolls: rollResult.rolls,
+      formula: rollResult.formula,
+      modifier: rollResult.modifier,
+      total: rollResult.total,
+    };
+    const firstTotal = firstOpt.total;
+    const secondTotal = mc.secondRoll.total;
+    const pickSecond = chosenIndex === 2;
+
+    const finalRolls = pickSecond ? mc.secondRoll.rolls : firstOpt.rolls;
+    const finalFormula = pickSecond ? mc.secondRoll.formula : firstOpt.formula;
+    const finalTotal = pickSecond ? secondTotal : firstTotal;
+    const baseLabel = rollResult.label.replace(/\s*\[✨ Mapa Celeste:.*\]$/i, '');
+
+    const updatedResult: DiceRollResult = {
+      ...rollResult,
+      label: `${baseLabel} [✨ Mapa Celeste (-2 PE): escolheu ${finalTotal} (${firstTotal} vs ${secondTotal})]`,
+      rolls: finalRolls,
+      formula: finalFormula,
+      total: finalTotal,
+      mapaCelestePayload: {
+        ...mc,
+        canReroll: false,
+        chosenIndex,
+      },
+    };
+
+    if (rollResult.isSecret) {
+      socket.emit('dice:rolled', updatedResult);
+    } else {
+      io.to(campaignId).emit('dice:rolled', updatedResult);
+      if (campaignId) {
+        recordCampaignActivity(io, {
+          campaignId,
+          characterId: rollResult.characterId,
+          characterName: rollResult.characterName,
+          category: 'ability',
+          summary: `Usou ✨ Mapa Celeste (-2 PE) em ${baseLabel}: escolheu ${finalTotal} (${firstTotal} vs ${secondTotal})`,
+          costText: '-2 PE',
           tone: 'info',
         });
       }

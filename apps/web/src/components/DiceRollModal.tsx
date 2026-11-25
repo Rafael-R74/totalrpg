@@ -10,6 +10,8 @@ interface DiceRollModalProps {
   batchRolls?: DiceRollResult[];
   onClose: () => void;
   onRerollOne?: (roll: DiceRollResult, dieIndex: number) => void;
+  onMapaCelesteReroll?: (roll: DiceRollResult) => boolean;
+  onMapaCelesteChoose?: (roll: DiceRollResult, chosenIndex: 1 | 2) => void;
   onRollDamage?: (roll: DiceRollResult, isCrit: boolean) => void;
   onRollRitualEffect?: (roll: DiceRollResult) => void;
   onRollForcaOpressora?: (roll: DiceRollResult, maneuver: 'empurrar' | 'derrubar') => void;
@@ -86,6 +88,8 @@ export function DiceRollModal({
   batchRolls,
   onClose,
   onRerollOne,
+  onMapaCelesteReroll,
+  onMapaCelesteChoose,
   onRollDamage,
   onRollRitualEffect,
   onRollForcaOpressora,
@@ -97,6 +101,11 @@ export function DiceRollModal({
   const [settledKey, setSettledKey] = useState('');
   const [curseSanAppliedForRollId, setCurseSanAppliedForRollId] = useState<string>('');
   const [sanguinariaRolledForRollId, setSanguinariaRolledForRollId] = useState<string>('');
+  const [mapaCelesteError, setMapaCelesteError] = useState<string>('');
+
+  useEffect(() => {
+    setMapaCelesteError('');
+  }, [roll?.id]);
 
   // Estados do modo Segurar o Gatilho (Sequência de Disparos em Lote)
   const [spinningIds, setSpinningIds] = useState<Record<string, boolean>>({});
@@ -575,9 +584,13 @@ export function DiceRollModal({
   const afortunadoAllowedForRoll = Boolean(roll.hasAfortunado) && (rollSides !== 20 || Boolean(roll.hasAfortunadoAffinity));
 
   const stageKey = `${roll.id}|${roll.rolls.join(',')}|${roll.total}`;
-  const settled = settledKey === stageKey;
+  const settled = settledKey === stageKey || Boolean(roll.mapaCelestePayload?.secondRoll);
+
+  const mcPayload = roll.mapaCelestePayload;
+  const hasMapaCelesteDualView = Boolean(mcPayload?.secondRoll);
 
   const hasFollowUps =
+    (Boolean(mcPayload?.canReroll) && !mcPayload?.secondRoll && Boolean(onMapaCelesteReroll)) ||
     (afortunadoAllowedForRoll && !roll.rerolledAfortunado && roll.rolls.includes(1) && Boolean(onRerollOne)) ||
     Boolean(roll.rerolledAfortunado) ||
     Boolean(roll.explodedRolls?.length) ||
@@ -588,11 +601,20 @@ export function DiceRollModal({
     Boolean(dmgPayload && onRollDamage) ||
     Boolean(roll.forcaOpressoraPayload && onRollForcaOpressora);
 
+  const handleDialogClose = () => {
+    if (mcPayload?.secondRoll && !mcPayload.chosenIndex && onMapaCelesteChoose) {
+      const opt1Total = mcPayload.firstRoll?.total ?? roll.total;
+      const opt2Total = mcPayload.secondRoll.total;
+      onMapaCelesteChoose(roll, opt2Total > opt1Total ? 2 : 1);
+    }
+    onClose();
+  };
+
   return (
     <Dialog
       open
-      onClose={onClose}
-      size="sm"
+      onClose={handleDialogClose}
+      size={hasMapaCelesteDualView ? 'lg' : 'sm'}
       title={stripEmoji(roll.label)}
       description={
         <>
@@ -603,7 +625,123 @@ export function DiceRollModal({
       panelClassName={isCriticalHit && settled ? 'border-yellow-700/70!' : ''}
       bodyClassName="pt-2!"
     >
-      <DiceStage key={roll.id} roll={roll} onSettled={() => setSettledKey(stageKey)} />
+      {hasMapaCelesteDualView && mcPayload?.secondRoll ? (
+        (() => {
+          const opt1 = mcPayload.firstRoll || {
+            rolls: roll.rolls,
+            formula: roll.formula,
+            modifier: roll.modifier,
+            total: roll.total,
+          };
+          const opt2 = mcPayload.secondRoll!;
+          const options = [
+            { idx: 1 as const, title: '1ª Rolagem', subtitle: 'Teste original', data: opt1 },
+            { idx: 2 as const, title: '2ª Rolagem', subtitle: 'Mapa Celeste (−2 PE)', data: opt2 },
+          ];
+          const maxTotal = Math.max(opt1.total, opt2.total);
+
+          return (
+            <div className="flex flex-col gap-3.5 pt-1">
+              <p className="text-xs text-amber-200/90 bg-amber-950/30 border border-amber-700/50 rounded-lg px-3 py-2 flex items-center gap-2">
+                <Icon name="sparkles" size={15} className="text-amber-400 shrink-0" />
+                <span>
+                  {mcPayload.chosenIndex
+                    ? `Mapa Celeste confirmado: você escolheu a ${mcPayload.chosenIndex}ª rolagem (${
+                        mcPayload.chosenIndex === 2 ? opt2.total : opt1.total
+                      }).`
+                    : 'Mapa Celeste (Mateiro): compare as duas rolagens simultâneas abaixo e escolha qual resultado deseja manter.'}
+                </span>
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {options.map((opt) => {
+                  const isChosen = mcPayload.chosenIndex === opt.idx;
+                  const isUnchosen = Boolean(mcPayload.chosenIndex && mcPayload.chosenIndex !== opt.idx);
+                  const isBest = opt.data.total === maxTotal;
+                  const isZeroPen = opt.data.formula.includes('2d20 (menor)');
+                  const keptNat = isZeroPen
+                    ? Math.min(...opt.data.rolls)
+                    : Math.max(...opt.data.rolls);
+                  let keptMarked = false;
+
+                  return (
+                    <div
+                      key={opt.idx}
+                      className={`rounded-xl border p-4 flex flex-col justify-between gap-3 transition-all ${
+                        isChosen
+                          ? 'border-emerald-500 bg-emerald-950/25 shadow-lg shadow-emerald-950/40'
+                          : isUnchosen
+                          ? 'border-zinc-800 bg-zinc-950/30 opacity-55'
+                          : isBest
+                          ? 'border-amber-500/80 bg-amber-950/15'
+                          : 'border-zinc-700 bg-zinc-950/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="text-sm font-bold text-zinc-100 block">{opt.title}</span>
+                          <span className="text-[11px] text-zinc-400">
+                            {opt.subtitle} • <span className="trpg-num">{opt.data.formula}</span>
+                          </span>
+                        </div>
+                        {isChosen ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-zinc-950">
+                            ✓ Escolhido
+                          </span>
+                        ) : (
+                          isBest && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 border border-amber-500/50 text-amber-300">
+                              Maior
+                            </span>
+                          )
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-4 py-1">
+                        <div className="text-center w-20 shrink-0">
+                          <span className="block trpg-display text-5xl leading-none text-zinc-100 trpg-num">
+                            {opt.data.total}
+                          </span>
+                          <span className="text-[11px] text-zinc-500">total</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {opt.data.rolls.map((val, dIdx) => {
+                            const isKept =
+                              roll.system === 'ordem-paranormal' && !keptMarked && val === keptNat;
+                            if (isKept) keptMarked = true;
+                            return (
+                              <DieFace2D
+                                key={dIdx}
+                                sides={rollSides}
+                                value={val}
+                                size={36}
+                                tone={isKept ? (val === 1 ? 'danger' : 'gold') : 'base'}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {!mcPayload.chosenIndex && onMapaCelesteChoose && (
+                        <button
+                          type="button"
+                          onClick={() => onMapaCelesteChoose(roll, opt.idx)}
+                          className={isBest ? 'trpg-btn-primary w-full' : 'trpg-btn-secondary w-full'}
+                        >
+                          <Icon name="check" size={16} />
+                          Escolher este resultado ({opt.data.total})
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()
+      ) : (
+        <DiceStage key={roll.id} roll={roll} onSettled={() => setSettledKey(stageKey)} />
+      )}
 
       {hasFollowUps && (
         <div
@@ -612,6 +750,34 @@ export function DiceRollModal({
           }`}
           aria-hidden={!settled}
         >
+          {/* Mapa Celeste (Mateiro — Sobrevivência) */}
+          {mcPayload?.canReroll && !mcPayload.secondRoll && onMapaCelesteReroll && (
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const ok = onMapaCelesteReroll(roll);
+                  if (!ok) {
+                    setMapaCelesteError(
+                      'PE insuficiente (ou limite de PE/turno atingido) para usar Mapa Celeste (−2 PE).'
+                    );
+                  } else {
+                    setMapaCelesteError('');
+                  }
+                }}
+                className="trpg-btn-secondary w-full border-amber-700! text-amber-100!"
+              >
+                <Icon name="sparkles" size={17} className="text-amber-300" />
+                Mapa Celeste: rolar novamente (−2 PE)
+              </button>
+              {mapaCelesteError && (
+                <p role="alert" className="text-xs text-red-300 flex items-center gap-1.5">
+                  <Icon name="warning" size={14} /> {mapaCelesteError}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Afortunado */}
           {afortunadoAllowedForRoll && !roll.rerolledAfortunado && roll.rolls.includes(1) && onRerollOne && (
             <button

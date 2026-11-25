@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
-import { SceneEffect } from '@totalrpg/shared';
+import {
+  SceneEffect,
+  getEffectiveAllowedSources,
+  validateCharacterSourcesForCampaign,
+} from '@totalrpg/shared';
 import {
   clearCampaignActivityLog,
   getCampaignActivityLog,
@@ -46,13 +50,12 @@ campaignsRouter.get('/dm', async (req: AuthenticatedRequest, res) => {
 // ABA DM: CRIAR UMA NOVA AVENTURA
 campaignsRouter.post('/', async (req: AuthenticatedRequest, res) => {
   try {
-    const { name, description, system, requiredNex, requiredPatent } = req.body;
+    const { name, description, system, requiredNex, requiredPatent, allowedSources } = req.body;
 
     if (!name || !system) {
       return res.status(400).json({ error: 'Nome e sistema são obrigatórios.' });
     }
 
-   
     const inviteCode = `TR-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const parsedReqNex =
       typeof requiredNex === 'number' && !Number.isNaN(requiredNex)
@@ -62,6 +65,7 @@ campaignsRouter.post('/', async (req: AuthenticatedRequest, res) => {
       typeof requiredPatent === 'string' && requiredPatent.trim()
         ? requiredPatent.trim()
         : null;
+    const effectiveSources = getEffectiveAllowedSources(allowedSources, system);
 
     const newCampaign = await prisma.campaign.create({
       data: {
@@ -71,8 +75,9 @@ campaignsRouter.post('/', async (req: AuthenticatedRequest, res) => {
         inviteCode,
         requiredNex: system === 'ordem-paranormal' ? parsedReqNex : null,
         requiredPatent: system === 'ordem-paranormal' ? parsedReqPatent : null,
+        allowedSources: effectiveSources.length > 0 ? (effectiveSources as Prisma.InputJsonValue) : Prisma.JsonNull,
         dmId: req.userId!
-      }
+      } as any
     });
 
     recordAdminEvent({
@@ -297,6 +302,18 @@ campaignsRouter.post('/invites/:inviteId/accept', async (req: AuthenticatedReque
       return res.status(400).json({ error: reqError });
     }
 
+    const sourceCheck = validateCharacterSourcesForCampaign(
+      {
+        system: character.system,
+        sheetData: character.sheetData as Record<string, any>,
+        inventory: Array.isArray(character.inventory) ? (character.inventory as any[]) : [],
+      },
+      (invite.campaign as any).allowedSources
+    );
+    if (!sourceCheck.ok) {
+      return res.status(400).json({ error: sourceCheck.errorMessage });
+    }
+
     // Executa o vínculo do personagem e a confirmação do convite em uma única transação
     await prisma.$transaction([
       prisma.character.update({
@@ -374,6 +391,18 @@ campaignsRouter.post('/join-code', async (req: AuthenticatedRequest, res) => {
     );
     if (reqError) {
       return res.status(400).json({ error: reqError });
+    }
+
+    const sourceCheck = validateCharacterSourcesForCampaign(
+      {
+        system: character.system,
+        sheetData: character.sheetData as Record<string, any>,
+        inventory: Array.isArray(character.inventory) ? (character.inventory as any[]) : [],
+      },
+      (campaign as any).allowedSources
+    );
+    if (!sourceCheck.ok) {
+      return res.status(400).json({ error: sourceCheck.errorMessage });
     }
 
     await prisma.character.update({
@@ -526,7 +555,13 @@ campaignsRouter.put('/:campaignId/permissions', async (req: AuthenticatedRequest
       allowEditAbilities,
       allowEditAttributes,
       allowTrade,
+      allowedSources,
     } = req.body;
+
+    const nextAllowedSources =
+      allowedSources !== undefined
+        ? (getEffectiveAllowedSources(allowedSources, existing.system as any) as Prisma.InputJsonValue)
+        : ((existing as any).allowedSources as Prisma.InputJsonValue | undefined);
 
     const updated = await prisma.campaign.update({
       where: { id: campaignId },
@@ -537,7 +572,8 @@ campaignsRouter.put('/:campaignId/permissions', async (req: AuthenticatedRequest
         allowEditAbilities: allowEditAbilities ?? existing.allowEditAbilities,
         allowEditAttributes: allowEditAttributes ?? existing.allowEditAttributes,
         allowTrade: allowTrade ?? existing.allowTrade,
-      },
+        ...(allowedSources !== undefined ? { allowedSources: nextAllowedSources } : {}),
+      } as any,
     });
 
     return res.json(updated);

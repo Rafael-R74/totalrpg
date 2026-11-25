@@ -6,6 +6,10 @@ import {
   ORDEM_PATENTS,
   ServerToClientEvents,
   ClientToServerEvents,
+  getContentSourcesForSystem,
+  getEffectiveAllowedSources,
+  getSourceShortName,
+  validateCharacterSourcesForCampaign,
 } from '@totalrpg/shared';
 import {
   CampaignData,
@@ -16,6 +20,7 @@ import {
   fetchPlayerInvites,
   fetchCharacters,
   createCampaign,
+  updateCampaignAllowedSources,
   createCharacter,
   sendCampaignInvite,
   acceptCampaignInvite,
@@ -73,12 +78,19 @@ export function Dashboard({
   const [newCampaignSystem, setNewCampaignSystem] = useState<SystemId>('ordem-paranormal');
   const [newCampaignReqNex, setNewCampaignReqNex] = useState<string>('');
   const [newCampaignReqPatent, setNewCampaignReqPatent] = useState<string>('');
+  const [newCampaignAllowedSources, setNewCampaignAllowedSources] = useState<string[]>([
+    'ordem-base',
+    'sobrevivendo-ao-horror',
+  ]);
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
+  const [editingSourcesCampaign, setEditingSourcesCampaign] = useState<CampaignData | null>(null);
+  const [editingSourcesList, setEditingSourcesList] = useState<string[]>([]);
 
   const [isCreatingChar, setIsCreatingChar] = useState(false);
   const [wizardLockedSystem, setWizardLockedSystem] = useState<SystemId | undefined>(undefined);
   const [wizardLockedNex, setWizardLockedNex] = useState<number | null>(null);
   const [wizardLockedPatent, setWizardLockedPatent] = useState<string | null>(null);
+  const [wizardAllowedSources, setWizardAllowedSources] = useState<string[] | null>(null);
 
   // Estados para enviar convite (Mestre)
   const [invitingCampaignId, setInvitingCampaignId] = useState<string | null>(null);
@@ -135,6 +147,15 @@ export function Dashboard({
   async function handleCreateCampaign(e: React.FormEvent) {
     e.preventDefault();
     try {
+      const sysSources = getContentSourcesForSystem(newCampaignSystem).map((s) => s.id);
+      const chosenSources =
+        sysSources.length > 0
+          ? newCampaignAllowedSources.filter((s) => sysSources.includes(s))
+          : [];
+      if (sysSources.length > 0 && chosenSources.length === 0) {
+        alert('Selecione ao menos 1 livro/suplemento permitido para a aventura.');
+        return;
+      }
       await createCampaign(newCampaignName, newCampaignDesc, newCampaignSystem, {
         requiredNex:
           newCampaignSystem === 'ordem-paranormal' && newCampaignReqNex !== ''
@@ -144,11 +165,13 @@ export function Dashboard({
           newCampaignSystem === 'ordem-paranormal' && newCampaignReqPatent !== ''
             ? newCampaignReqPatent
             : null,
+        allowedSources: chosenSources.length > 0 ? chosenSources : null,
       });
       setNewCampaignName('');
       setNewCampaignDesc('');
       setNewCampaignReqNex('');
       setNewCampaignReqPatent('');
+      setNewCampaignAllowedSources(['ordem-base', 'sobrevivendo-ao-horror']);
       setIsCreatingCampaign(false);
       loadDashboardData();
     } catch (err: any) {
@@ -256,6 +279,23 @@ export function Dashboard({
         return { ok: false, reason: `Patente "${charPatent}" ≠ "${inviteRequiredPatent}"` };
       }
     }
+    const sourceValidation = validateCharacterSourcesForCampaign(
+      {
+        system: c.system,
+        sheetData: c.sheetData || {},
+        inventory: c.inventory || [],
+      },
+      selectedInviteToAccept.campaign.allowedSources
+    );
+    if (!sourceValidation.ok) {
+      const firstV = sourceValidation.violations[0];
+      return {
+        ok: false,
+        reason: firstV
+          ? `Conteúdo bloqueado (${firstV.sourceName}: ${firstV.itemLabel})`
+          : 'Suplemento não permitido na mesa',
+      };
+    }
     return { ok: true };
   }
 
@@ -310,6 +350,7 @@ export function Dashboard({
 
   function openWizard(system?: SystemId) {
     setWizardLockedSystem(system);
+    setWizardAllowedSources(null);
     setIsCreatingChar(true);
   }
 
@@ -320,17 +361,20 @@ export function Dashboard({
           lockedSystem={wizardLockedSystem}
           lockedNex={wizardLockedNex}
           lockedPatent={wizardLockedPatent}
+          allowedSources={wizardAllowedSources}
           onClose={() => {
             setIsCreatingChar(false);
             setWizardLockedSystem(undefined);
             setWizardLockedNex(null);
             setWizardLockedPatent(null);
+            setWizardAllowedSources(null);
           }}
           onCreated={async (created) => {
             setIsCreatingChar(false);
             setWizardLockedSystem(undefined);
             setWizardLockedNex(null);
             setWizardLockedPatent(null);
+            setWizardAllowedSources(null);
             await loadDashboardData();
             setSelectedCharIdForJoin(created.id);
             setQuickCharName('');
@@ -364,6 +408,17 @@ export function Dashboard({
               <SystemSigilBadge system={selectedInviteToAccept.campaign.system} />
               {typeof inviteRequiredNex === 'number' && <span className="trpg-badge">NEX {inviteRequiredNex}%</span>}
               {inviteRequiredPatent && <span className="trpg-badge">{inviteRequiredPatent}</span>}
+              {getEffectiveAllowedSources(
+                selectedInviteToAccept.campaign.allowedSources,
+                selectedInviteToAccept.campaign.system
+              ).map((srcId) => (
+                <span
+                  key={srcId}
+                  className="px-2 py-0.5 rounded text-[11px] font-bold bg-zinc-900 border border-zinc-700 text-zinc-200"
+                >
+                  {getSourceShortName(srcId, selectedInviteToAccept.campaign.system)}
+                </span>
+              ))}
             </div>
 
             {compatibleCharactersForInvite.length > 0 && (
@@ -412,6 +467,12 @@ export function Dashboard({
                   setWizardLockedSystem(selectedInviteToAccept.campaign.system);
                   setWizardLockedNex(inviteRequiredNex);
                   setWizardLockedPatent(inviteRequiredPatent);
+                  setWizardAllowedSources(
+                    getEffectiveAllowedSources(
+                      selectedInviteToAccept.campaign.allowedSources,
+                      selectedInviteToAccept.campaign.system
+                    )
+                  );
                   setIsCreatingChar(true);
                 }}
                 className="trpg-btn-secondary w-full"
@@ -558,7 +619,12 @@ export function Dashboard({
                   type="button"
                   role="radio"
                   aria-checked={newCampaignSystem === s}
-                  onClick={() => setNewCampaignSystem(s)}
+                  onClick={() => {
+                    setNewCampaignSystem(s);
+                    setNewCampaignAllowedSources(
+                      getContentSourcesForSystem(s).map((src) => src.id)
+                    );
+                  }}
                   className={`rounded-lg border px-3 py-2.5 text-sm font-medium text-left transition-colors ${
                     newCampaignSystem === s
                       ? 'border-amber-500 bg-amber-950/40 text-zinc-100'
@@ -624,7 +690,131 @@ export function Dashboard({
               </div>
             </>
           )}
+          {getContentSourcesForSystem(newCampaignSystem).length > 1 && (
+            <div className="sm:col-span-2 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5 space-y-2">
+              <div>
+                <span className="trpg-label mb-0.5">Livros e Suplementos Permitidos</span>
+                <p className="text-xs text-zinc-400">
+                  Personagens com conteúdos de suplementos desmarcados serão bloqueados ao entrar, e jogadores nesta mesa verão apenas os livros permitidos.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {getContentSourcesForSystem(newCampaignSystem).map((src) => {
+                  const active = newCampaignAllowedSources.includes(src.id);
+                  return (
+                    <button
+                      key={src.id}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={src.isBaseBook}
+                      title={src.isBaseBook ? 'O livro básico é sempre permitido' : undefined}
+                      onClick={() => {
+                        setNewCampaignAllowedSources((prev) => {
+                          if (prev.includes(src.id)) {
+                            if (src.isBaseBook || prev.length <= 1) return prev;
+                            return prev.filter((id) => id !== src.id);
+                          }
+                          return [...prev, src.id];
+                        });
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition inline-flex items-center gap-1 ${src.isBaseBook ? 'cursor-default' : 'cursor-pointer'} ${
+                        active
+                          ? src.isBaseBook
+                            ? 'bg-zinc-200 border-zinc-100 text-zinc-950'
+                            : 'bg-red-700 border-red-500 text-white'
+                          : 'bg-transparent border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                      }`}
+                    >
+                      {active && <Icon name="check" size={12} />}
+                      {src.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </form>
+      </Dialog>
+
+      {/* Editar suplementos de campanha existente */}
+      <Dialog
+        open={Boolean(editingSourcesCampaign)}
+        onClose={() => setEditingSourcesCampaign(null)}
+        size="sm"
+        title="Suplementos permitidos"
+        description={editingSourcesCampaign ? `Mesa: ${editingSourcesCampaign.name}` : undefined}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditingSourcesCampaign(null)}
+              className="trpg-btn-quiet"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={editingSourcesList.length === 0}
+              onClick={async () => {
+                if (!editingSourcesCampaign || editingSourcesList.length === 0) return;
+                try {
+                  await updateCampaignAllowedSources(
+                    editingSourcesCampaign.id,
+                    editingSourcesList
+                  );
+                  setEditingSourcesCampaign(null);
+                  loadDashboardData();
+                } catch (err: any) {
+                  alert(err.message);
+                }
+              }}
+              className="trpg-btn-primary"
+            >
+              Salvar suplementos
+            </button>
+          </>
+        }
+      >
+        {editingSourcesCampaign && (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-zinc-400">
+              Escolha quais livros e suplementos são permitidos nesta aventura.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {getContentSourcesForSystem(editingSourcesCampaign.system).map((src) => {
+                const active = editingSourcesList.includes(src.id);
+                return (
+                  <button
+                    key={src.id}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={src.isBaseBook}
+                    title={src.isBaseBook ? 'O livro básico é sempre permitido' : undefined}
+                    onClick={() =>
+                      setEditingSourcesList((prev) => {
+                        if (prev.includes(src.id)) {
+                          if (src.isBaseBook || prev.length <= 1) return prev;
+                          return prev.filter((id) => id !== src.id);
+                        }
+                        return [...prev, src.id];
+                      })
+                    }
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition inline-flex items-center gap-1 ${src.isBaseBook ? 'cursor-default' : 'cursor-pointer'} ${
+                      active
+                        ? src.isBaseBook
+                          ? 'bg-zinc-200 border-zinc-100 text-zinc-950'
+                          : 'bg-red-700 border-red-500 text-white'
+                        : 'bg-transparent border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                    }`}
+                  >
+                    {active && <Icon name="check" size={12} />}
+                    {src.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </Dialog>
 
       {/* Convidar jogador */}
@@ -756,6 +946,7 @@ export function Dashboard({
                           {patent ? `, patente ${patent}` : ''}
                         </p>
                       </div>
+
                       <div className="flex items-center gap-2">
                         <button type="button" onClick={() => handleDeclineInvite(inv.id)} className="trpg-btn-quiet trpg-btn-sm">
                           Recusar
@@ -986,6 +1177,40 @@ export function Dashboard({
                       </dd>
                     </div>
                   </dl>
+
+                  {getContentSourcesForSystem(camp.system).length > 1 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-950/60 border border-zinc-800/80 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] text-zinc-500 mr-1">Livros:</span>
+                        {getEffectiveAllowedSources(camp.allowedSources, camp.system).map(
+                          (srcId) => (
+                            <span
+                              key={srcId}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                srcId === 'ordem-base' || srcId === 't20-base'
+                                  ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                                  : 'bg-red-950/70 border-red-800 text-red-200'
+                              }`}
+                            >
+                              {getSourceShortName(srcId, camp.system)}
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSourcesCampaign(camp);
+                          setEditingSourcesList(
+                            getEffectiveAllowedSources(camp.allowedSources, camp.system)
+                          );
+                        }}
+                        className="text-xs font-semibold text-amber-400 hover:text-amber-300 cursor-pointer"
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-2">
                     <button

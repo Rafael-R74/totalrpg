@@ -32,6 +32,7 @@ export interface CampaignData {
   inviteCode: string;
   requiredNex?: number | null;
   requiredPatent?: string | null;
+  allowedSources?: string[] | null;
   createdAt: string;
   dm?: { username: string };
   characters?: Array<{
@@ -54,6 +55,7 @@ export interface InviteData {
     system: SystemId;
     requiredNex?: number | null;
     requiredPatent?: string | null;
+    allowedSources?: string[] | null;
     dm: { username: string };
   };
 }
@@ -65,9 +67,11 @@ export interface CharacterData {
   system: SystemId;
   portraitUrl?: string;
   sheetData?: Record<string, any>;
+  inventory?: any[];
   campaign?: {
     id: string;
     name: string;
+    allowedSources?: string[] | null;
   } | null;
 }
 
@@ -168,7 +172,11 @@ export async function createCampaign(
   name: string,
   description: string,
   system: SystemId,
-  options?: { requiredNex?: number | null; requiredPatent?: string | null }
+  options?: {
+    requiredNex?: number | null;
+    requiredPatent?: string | null;
+    allowedSources?: string[] | null;
+  }
 ): Promise<CampaignData> {
   const response = await fetch(`${API_URL}/campaigns`, {
     method: 'POST',
@@ -179,10 +187,25 @@ export async function createCampaign(
       system,
       requiredNex: options?.requiredNex ?? null,
       requiredPatent: options?.requiredPatent ?? null,
+      allowedSources: options?.allowedSources ?? null,
     }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao criar campanha.');
+  return data;
+}
+
+export async function updateCampaignAllowedSources(
+  campaignId: string,
+  allowedSources: string[]
+): Promise<CampaignData> {
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/permissions`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ allowedSources }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao atualizar suplementos da mesa.');
   return data;
 }
 
@@ -300,6 +323,7 @@ export interface FullCharacterResponse extends FullCharacterPayload {
     id: string;
     name: string;
     dmId: string;
+    allowedSources?: string[] | null;
   }) | null;
 }
 

@@ -8,6 +8,7 @@ export * from './dyingRules';
 export * from './characterBuilder';
 export * from './ordemBestiaryData';
 export * from './contentPack';
+export * from './contentSources';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
 
@@ -109,6 +110,9 @@ export interface RPGItem {
   storedPe?: number;               // Coletora (até 20 PE)
   dailyUses?: number;              // Contador diário para DT crescente (Crânio Espiral, Coração Pulsante, etc.)
   remainingCharges?: number;       // Cargas restantes (Spray de Pimenta, Taser, Pistola de Dardos/Sinalizadora)
+  sourceId?: string;               // Livro/suplemento de origem do item
+  isParanormalInvention?: boolean; // Inventor Paranormal — Invento Paranormal (Cat. 0, 1 espaço)
+  jammed?: boolean;                // Invento Paranormal enguiçado até manutenção no interlúdio
   modifiers?: RuleModifier[];
 }
 
@@ -189,6 +193,23 @@ export interface CursePricePrompt {
   sanLossOnFail: number; // 2 * curseCount
 }
 
+export interface MapaCelesteRollOption {
+  rolls: number[];
+  formula: string;
+  modifier: number;
+  total: number;
+}
+
+export interface MapaCelestePayload {
+  canReroll: boolean;
+  diceCount: number;
+  sides: number;
+  modifier: number;
+  firstRoll?: MapaCelesteRollOption;
+  secondRoll?: MapaCelesteRollOption;
+  chosenIndex?: 1 | 2;
+}
+
 // Rolagem de dados
 export interface DiceRollResult {
   id: string;
@@ -210,6 +231,7 @@ export interface DiceRollResult {
   hasAfortunado?: boolean;
   hasAfortunadoAffinity?: boolean;
   rerolledAfortunado?: boolean;
+  mapaCelestePayload?: MapaCelestePayload;
   attackDamagePayload?: AttackDamageRollPayload;
   forcaOpressoraPayload?: ForcaOpressoraRollPayload;
   cursePricePrompt?: CursePricePrompt;
@@ -376,6 +398,7 @@ export interface ClientToServerEvents {
     extraDice?: Array<{ count: number; sides: number; label: string }>;
     hasAfortunado?: boolean;
     hasAfortunadoAffinity?: boolean;
+    mapaCelestePayload?: MapaCelestePayload;
     attackDamagePayload?: AttackDamageRollPayload;
     forcaOpressoraPayload?: ForcaOpressoraRollPayload;
     cursePricePrompt?: CursePricePrompt;
@@ -413,6 +436,15 @@ export interface ClientToServerEvents {
     campaignId: string;
     rollResult: DiceRollResult;
     dieIndex?: number;
+  }) => void;
+  'dice:mapaCelesteReroll': (payload: {
+    campaignId: string;
+    rollResult: DiceRollResult;
+  }) => void;
+  'dice:mapaCelesteChoose': (payload: {
+    campaignId: string;
+    rollResult: DiceRollResult;
+    chosenIndex: 1 | 2;
   }) => void;
   'presence:update': (payload: PresenceUpdatePayload) => void;
   'admin:watch': (payload: { token: string; active: boolean }) => void;
@@ -500,6 +532,21 @@ export interface CharacterPersonalProfile {
   personalNotes?: string;
 }
 
+export interface OrdemOriginMeta {
+  amigoAnimaisSkillId?: string;
+  amigoAnimaisName?: string;
+  amigoAnimaisDead?: boolean;
+  experimentoSkillId?: string;
+  inventorRitualId?: string;
+  luckyNumber?: number;
+  extraLuckyNumbers?: number[];
+  bestFriendName?: string;
+  bestFriendDead?: boolean;
+  cosplayDescription?: string;
+  profetizadoSkillId?: string;
+  eatenCreatureParts?: string[];
+}
+
 export interface OrdemSheetData {
   origin: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -513,6 +560,8 @@ export interface OrdemSheetData {
   transcendedCount?: number;
   workToolWeaponName?: string;
   sangueFerventeAttr?: 'for' | 'agi';
+  useSeparateNexAndLevel?: boolean;
+  originMeta?: OrdemOriginMeta;
   tempHp?: number;
   tempHpMax?: number;
   tempPe?: number;
@@ -607,6 +656,7 @@ export interface CharacterAbility {
   isGrimoireRitual?: boolean; // Graduado — Grimório Ritualístico
   isSustainedActive?: boolean; // Ritual sustentado ativo no turno
   isActive?: boolean;        // Se true, aplica os modificadores passivos/sustentados na ficha
+  sourceId?: string;         // Livro/suplemento de origem
   modifiers?: RuleModifier[]; // Modificadores herdados do Compêndio
 }
 
@@ -658,6 +708,7 @@ export interface CompendiumEntryData {
     itemSubtype?: OrdemItemKind;
     isWeapon?: boolean;     // Diferencia armas de consumíveis/granadas que também têm damageFormula
     uses?: number;          // Cargas padrão (Spray de Pimenta = 2, Taser = 2, etc.)
+    sourceId?: string;      // Livro/suplemento de origem (ex.: 'ordem-base', 'sobrevivendo-ao-horror')
   };
 }
 

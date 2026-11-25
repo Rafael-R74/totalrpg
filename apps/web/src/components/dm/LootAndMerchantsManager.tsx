@@ -11,11 +11,14 @@ import {
   isOrdemItemWeaponEntry,
   inferOrdemItemKind,
   OrdemElement,
+  matchesContentSourceFilter,
+  resolveEntrySourceId,
 } from '@totalrpg/shared';
 import { DMScreenCharacter } from '../../services/api';
 import { ImageUploadField } from '../ImageUploadField';
 
 import { Icon } from '../ui/Icon';
+import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilterBar';
 export interface CampaignStoredItem {
   id: string;
   item: RPGItem;
@@ -24,6 +27,7 @@ export interface CampaignStoredItem {
 
 interface LootAndMerchantsManagerProps {
   system: SystemId;
+  allowedSources?: string[] | null;
   characters: DMScreenCharacter[];
   compendiumEntries: CompendiumEntryData[];
   campaignItems: CampaignStoredItem[];
@@ -44,6 +48,7 @@ interface LootAndMerchantsManagerProps {
 
 export function LootAndMerchantsManager({
   system,
+  allowedSources,
   characters,
   compendiumEntries,
   campaignItems,
@@ -69,7 +74,9 @@ export function LootAndMerchantsManager({
 
   const [isCompendiumVaultModalOpen, setIsCompendiumVaultModalOpen] = useState(false);
   const [vaultSearchQuery, setVaultSearchQuery] = useState('');
+  const [vaultSourceFilter, setVaultSourceFilter] = useState<string[]>([]);
   const [vaultItemRealmTab, setVaultItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
+  const [stockSourceFilter, setStockSourceFilter] = useState<string[]>([]);
   const [stockItemRealmTab, setStockItemRealmTab] = useState<'normal' | 'paranormal'>('normal');
 
   const [itemToGiveModal, setItemToGiveModal] = useState<{
@@ -172,6 +179,7 @@ export function LootAndMerchantsManager({
     const newItem: RPGItem = {
       id,
       name: entry.name,
+      sourceId: resolveEntrySourceId(entry, system),
       slots: baseSlots,
       baseSlots,
       category: catLevel,
@@ -336,6 +344,16 @@ export function LootAndMerchantsManager({
 
   const filteredCompendiumForVault = compendiumEntries.filter((c) => {
     if (c.category !== 'item') return false;
+    if (
+      !matchesContentSourceFilter(
+        resolveEntrySourceId(c, system),
+        vaultSourceFilter,
+        allowedSources,
+        system
+      )
+    ) {
+      return false;
+    }
     if (system === 'ordem-paranormal') {
       const isPara = isOrdemCompendiumItemParanormal(c);
       if (vaultItemRealmTab === 'normal' && isPara) return false;
@@ -353,6 +371,16 @@ export function LootAndMerchantsManager({
 
   const filteredCompendiumForStock = compendiumEntries.filter((c) => {
     if (c.category !== 'item') return false;
+    if (
+      !matchesContentSourceFilter(
+        resolveEntrySourceId(c, system),
+        stockSourceFilter,
+        allowedSources,
+        system
+      )
+    ) {
+      return false;
+    }
     if (system === 'ordem-paranormal') {
       const isPara = isOrdemCompendiumItemParanormal(c);
       if (stockItemRealmTab === 'normal' && isPara) return false;
@@ -389,6 +417,14 @@ export function LootAndMerchantsManager({
                 ✕
               </button>
             </div>
+
+            <ContentSourceFilterBar
+              system={system}
+              selectedSources={vaultSourceFilter}
+              onChange={setVaultSourceFilter}
+              allowedSources={allowedSources}
+              compact
+            />
 
             {system === 'ordem-paranormal' && (
               <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
@@ -438,8 +474,12 @@ export function LootAndMerchantsManager({
                     className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl flex justify-between items-center gap-4"
                   >
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-bold text-white">{entry.name}</span>
+                        <SourceTagBadge
+                          sourceId={resolveEntrySourceId(entry, system)}
+                          system={system}
+                        />
                         {entry.metadata?.damageFormula && (
                           <span className="text-[10px] font-mono bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded">
                             <Icon name="swords" /> {entry.metadata.damageFormula}
@@ -513,6 +553,16 @@ export function LootAndMerchantsManager({
                 <Icon name="library" /> Itens do Compêndio
               </button>
             </div>
+
+            {stockModalTab === 'compendium' && (
+              <ContentSourceFilterBar
+                system={system}
+                selectedSources={stockSourceFilter}
+                onChange={setStockSourceFilter}
+                allowedSources={allowedSources}
+                compact
+              />
+            )}
 
             {stockModalTab === 'compendium' && system === 'ordem-paranormal' && (
               <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
@@ -650,6 +700,7 @@ export function LootAndMerchantsManager({
                         const newItem: RPGItem = {
                           id: newItemId,
                           name: entry.name,
+                          sourceId: resolveEntrySourceId(entry, system),
                           slots: baseSlots,
                           baseSlots,
                           category: catLevel,

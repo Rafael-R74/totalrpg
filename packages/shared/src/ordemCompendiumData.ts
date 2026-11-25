@@ -1554,6 +1554,23 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     modifiers: [],
     metadata: { slots: 1, categoryLevel: 2, isParanormal: true, itemSubtype: 'paranormal', isWeapon: false },
   },
+  {
+    id: 'sah-item-ingrediente-paranormal',
+    system: 'ordem-paranormal',
+    category: 'item',
+    name: 'Ingrediente Paranormal (Parte de Criatura)',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror para a descrição completa.',
+    cost: 1,
+    modifiers: [],
+    metadata: {
+      slots: 0.5,
+      categoryLevel: 1,
+      isParanormal: true,
+      itemSubtype: 'paranormal',
+      isWeapon: false,
+      sourceId: 'sobrevivendo-ao-horror',
+    },
+  },
 
   // --- Itens Amaldiçoados Especiais — SANGUE (Cap. 6, p. 148) ---
   {

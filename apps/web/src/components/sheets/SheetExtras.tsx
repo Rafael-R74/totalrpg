@@ -8,8 +8,12 @@ import {
   CompendiumEntryData,
   ComputedBonuses,
   OrdemSheetData,
+  OrdemOriginMeta,
   ORDEM_ORIGINS,
   ORDEM_PATENTS,
+  ORDEM_SKILLS_METADATA,
+  matchesContentSourceFilter,
+  resolveEntrySourceId,
   checkOrdemPowerRequirements,
   parseOrdemRitualForms,
   OrdemRitualCastForm,
@@ -55,8 +59,10 @@ import { applyCampaignSceneEffect, fetchCampaignTradeTargets } from '../../servi
 
 import { Icon, stripEmoji } from '../ui/Icon';
 import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
+import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilterBar';
 interface SheetExtrasProps {
   system: SystemId;
+  allowedSources?: string[] | null;
   ordemSheetData?: OrdemSheetData;
   isInCampaign?: boolean;
   campaignId?: string;
@@ -114,6 +120,8 @@ interface SheetExtrasProps {
   ) => void;
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
   onTriggerOriginSpecial?: (originId: string) => void;
+  onUpdateOriginMeta?: (patch: Partial<OrdemOriginMeta>) => void;
+  onLosePermanentSanity?: (amount: number, reason: string) => void;
   vislumbresSuccessPending?: boolean;
   onRollVislumbresPe?: () => void;
   hasActiveInitiativeOrder?: boolean;
@@ -232,6 +240,7 @@ function rollRitualWeaponDamageExtras(
 
 export function SheetExtras({
   system,
+  allowedSources,
   ordemSheetData,
   isInCampaign = false,
   campaignId,
@@ -267,6 +276,8 @@ export function SheetExtras({
   onCastOrdemRitual,
   onUpdateSceneEffects,
   onTriggerOriginSpecial,
+  onUpdateOriginMeta,
+  onLosePermanentSanity,
   vislumbresSuccessPending,
   onRollVislumbresPe,
   hasActiveInitiativeOrder,
@@ -467,7 +478,7 @@ export function SheetExtras({
     const lowerId = (ab.id || '').toLowerCase();
     const lowerName = (ab.name || '').toLowerCase();
 
-    // Poderes de Origem com botão dedicado na seção de Perícias (OrdemSheet.tsx)
+    // Poderes de Origem com botão dedicado na seção de Perícias (OrdemSheet.tsx) ou controles próprios na aba Poderes
     if (
       [
         'orig-academico',
@@ -477,6 +488,20 @@ export function SheetExtras({
         'orig-trabalhador_rural',
         'orig-ti',
         'orig-trambiqueiro',
+        'orig-explorador',
+        'orig-fotografo',
+        'orig-legista_noturno',
+        'orig-motorista',
+        'orig-reporter_investigativo',
+        'orig-mateiro',
+        'orig-diplomata',
+        'orig-psicologo',
+        'orig-astronauta',
+        'orig-profetizado',
+        'orig-jovem_mistico',
+        'orig-colegial',
+        'orig-amigo_animais',
+        'orig-cosplayer',
       ].includes(lowerId) ||
       lowerName.includes('saber é poder') ||
       lowerName.includes('saber e poder') ||
@@ -895,6 +920,7 @@ export function SheetExtras({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'compendium' | 'custom'>('compendium');
   const [searchQuery, setSearchQuery] = useState('');
+  const [compendiumSourceFilter, setCompendiumSourceFilter] = useState<string[]>([]);
   const [compendiumPowerTypeFilter, setCompendiumPowerTypeFilter] = useState<'ALL' | 'power' | 'paranormal_power'>('ALL');
   const [compendiumElementFilter, setCompendiumElementFilter] = useState<string>('ALL');
   const [compendiumCircleFilter, setCompendiumCircleFilter] = useState<number | 'ALL'>('ALL');
@@ -977,6 +1003,7 @@ export function SheetExtras({
 
   function openAddModal() {
     setSearchQuery('');
+    setCompendiumSourceFilter([]);
     setCompendiumPowerTypeFilter('ALL');
     setCompendiumElementFilter('ALL');
     setCompendiumCircleFilter('ALL');
@@ -1014,6 +1041,7 @@ export function SheetExtras({
       const newAb: CharacterAbility = {
         id: `${entry.id}-${newId}`,
         name: finalName,
+        sourceId: resolveEntrySourceId(entry, system),
         category:
           entry.category === 'spell'
             ? system === 'ordem-paranormal'
@@ -1049,6 +1077,7 @@ export function SheetExtras({
       const newItem: RPGItem = {
         id: newId,
         name: entry.name,
+        sourceId: resolveEntrySourceId(entry, system),
         slots: baseSlots,
         baseSlots,
         quantity: 1,
@@ -1256,6 +1285,17 @@ export function SheetExtras({
         return false;
       }
 
+      if (
+        !matchesContentSourceFilter(
+          resolveEntrySourceId(entry, system),
+          compendiumSourceFilter,
+          allowedSources,
+          system
+        )
+      ) {
+        return false;
+      }
+
       const matchesSearch =
         !lowerQuery ||
         entry.name.toLowerCase().includes(lowerQuery) ||
@@ -1378,6 +1418,8 @@ export function SheetExtras({
     compendiumPowerTypeFilter,
     compendiumElementFilter,
     compendiumCircleFilter,
+    compendiumSourceFilter,
+    allowedSources,
     abilities,
     system,
     ordemSheetData,
@@ -1454,6 +1496,13 @@ export function SheetExtras({
 
             {modalMode === 'compendium' && activeSubTab !== 'combat' ? (
               <div className="flex flex-col gap-3 overflow-hidden">
+                <ContentSourceFilterBar
+                  system={system}
+                  selectedSources={compendiumSourceFilter}
+                  onChange={setCompendiumSourceFilter}
+                  allowedSources={allowedSources}
+                  compact
+                />
                 <input
                   type="text"
                   autoFocus
@@ -1668,6 +1717,10 @@ export function SheetExtras({
                           <div className="flex flex-col gap-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-bold text-white">{entry.name}</span>
+                              <SourceTagBadge
+                                sourceId={resolveEntrySourceId(entry, system)}
+                                system={system}
+                              />
                               {entry.category === 'paranormal_power' && (
                                 <ElementBadge element={entry.metadata?.element}>
                                   Paranormal{entry.metadata?.element ? `: ${entry.metadata.element}` : ''}
@@ -4780,6 +4833,299 @@ export function SheetExtras({
                             >
                               Acalentar (1d6 + PRE SAN)
                             </button>
+                          )}
+                          {ab.id === 'orig-astronauta' && onTriggerOriginSpecial && (() => {
+                            const eff = (ordemSheetData?.sceneEffects || []).find(
+                              (e) => e.id === 'orig-scene-astronauta'
+                            );
+                            const uses = Number(eff?.source?.replace(/\D/g, '') || 0);
+                            const nextCost = 1 + uses;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => onTriggerOriginSpecial('astronauta')}
+                                className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                              >
+                                <Icon name="shield" /> Reduzir Dano Fogo/Frio/Mental em 5 (-{nextCost} PE)
+                              </button>
+                            );
+                          })()}
+                          {ab.id === 'orig-profetizado' && onTriggerOriginSpecial && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {ordemSheetData?.originMeta?.profetizadoSkillId && (
+                                <span className="px-2 py-1 rounded bg-purple-950/60 border border-purple-700/60 text-[11px] text-purple-200">
+                                  Perícia: {ORDEM_SKILLS_METADATA.find((s) => s.id === ordemSheetData.originMeta?.profetizadoSkillId)?.name || ordemSheetData.originMeta.profetizadoSkillId}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => onTriggerOriginSpecial('profetizado')}
+                                className="px-3 py-1.5 bg-purple-950/70 hover:bg-purple-700 text-purple-200 hover:text-white border border-purple-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                              >
+                                <Icon name="sparkles" /> Gatilho de Premonição (+2 PE Temp na Cena)
+                              </button>
+                            </div>
+                          )}
+                          {ab.id === 'orig-jovem_mistico' && onTriggerOriginSpecial && (() => {
+                            const baseNum = ordemSheetData?.originMeta?.luckyNumber || 6;
+                            const extras = ordemSheetData?.originMeta?.extraLuckyNumbers || [];
+                            const allLucky = Array.from(new Set([baseNum, ...extras])).sort((a, b) => a - b);
+                            const usedInScene = Boolean(
+                              isInCampaign &&
+                                (ordemSheetData?.sceneEffects || []).some(
+                                  (e) => e.id === 'orig-scene-culpa-estrelas-used'
+                                )
+                            );
+                            return (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {isEditMode && onUpdateOriginMeta ? (
+                                  <select
+                                    value={baseNum}
+                                    onChange={(e) =>
+                                      onUpdateOriginMeta({ luckyNumber: Number(e.target.value) })
+                                    }
+                                    className="px-2 py-1 bg-zinc-900 border border-purple-700/70 rounded-lg text-xs text-purple-200 font-bold"
+                                  >
+                                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                                      <option key={n} value={n}>
+                                        Nº da Sorte: {n}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="px-2 py-1 rounded bg-purple-950/60 border border-purple-700/60 text-[11px] font-mono font-bold text-purple-200">
+                                    Nº da Sorte: {allLucky.join(', ')}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={usedInScene}
+                                  onClick={() => onTriggerOriginSpecial('jovem_mistico')}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap ${
+                                    usedInScene
+                                      ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed'
+                                      : 'bg-purple-950/70 hover:bg-purple-700 text-purple-200 hover:text-white border-purple-700 cursor-pointer'
+                                  }`}
+                                >
+                                  <Icon name="d20" />{' '}
+                                  {usedInScene
+                                    ? '✓ Já consultado na cena'
+                                    : 'A Culpa é das Estrelas (-1 PE → 1d6)'}
+                                </button>
+                              </div>
+                            );
+                          })()}
+                          {ab.id === 'orig-colegial' && ordemSheetData && (() => {
+                            const friendDead = Boolean(ordemSheetData.originMeta?.bestFriendDead);
+                            const friendName = ordemSheetData.originMeta?.bestFriendName;
+                            return (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {friendName && (
+                                  <span className="px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-[11px] text-zinc-300">
+                                    Amigo: <strong>{friendName}</strong>
+                                  </span>
+                                )}
+                                {!friendDead && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleAbilityActive(ab.id)}
+                                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
+                                      ab.isActive !== false
+                                        ? 'bg-emerald-700 text-white border-emerald-400'
+                                        : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-emerald-500'
+                                    }`}
+                                  >
+                                    {ab.isActive !== false
+                                      ? '✓ Perto do Amigo (+2 Perícias)'
+                                      : 'Ativar Alcance Médio (+2 Perícias)'}
+                                  </button>
+                                )}
+                                {onUpdateOriginMeta && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onUpdateOriginMeta({ bestFriendDead: !friendDead })
+                                    }
+                                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
+                                      friendDead
+                                        ? 'bg-red-900/80 text-red-100 border-red-500'
+                                        : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-red-600 hover:text-red-300'
+                                    }`}
+                                  >
+                                    {friendDead
+                                      ? 'Luto Ativo (-1 PE / 5% NEX)'
+                                      : 'Marcar Morte do Amigo'}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
+                          {ab.id === 'orig-amigo_animais' && ordemSheetData && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {ordemSheetData.originMeta?.amigoAnimaisName && (
+                                <span className="px-2 py-1 rounded bg-emerald-950/60 border border-emerald-700/60 text-[11px] text-emerald-200">
+                                  Parceiro: <strong>{ordemSheetData.originMeta.amigoAnimaisName}</strong>
+                                </span>
+                              )}
+                              {isEditMode && onUpdateOriginMeta && (
+                                <select
+                                  value={
+                                    ordemSheetData.originMeta?.amigoAnimaisSkillId ||
+                                    'percepcao'
+                                  }
+                                  onChange={(e) =>
+                                    onUpdateOriginMeta({
+                                      amigoAnimaisSkillId: e.target.value,
+                                    })
+                                  }
+                                  className="px-2 py-1 bg-zinc-900 border border-emerald-700/70 rounded-lg text-xs text-white"
+                                >
+                                  {ORDEM_SKILLS_METADATA.map((sk) => (
+                                    <option key={sk.id} value={sk.id}>
+                                      +2 em {sk.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {onLosePermanentSanity && !ordemSheetData.originMeta?.amigoAnimaisDead && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        'Confirmar a morte do parceiro animal? Isso reduz 10 de Sanidade máxima permanentemente.'
+                                      )
+                                    ) {
+                                      onUpdateOriginMeta?.({ amigoAnimaisDead: true });
+                                      onLosePermanentSanity(
+                                        10,
+                                        'Morte do Melhor Amigo (Amigo dos Animais)'
+                                      );
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                                >
+                                  Parceiro Morreu (-10 SAN perm.)
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {ab.id === 'orig-cosplayer' && (
+                            <button
+                              type="button"
+                              onClick={() => toggleAbilityActive(ab.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
+                                ab.isActive
+                                  ? 'bg-pink-700 text-white border-pink-400'
+                                  : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-pink-500'
+                              }`}
+                            >
+                              {ab.isActive
+                                ? '✓ Cosplay Relacionado (+2 no Teste)'
+                                : 'Vestindo Cosplay Relacionado (+2)'}
+                            </button>
+                          )}
+                          {ab.id === 'orig-diplomata' && ordemSheetData && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!onSpendResource(2)) return;
+                                const dipSk = ordemSheetData.skills.find(
+                                  (s) => s.id === 'diplomacia'
+                                );
+                                const effPre =
+                                  ordemSheetData.attributes.pre +
+                                  (bonuses.attributes['pre'] || 0);
+                                const dipDice =
+                                  effPre +
+                                  bonuses.skillDiceAll +
+                                  (bonuses.skillDice['diplomacia'] || 0);
+                                const dipMod =
+                                  (dipSk?.trainingDegree || 0) +
+                                  (dipSk?.otherModifier || 0) +
+                                  bonuses.skillBonusAll +
+                                  (bonuses.skillBonus['diplomacia'] || 0);
+                                onRoll('Conexões — Diplomacia (-2 PE • 10 min)', dipDice, 20, dipMod);
+                              }}
+                              className="px-3 py-1.5 bg-blue-950/70 hover:bg-blue-700 text-blue-200 hover:text-white border border-blue-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                            >
+                              Conexões (-2 PE → Diplomacia)
+                            </button>
+                          )}
+                          {ab.id === 'orig-psicologo' && ordemSheetData && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const used =
+                                    isInCampaign &&
+                                    (ordemSheetData.sceneEffects || []).some(
+                                      (e) => e.id === 'orig-scene-terapia'
+                                    );
+                                  if (used) {
+                                    setAbilityUseFeedback('Terapia já foi usada nesta rodada/cena!');
+                                    return;
+                                  }
+                                  if (
+                                    !onSpendResource(
+                                      2,
+                                      isInCampaign
+                                        ? {
+                                            id: 'orig-scene-terapia',
+                                            name: 'Terapia (Psicólogo)',
+                                            source: '1x/Rodada',
+                                            description: 'Teste de Profissão usado contra dano mental',
+                                          }
+                                        : undefined
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  const profSk = ordemSheetData.skills.find(
+                                    (s) => s.id === 'profissao'
+                                  );
+                                  const profDice =
+                                    effInt +
+                                    bonuses.skillDiceAll +
+                                    (bonuses.skillDice['profissao'] || 0);
+                                  const profMod =
+                                    (profSk?.trainingDegree || 0) +
+                                    (profSk?.otherModifier || 0) +
+                                    bonuses.skillBonusAll +
+                                    (bonuses.skillBonus['profissao'] || 0);
+                                  onRoll(
+                                    'Terapia — Profissão como Resistência Mental (-2 PE)',
+                                    profDice,
+                                    20,
+                                    profMod
+                                  );
+                                }}
+                                className="px-2.5 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                              >
+                                Terapia: Resistência Mental (-2 PE)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const profSk = ordemSheetData.skills.find(
+                                    (s) => s.id === 'profissao'
+                                  );
+                                  const profDice =
+                                    effInt +
+                                    bonuses.skillDiceAll +
+                                    (bonuses.skillDice['profissao'] || 0);
+                                  const profMod =
+                                    (profSk?.trainingDegree || 0) +
+                                    (profSk?.otherModifier || 0) +
+                                    bonuses.skillBonusAll +
+                                    (bonuses.skillBonus['profissao'] || 0);
+                                  onRoll('Terapia — Profissão como Diplomacia', profDice, 20, profMod);
+                                }}
+                                className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                              >
+                                Profissão como Diplomacia
+                              </button>
+                            </div>
                           )}
                           {(ab.id === 'ord-pwr-comb-sentido-tatico' ||
                             ab.name.toLowerCase().includes('sentido tático') ||

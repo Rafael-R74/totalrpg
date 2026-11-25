@@ -253,7 +253,11 @@ export default function App() {
     socket.on('connect', handleJoin);
 
     socket.on('dice:rolled', (newRoll) => {
-      setRollHistory((prev) => [newRoll, ...prev]);
+      setRollHistory((prev) =>
+        prev.some((r) => r.id === newRoll.id)
+          ? prev.map((r) => (r.id === newRoll.id ? newRoll : r))
+          : [newRoll, ...prev]
+      );
 
       if (newRoll.rollerUserId === currentUser.id) {
         if (newRoll.batchId) {
@@ -466,6 +470,7 @@ export default function App() {
       explodingDieSide?: number;
       extraDice?: Array<{ count: number; sides: number; label: string }>;
       cursePricePrompt?: CursePricePrompt;
+      mapaCelestePayload?: DiceRollResult['mapaCelestePayload'];
     },
     hasAfortunadoAffinity?: boolean,
     ritualEffectPayload?: RitualEffectRollPayload
@@ -497,6 +502,7 @@ export default function App() {
       extraDice: extraRollOpts?.extraDice,
       hasAfortunado,
       hasAfortunadoAffinity,
+      mapaCelestePayload: extraRollOpts?.mapaCelestePayload,
       attackDamagePayload,
       forcaOpressoraPayload,
       cursePricePrompt: extraRollOpts?.cursePricePrompt,
@@ -611,6 +617,25 @@ export default function App() {
             campaignId: activeRoomId,
             rollResult,
             dieIndex,
+          });
+        }}
+        onMapaCelesteReroll={(rollResult) => {
+          if (!activeRoomId) return false;
+          if (sheetSpendResourceRef.current && !sheetSpendResourceRef.current(2)) {
+            return false;
+          }
+          socket.emit('dice:mapaCelesteReroll', {
+            campaignId: activeRoomId,
+            rollResult,
+          });
+          return true;
+        }}
+        onMapaCelesteChoose={(rollResult, chosenIndex) => {
+          if (!activeRoomId) return;
+          socket.emit('dice:mapaCelesteChoose', {
+            campaignId: activeRoomId,
+            rollResult,
+            chosenIndex,
           });
         }}
         onTriggerSegurarGatilhoShot={(

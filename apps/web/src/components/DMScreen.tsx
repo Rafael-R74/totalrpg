@@ -2300,6 +2300,7 @@ async function handleDeliverItemToCharacter(
           {activeDMTab === 'loot' && (
             <LootAndMerchantsManager
               system={campaign.system}
+              allowedSources={(campaign as any).allowedSources}
               characters={campaign.characters}
               compendiumEntries={compendiumEntries}
               campaignItems={campaignItems}

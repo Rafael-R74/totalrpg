@@ -6,6 +6,7 @@ import {
   CharacterAbility,
   SceneEffect,
   CursePricePrompt,
+  DiceRollResult,
   createDefaultOrdemSheet,
   ComputedBonuses,
   SystemSkillDefinition,
@@ -22,11 +23,13 @@ import {
 
 import { Icon } from '../ui/Icon';
 import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
+import { SourceTagBadge } from '../ui/ContentSourceFilterBar';
 interface OrdemSheetProps {
   data: OrdemSheetData;
   bonuses: ComputedBonuses;
   customSkills: SystemSkillDefinition[];
   abilities?: CharacterAbility[];
+  allowedSources?: string[] | null;
   isInCampaign?: boolean;
   isOverloaded?: boolean;
   isMachucado?: boolean;
@@ -49,8 +52,13 @@ interface OrdemSheetProps {
     count: number,
     sides: number,
     modifier: number,
-    cursePricePrompt?: CursePricePrompt
+    cursePricePrompt?: CursePricePrompt,
+    extraOpts?: {
+      extraDice?: Array<{ count: number; sides: number; label: string }>;
+      mapaCelestePayload?: DiceRollResult['mapaCelestePayload'];
+    }
   ) => void;
+  onTriggerOriginSpecial?: (originId: string) => void;
 }
 
 const ATTRIBUTE_LABELS: Record<keyof OrdemAttributes, string> = {
@@ -84,6 +92,7 @@ export function OrdemSheet({
   onLoseSanity,
   onHealPv,
   onRoll,
+  onTriggerOriginSpecial,
 }: OrdemSheetProps) {
   const [armOriginBoost, setArmOriginBoost] = useState(false);
   // Controle por perícia para ignorar a penalidade -5 de Kit (caso o uso específico não exija kit)
@@ -420,7 +429,10 @@ export function OrdemSheet({
             <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1">
               Origem
             </label>
-            <p className="text-sm font-semibold text-white">{safeData.origin}</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="text-sm font-semibold text-white">{safeData.origin}</p>
+              <SourceTagBadge sourceId={originObj?.sourceId} system="ordem-paranormal" />
+            </div>
           </div>
 
           {/* Classe (Fixa após a criação do personagem) */}
@@ -484,6 +496,19 @@ export function OrdemSheet({
                 </button>
               )}
             </div>
+            {allowAttrEdit && (
+              <label className="mt-1.5 flex items-center gap-1.5 text-[10px] text-zinc-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(safeData.useSeparateNexAndLevel)}
+                  onChange={(e) =>
+                    onChange({ ...safeData, useSeparateNexAndLevel: e.target.checked })
+                  }
+                  className="accent-amber-500"
+                />
+                NEX & Nível separados (SaH)
+              </label>
+            )}
           </div>
 
           {/* Patente, Prestígio & Limite de Crédito — no modo edição ocupa a linha inteira no celular */}
@@ -1121,7 +1146,8 @@ export function OrdemSheet({
                       : 'bg-zinc-950 hover:bg-zinc-800 text-purple-300 border-purple-700/70 cursor-pointer'
                   }`}
                 >
-                  <Icon name="library" /> Ler ({interludeMental}): +1d20 INT/PRE
+                  <Icon name="library" /> Ler ({interludeMental}):{' '}
+                  {originId === 'nerd_entusiasta' ? '+2d6 INT/PRE (O Inteligentão)' : '+1d6 INT/PRE'}
                   {armInterludeMental ? ' ✓ ARMADO' : ''}
                 </button>
                 {allowAttrEdit && (
@@ -1161,8 +1187,9 @@ export function OrdemSheet({
               armInterludeMental &&
               interludeMental > 0 &&
               ['int', 'pre'].includes(attrKey);
+            const lerDiceBonusCount = originId === 'nerd_entusiasta' ? 2 : 1;
             const rawTotalDice =
-              effectiveVal + extraDice + (isInterludePhysAttr || isInterludeMentAttr ? 1 : 0);
+              effectiveVal + extraDice + (isInterludePhysAttr ? 1 : 0);
 
             return (
               <div
@@ -1171,6 +1198,7 @@ export function OrdemSheet({
                   if (!allowAttrEdit) {
                     let attrMod = 0;
                     let labelSuffix = '';
+                    let extraDiceForAttr: Array<{ count: number; sides: number; label: string }> | undefined;
                     // Acadêmico — Saber é Poder (+5 em testes usando Intelecto por 2 PE)
                     if (armOriginBoost && originId === 'academico' && attrKey === 'int') {
                       if (onSpendResource && !onSpendResource(2)) return;
@@ -1183,7 +1211,17 @@ export function OrdemSheet({
                       adjustInterludeDice('physical', -1);
                       setArmInterludePhysical(false);
                     } else if (isInterludeMentAttr) {
-                      labelSuffix += ' [Ler +1d20]';
+                      labelSuffix += ` [Ler +${lerDiceBonusCount}d6]`;
+                      extraDiceForAttr = [
+                        {
+                          count: lerDiceBonusCount,
+                          sides: 6,
+                          label:
+                            originId === 'nerd_entusiasta'
+                              ? 'Ler (O Inteligentão)'
+                              : 'Ler (Interlúdio)',
+                        },
+                      ];
                       adjustInterludeDice('mental', -1);
                       setArmInterludeMental(false);
                     }
@@ -1192,7 +1230,8 @@ export function OrdemSheet({
                       rawTotalDice,
                       20,
                       attrMod,
-                      buildCursePricePromptForAttr(attrKey)
+                      buildCursePricePromptForAttr(attrKey),
+                      extraDiceForAttr ? { extraDice: extraDiceForAttr } : undefined
                     );
                   }
                 }}
@@ -1261,11 +1300,26 @@ export function OrdemSheet({
         </div>
 
         {/* Barra de Automação Rápida do Poder de Origem para Testes de Perícia */}
-        {['academico', 'atleta', 'executivo', 'investigador', 'trabalhador_rural', 'ti', 'trambiqueiro'].includes(
-          originId
-        ) && (
+        {[
+          'academico',
+          'atleta',
+          'executivo',
+          'investigador',
+          'trabalhador_rural',
+          'ti',
+          'trambiqueiro',
+          'diplomata',
+          'explorador',
+          'fotografo',
+          'legista_noturno',
+          'motorista',
+          'reporter_investigativo',
+          'psicologo',
+          'jovem_mistico',
+          'cosplayer',
+        ].includes(originId) && (
           <div className="mb-3 p-3 rounded-xl bg-amber-950/20 border border-amber-700/40 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs text-amber-200">
+            <div className="text-xs text-amber-200 min-w-0 flex-1 basis-64">
               <strong className="text-amber-400">
                 <Icon name="sparkles" /> {originObj?.powerName} (Poder de {originObj?.name}):
               </strong>{' '}
@@ -1291,6 +1345,111 @@ export function OrdemSheet({
               >
                 Usar Motor de Busca (-2 PE → Rolar Tecnologia)
               </button>
+            ) : originId === 'diplomata' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSpendResource && !onSpendResource(2)) return;
+                  const dipSk = safeData.skills.find((s) => s.id === 'diplomacia');
+                  const dipDice =
+                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['diplomacia'] || 0);
+                  const dipMod =
+                    (dipSk?.trainingDegree || 0) +
+                    (dipSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['diplomacia'] || 0);
+                  onRoll('Conexões (Substituído por Diplomacia • -2 PE)', dipDice, 20, dipMod);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shrink-0 shadow"
+              >
+                Usar Conexões (-2 PE → Rolar Diplomacia)
+              </button>
+            ) : originId === 'psicologo' ? (
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const profSk = safeData.skills.find((s) => s.id === 'profissao');
+                    const profDice =
+                      effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['profissao'] || 0);
+                    const profMod =
+                      (profSk?.trainingDegree || 0) +
+                      (profSk?.otherModifier || 0) +
+                      bonuses.skillBonusAll +
+                      (bonuses.skillBonus['profissao'] || 0);
+                    onRoll('Terapia (Profissão como Diplomacia)', profDice, 20, profMod);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-amber-600/60 text-xs font-bold cursor-pointer"
+                >
+                  Profissão como Diplomacia (0 PE)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSpendResource && !onSpendResource(2)) return;
+                    const profSk = safeData.skills.find((s) => s.id === 'profissao');
+                    const profDice =
+                      effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['profissao'] || 0);
+                    const profMod =
+                      (profSk?.trainingDegree || 0) +
+                      (profSk?.otherModifier || 0) +
+                      bonuses.skillBonusAll +
+                      (bonuses.skillBonus['profissao'] || 0);
+                    onRoll('Terapia — Resistência Mental (-2 PE • 1x/Rodada)', profDice, 20, profMod);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shadow"
+                >
+                  Terapia: Resistência Mental (-2 PE)
+                </button>
+              </div>
+            ) : originId === 'cosplayer' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const artSk = safeData.skills.find((s) => s.id === 'artes');
+                  const artDice =
+                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['artes'] || 0);
+                  const artMod =
+                    (artSk?.trainingDegree || 0) +
+                    (artSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['artes'] || 0);
+                  onRoll('Não É Fantasia, É Cosplay! (Disfarce com Artes)', artDice, 20, artMod);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-amber-950 text-amber-300 border border-amber-600/60 text-xs font-bold cursor-pointer shrink-0"
+              >
+                Rolar Disfarce c/ Artes
+              </button>
+            ) : originId === 'jovem_mistico' ? (
+              (() => {
+                const usedEstrelas = Boolean(
+                  isInCampaign && sceneEffects.some((e) => e.id === 'orig-scene-culpa-estrelas-used')
+                );
+                const fixedLucky = safeData.originMeta?.luckyNumber || 6;
+                const extraLucky = safeData.originMeta?.extraLuckyNumbers || [];
+                const allLucky = Array.from(new Set([fixedLucky, ...extraLucky])).sort();
+                return (
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <span className="px-2 py-1 rounded bg-indigo-950/70 border border-indigo-700/60 text-[11px] font-mono font-bold text-indigo-200">
+                      Sorte: {allLucky.join(', ')}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={usedEstrelas}
+                      onClick={() => onTriggerOriginSpecial?.('jovem_mistico')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
+                        usedEstrelas
+                          ? 'bg-zinc-900 border border-zinc-700 text-zinc-500 cursor-not-allowed'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow'
+                      }`}
+                    >
+                      {usedEstrelas
+                        ? '✓ Estrelas já consultadas na cena'
+                        : 'A Culpa é das Estrelas (-1 PE → Rolar 1d6)'}
+                    </button>
+                  </div>
+                );
+              })()
             ) : originId === 'trambiqueiro' ? (
               <button
                 type="button"
@@ -1338,29 +1497,50 @@ export function OrdemSheet({
                 ✓ Faro para Pistas já usado nesta cena
               </span>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!armOriginBoost) {
-                    if (
-                      onCheckResource &&
-                      !onCheckResource(originObj?.powerCost || 0, originObj?.powerName)
-                    ) {
-                      return;
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                {originId === 'reporter_investigativo' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const invSk = safeData.skills.find((s) => s.id === 'investigacao');
+                      const invDice =
+                        effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['investigacao'] || 0);
+                      const invMod =
+                        (invSk?.trainingDegree || 0) +
+                        (invSk?.otherModifier || 0) +
+                        bonuses.skillBonusAll +
+                        (bonuses.skillBonus['investigacao'] || 0);
+                      onRoll('Encontrar a Verdade (Investigação como Diplomacia)', invDice, 20, invMod);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 text-xs font-bold cursor-pointer"
+                  >
+                    Persuadir c/ Investigação (0 PE)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!armOriginBoost) {
+                      if (
+                        onCheckResource &&
+                        !onCheckResource(originObj?.powerCost || 0, originObj?.powerName)
+                      ) {
+                        return;
+                      }
                     }
-                  }
-                  setArmOriginBoost((prev) => !prev);
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
-                  armOriginBoost
-                    ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow-lg'
-                    : 'bg-zinc-900 hover:bg-amber-950 text-amber-300 border-amber-600/60'
-                }`}
-              >
-                {armOriginBoost
-                  ? `${originObj?.powerName} (Poder de ${originObj?.name}) ARMADO (+5 no próximo teste, -${originObj?.powerCost} PE)`
-                  : `Armar ${originObj?.powerName} (Poder de ${originObj?.name}) (+5 no próximo teste, -${originObj?.powerCost} PE)`}
-              </button>
+                    setArmOriginBoost((prev) => !prev);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                    armOriginBoost
+                      ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow-lg'
+                      : 'bg-zinc-900 hover:bg-amber-950 text-amber-300 border-amber-600/60'
+                  }`}
+                >
+                  {armOriginBoost
+                    ? `${originObj?.powerName} ARMADO (+5 no próx. teste, -${originObj?.powerCost} PE)`
+                    : `Armar ${originObj?.powerName} (+5 no próx. teste, -${originObj?.powerCost} PE)`}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -1592,11 +1772,12 @@ export function OrdemSheet({
               armInterludeMental &&
               interludeMental > 0 &&
               ['int', 'pre'].includes(attrForSkill);
+            const lerDiceBonusSkillCount = originId === 'nerd_entusiasta' ? 2 : 1;
             const rawDiceCount =
               baseAttr +
               extraDice +
               (isPrimeiraImpressaoEligible ? 2 : 0) +
-              (isInterludePhysSkill || isInterludeMentSkill ? 1 : 0);
+              (isInterludePhysSkill ? 1 : 0);
 
             const campoProtetorSkillBonus =
               hasCampoProtetorAffinity && skill.id === 'reflexos' ? 5 : 0;
@@ -1705,7 +1886,15 @@ export function OrdemSheet({
                   originId === 'executivo' ||
                   (originId === 'investigador' && (!faroPistasUsedInScene || !isInCampaign)) ||
                   (originId === 'trabalhador_rural' &&
-                    (skill.id === 'adestramento' || skill.id === 'sobrevivencia'));
+                    (skill.id === 'adestramento' || skill.id === 'sobrevivencia')) ||
+                  (originId === 'explorador' &&
+                    ['fortitude', 'reflexos', 'vontade'].includes(skill.id)) ||
+                  (originId === 'fotografo' &&
+                    ['investigacao', 'percepcao'].includes(skill.id)) ||
+                  (originId === 'legista_noturno' && skill.id === 'medicina') ||
+                  (originId === 'motorista' &&
+                    ['pilotagem', 'fortitude', 'reflexos', 'vontade'].includes(skill.id)) ||
+                  (originId === 'reporter_investigativo' && skill.id === 'investigacao');
 
                 if (isEligible) {
                   if (originId === 'investigador' && isInCampaign) {
@@ -1743,15 +1932,36 @@ export function OrdemSheet({
               if (applyMissingKitPenalty) {
                 suffixParts.push('Sem Kit -5');
               }
+              let extraDiceForSkill: Array<{ count: number; sides: number; label: string }> | undefined;
               if (isInterludePhysSkill) {
                 suffixParts.push('Exercitar-se +1d20');
                 adjustInterludeDice('physical', -1);
                 setArmInterludePhysical(false);
               } else if (isInterludeMentSkill) {
-                suffixParts.push('Ler +1d20');
+                suffixParts.push(`Ler +${lerDiceBonusSkillCount}d6`);
+                extraDiceForSkill = [
+                  {
+                    count: lerDiceBonusSkillCount,
+                    sides: 6,
+                    label:
+                      originId === 'nerd_entusiasta'
+                        ? 'Ler (O Inteligentão)'
+                        : 'Ler (Interlúdio)',
+                  },
+                ];
                 adjustInterludeDice('mental', -1);
                 setArmInterludeMental(false);
               }
+
+              const mapaCelestePayload =
+                originId === 'mateiro' && skill.id === 'sobrevivencia'
+                  ? {
+                      canReroll: true,
+                      diceCount: rawDiceCount,
+                      sides: 20,
+                      modifier: rollMod,
+                    }
+                  : undefined;
 
               const rollSuffix =
                 suffixParts.length > 0 ? ` [${suffixParts.join(' • ')}]` : '';
@@ -1760,7 +1970,13 @@ export function OrdemSheet({
                 rawDiceCount,
                 20,
                 rollMod,
-                buildCursePricePromptForAttr(skill.attribute)
+                buildCursePricePromptForAttr(skill.attribute),
+                extraDiceForSkill || mapaCelestePayload
+                  ? {
+                      extraDice: extraDiceForSkill,
+                      mapaCelestePayload,
+                    }
+                  : undefined
               );
             }
 

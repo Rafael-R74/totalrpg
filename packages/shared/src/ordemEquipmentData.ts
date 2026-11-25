@@ -798,6 +798,7 @@ export function isOrdemCompendiumItemParanormal(entry: CompendiumEntryData): boo
     ln.includes('medidor de estabilidade') ||
     ln.includes('scanner de manifestação') ||
     ln.includes('scanner de manifestacao') ||
+    ln.includes('ingrediente paranormal') ||
     ln.includes('selo paranormal') ||
     ln.includes('amaldiçoado') ||
     ln.includes('paranormal')
@@ -1869,10 +1870,17 @@ export function computeOrdemInventoryDerivedEffects(
     }
   }
 
-  // Poderes que concedem RD (ex.: Eu Já Sabia — Teórico da Conspiração, Resistir a <Elemento>)
-  if (sheetData?.origin?.toLowerCase().includes('teórico') || sheetData?.origin === 'teorico_conspiracao') {
-    const intVal = Number(sheetData.attributes?.int ?? 0);
+  // Poderes que concedem RD (ex.: Eu Já Sabia — Teórico da Conspiração, Mutação — Experimento, Resistir a <Elemento>)
+  const normOrig = (sheetData?.origin || '').trim().toLowerCase();
+  if (normOrig.includes('teórico') || normOrig === 'teorico_conspiracao') {
+    const intVal = Number(sheetData?.attributes?.int ?? 0);
     if (intVal > 0) addRd('Mental', intVal, 'Eu Já Sabia (INT)');
+  }
+  if (
+    normOrig === 'experimento' ||
+    abilities.some((ab) => ab.id === 'orig-experimento' && ab.isActive !== false)
+  ) {
+    addRd('Geral (Dano)', 2, 'Mutação (Experimento)');
   }
   for (const ab of abilities) {
     if (ab.isActive === false) continue;
@@ -1881,6 +1889,13 @@ export function computeOrdemInventoryDerivedEffects(
     if (al.includes('resistir a morte')) addRd('Morte', 10, ab.name);
     if (al.includes('resistir a conhecimento')) addRd('Conhecimento', 10, ab.name);
     if (al.includes('resistir a energia')) addRd('Energia', 10, ab.name);
+  }
+  for (const se of sheetData?.sceneEffects || []) {
+    const desc = `${se.name || ''} ${se.description || ''}`.toLowerCase();
+    if (desc.includes('rd sangue 10')) addRd('Sangue', 10, se.name);
+    if (desc.includes('rd morte 10')) addRd('Morte', 10, se.name);
+    if (desc.includes('rd conhecimento 10')) addRd('Conhecimento', 10, se.name);
+    if (desc.includes('rd energia 10')) addRd('Energia', 10, se.name);
   }
 
   // Aplica o MAIOR bônus de item por perícia (regra de não-acúmulo p. 63)

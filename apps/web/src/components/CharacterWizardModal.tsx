@@ -20,16 +20,20 @@ import {
   calculateOrdemBaseVitals,
   createDefaultT20Sheet,
   isOrdemCompendiumItemParanormal,
+  matchesContentSourceFilter,
+  resolveEntrySourceId,
 } from '@totalrpg/shared';
 import { CharacterData, createCharacter } from '../services/api';
 import { ImageUploadField } from './ImageUploadField';
 
 import { Icon } from './ui/Icon';
 import { ElementBadge, elementChoiceClasses } from './ui/ElementBadge';
+import { ContentSourceFilterBar, SourceTagBadge } from './ui/ContentSourceFilterBar';
 interface CharacterWizardModalProps {
   lockedSystem?: SystemId;
   lockedNex?: number | null;
   lockedPatent?: string | null;
+  allowedSources?: string[] | null;
   onClose: () => void;
   onCreated: (created: CharacterData) => void;
 }
@@ -47,6 +51,7 @@ export function CharacterWizardModal({
   lockedSystem,
   lockedNex,
   lockedPatent,
+  allowedSources,
   onClose,
   onCreated,
 }: CharacterWizardModalProps) {
@@ -69,8 +74,21 @@ export function CharacterWizardModal({
     lockedPatent || (initialLockedNex === 0 ? 'Mundano' : 'Recruta')
   );
   const [originSearch, setOriginSearch] = useState('');
+  const [originSourceFilter, setOriginSourceFilter] = useState<string[]>([]);
+  const [powerSourceFilter, setPowerSourceFilter] = useState<string[]>([]);
+  const [trailSourceFilter, setTrailSourceFilter] = useState<string[]>([]);
+  const [ritualSourceFilter, setRitualSourceFilter] = useState<string[]>([]);
+  const [itemSourceFilter, setItemSourceFilter] = useState<string[]>([]);
+
   const [ordemOriginId, setOrdemOriginId] = useState<string>('academico');
   const [amnesicoSkills, setAmnesicoSkills] = useState<string[]>(['percepcao', 'vontade']);
+  const [profetizadoSkillId, setProfetizadoSkillId] = useState<string>('percepcao');
+  const [amigoAnimaisSkillId, setAmigoAnimaisSkillId] = useState<string>('percepcao');
+  const [amigoAnimaisName, setAmigoAnimaisName] = useState<string>('');
+  const [experimentoSkillId, setExperimentoSkillId] = useState<string>('atletismo');
+  const [inventorRitualId, setInventorRitualId] = useState<string>('ord-rit-amaldicoar-tecnologia');
+  const [luckyNumber, setLuckyNumber] = useState<number>(6);
+  const [bestFriendName, setBestFriendName] = useState<string>('');
   const [cultistaPowerId, setCultistaPowerId] = useState<string>('ord-para-sang-sangue-ferro');
   const [engenheiroFavItemId, setEngenheiroFavItemId] = useState<string>('ord-item-kit-pericia');
 
@@ -155,8 +173,11 @@ export function CharacterWizardModal({
     if (selectedOrdemOrigin.id === 'amnesico') {
       return amnesicoSkills.slice(0, 2);
     }
+    if (selectedOrdemOrigin.id === 'profetizado') {
+      return Array.from(new Set(['vontade', profetizadoSkillId]));
+    }
     return selectedOrdemOrigin.skills;
-  }, [selectedOrdemOrigin, amnesicoSkills]);
+  }, [selectedOrdemOrigin, amnesicoSkills, profetizadoSkillId]);
 
   // Pontos de atributo Ordem: começa tudo em 1 (soma 5) + pontos iniciais da classe + aumentos de atributo por NEX (20%, 50%, 80%, 95%)
   const bonusNexAttrPoints =
@@ -178,8 +199,18 @@ export function CharacterWizardModal({
 
   // Trilhas, Poderes de Classe / Transcender & Rituais desbloqueados pelo NEX
   const availableClassTrails = useMemo(
-    () => ORDEM_TRAILS.filter((t) => t.classId === ordemClassId),
-    [ordemClassId]
+    () =>
+      ORDEM_TRAILS.filter(
+        (t) =>
+          t.classId === ordemClassId &&
+          matchesContentSourceFilter(
+            t.sourceId,
+            trailSourceFilter,
+            allowedSources,
+            'ordem-paranormal'
+          )
+      ),
+    [ordemClassId, trailSourceFilter, allowedSources]
   );
   const effectiveTrailId = useMemo(() => {
     if (ordemNex < 10 || ordemClassId === 'mundano') return '';
@@ -264,8 +295,14 @@ export function CharacterWizardModal({
       originIdOrName: selectedOrdemOrigin.id,
       transcendedCount: transcendedCountPreview,
     });
-    const extraPv = selectedOrdemOrigin.id === 'desgarrado' ? 1 : 0;
-    const extraSan = selectedOrdemOrigin.id === 'vitima' ? 1 : 0;
+    const nexMult = ordemNex === 99 ? 20 : Math.max(1, Math.floor(ordemNex / 5));
+    const extraPv =
+      selectedOrdemOrigin.id === 'desgarrado'
+        ? nexMult
+        : selectedOrdemOrigin.id === 'mergulhador'
+        ? 5
+        : 0;
+    const extraSan = selectedOrdemOrigin.id === 'vitima' ? nexMult : 0;
     return {
       pv: base.pvMax + extraPv,
       pe: base.peMax,
@@ -275,22 +312,56 @@ export function CharacterWizardModal({
     };
   }, [ordemClassId, ordemAttrs, ordemNex, selectedOrdemOrigin, transcendedCountPreview]);
 
-  // Listas do Compêndio para o Wizard
+  // Listas do Compêndio para o Wizard (respeitando suplementos permitidos na mesa)
   const availableRituals = useMemo(
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter(
-        (e) => e.category === 'spell' && (e.metadata?.circle || 1) <= maxRitualCircle
+        (e) =>
+          e.category === 'spell' &&
+          (e.metadata?.circle || 1) <= maxRitualCircle &&
+          matchesContentSourceFilter(
+            resolveEntrySourceId(e, 'ordem-paranormal'),
+            [],
+            allowedSources,
+            'ordem-paranormal'
+          )
       ).sort(
         (a, b) =>
           (a.metadata?.circle || 1) - (b.metadata?.circle || 1) ||
           a.name.localeCompare(b.name, 'pt-BR')
       ),
-    [maxRitualCircle]
+    [maxRitualCircle, allowedSources]
+  );
+
+  const firstCircleRitualsForInventor = useMemo(
+    () =>
+      ORDEM_COMPENDIUM_ENTRIES.filter(
+        (e) =>
+          e.category === 'spell' &&
+          (e.metadata?.circle || 1) === 1 &&
+          matchesContentSourceFilter(
+            resolveEntrySourceId(e, 'ordem-paranormal'),
+            [],
+            allowedSources,
+            'ordem-paranormal'
+          )
+      ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [allowedSources]
   );
 
   const selectableClassAndParanormalPowers = useMemo(
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter((e) => {
+        if (
+          !matchesContentSourceFilter(
+            resolveEntrySourceId(e, 'ordem-paranormal'),
+            powerSourceFilter,
+            allowedSources,
+            'ordem-paranormal'
+          )
+        ) {
+          return false;
+        }
         if (e.category === 'paranormal_power') return true;
         if (e.category !== 'power') return false;
         const req = (e.metadata?.requirements || '').toLowerCase();
@@ -298,7 +369,7 @@ export function CharacterWizardModal({
           return (
             e.id.startsWith('ord-pwr-comb') ||
             req.includes('combatente') ||
-            !req.includes('especialista') && !req.includes('ocultista')
+            (!req.includes('especialista') && !req.includes('ocultista'))
           );
         }
         if (ordemClassId === 'especialista') {
@@ -309,7 +380,7 @@ export function CharacterWizardModal({
         }
         return false;
       }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    [ordemClassId]
+    [ordemClassId, powerSourceFilter, allowedSources]
   );
 
   const initialParanormalPowers = useMemo(
@@ -317,9 +388,15 @@ export function CharacterWizardModal({
       ORDEM_COMPENDIUM_ENTRIES.filter(
         (e) =>
           e.category === 'paranormal_power' &&
-          !e.metadata?.requirements?.match(/\b(Sangue|Morte|Conhecimento|Energia)\s*[12]/i)
+          !e.metadata?.requirements?.match(/\b(Sangue|Morte|Conhecimento|Energia)\s*[12]/i) &&
+          matchesContentSourceFilter(
+            resolveEntrySourceId(e, 'ordem-paranormal'),
+            powerSourceFilter,
+            allowedSources,
+            'ordem-paranormal'
+          )
       ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    []
+    [powerSourceFilter, allowedSources]
   );
 
   const engenheiroEligibleItems = useMemo(
@@ -380,11 +457,21 @@ export function CharacterWizardModal({
     () =>
       ORDEM_COMPENDIUM_ENTRIES.filter((e) => {
         if (e.category !== 'item') return false;
+        if (
+          !matchesContentSourceFilter(
+            resolveEntrySourceId(e, 'ordem-paranormal'),
+            [],
+            allowedSources,
+            'ordem-paranormal'
+          )
+        ) {
+          return false;
+        }
         if (e.metadata?.isCursedSpecial && !allowsCursedSpecial) return false;
         const effCat = getEffectiveRecruitItemCat(e);
         return effCat <= maxAllowedItemCategory;
       }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    [selectedOrdemOrigin.id, engenheiroFavItemId, allowsCursedSpecial, maxAllowedItemCategory]
+    [selectedOrdemOrigin.id, engenheiroFavItemId, allowsCursedSpecial, maxAllowedItemCategory, allowedSources]
   );
 
   const selectedCatCounts = useMemo(() => {
@@ -416,6 +503,16 @@ export function CharacterWizardModal({
   const filteredRecruitItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase();
     return recruitItems.filter((item) => {
+      if (
+        !matchesContentSourceFilter(
+          resolveEntrySourceId(item, 'ordem-paranormal'),
+          itemSourceFilter,
+          allowedSources,
+          'ordem-paranormal'
+        )
+      ) {
+        return false;
+      }
       const isPara = isOrdemCompendiumItemParanormal(item);
       if (itemRealmTab === 'normal' && isPara) return false;
       if (itemRealmTab === 'paranormal' && !isPara) return false;
@@ -427,7 +524,7 @@ export function CharacterWizardModal({
         item.description.toLowerCase().includes(q)
       );
     });
-  }, [recruitItems, itemSearch, itemCategoryFilter, itemRealmTab, selectedOrdemOrigin.id, engenheiroFavItemId]);
+  }, [recruitItems, itemSearch, itemCategoryFilter, itemRealmTab, itemSourceFilter, allowedSources, selectedOrdemOrigin.id, engenheiroFavItemId]);
 
   // --- Memos Tormenta 20 ---
   const selectedT20Race = useMemo(
@@ -598,6 +695,25 @@ export function CharacterWizardModal({
               ? versatilityTrailId || undefined
               : undefined,
           skillTrainingDegrees: upgradedSkillDegrees,
+          originMeta: {
+            ...(selectedOrdemOrigin.id === 'profetizado' ? { profetizadoSkillId } : {}),
+            ...(selectedOrdemOrigin.id === 'amigo_animais'
+              ? {
+                  amigoAnimaisSkillId,
+                  amigoAnimaisName: amigoAnimaisName.trim() || undefined,
+                }
+              : {}),
+            ...(selectedOrdemOrigin.id === 'experimento' ? { experimentoSkillId } : {}),
+            ...(selectedOrdemOrigin.id === 'inventor_paranormal'
+              ? { inventorRitualId }
+              : {}),
+            ...(selectedOrdemOrigin.id === 'jovem_mistico'
+              ? { luckyNumber, extraLuckyNumbers: [] }
+              : {}),
+            ...(selectedOrdemOrigin.id === 'colegial'
+              ? { bestFriendName: bestFriendName.trim() || undefined }
+              : {}),
+          },
         });
 
         const created = await createCharacter(name.trim(), system, {
@@ -643,18 +759,39 @@ export function CharacterWizardModal({
 
   const filteredOrigins = useMemo(() => {
     const q = originSearch.trim().toLowerCase();
-    if (!q) return ORDEM_ORIGINS;
-    return ORDEM_ORIGINS.filter(
-      (o) =>
+    return ORDEM_ORIGINS.filter((o) => {
+      if (
+        !matchesContentSourceFilter(
+          o.sourceId,
+          originSourceFilter,
+          allowedSources,
+          'ordem-paranormal'
+        )
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      return (
         o.name.toLowerCase().includes(q) ||
         o.powerName.toLowerCase().includes(q) ||
         o.description.toLowerCase().includes(q)
-    );
-  }, [originSearch]);
+      );
+    });
+  }, [originSearch, originSourceFilter, allowedSources]);
 
   const filteredRituals = useMemo(() => {
     const q = ritualSearch.trim().toLowerCase();
     return availableRituals.filter((r) => {
+      if (
+        !matchesContentSourceFilter(
+          resolveEntrySourceId(r, 'ordem-paranormal'),
+          ritualSourceFilter,
+          allowedSources,
+          'ordem-paranormal'
+        )
+      ) {
+        return false;
+      }
       const el = (r.metadata?.element || '').toLowerCase();
       if (
         ritualElementFilter !== 'ALL' &&
@@ -674,7 +811,7 @@ export function CharacterWizardModal({
         r.description.toLowerCase().includes(q)
       );
     });
-  }, [availableRituals, ritualElementFilter, ritualCircleFilter, ritualSearch]);
+  }, [availableRituals, ritualSourceFilter, allowedSources, ritualElementFilter, ritualCircleFilter, ritualSearch]);
 
   return (
     <div className="trpg-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
@@ -872,7 +1009,7 @@ export function CharacterWizardModal({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <h3 className="text-base font-semibold text-zinc-100">
-                        <Icon name="scroll" /> Escolha sua Origem (26 Origens Oficiais v1.3)
+                        <Icon name="scroll" /> Escolha sua Origem ({filteredOrigins.length} disponíveis)
                       </h3>
                       <p className="text-xs text-zinc-400">
                         O que seu personagem fazia antes de conhecer a Ordo Realitas? Concede 2 perícias treinadas e 1 poder exclusivo.
@@ -886,6 +1023,13 @@ export function CharacterWizardModal({
                       className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white"
                     />
                   </div>
+
+                  <ContentSourceFilterBar
+                    system="ordem-paranormal"
+                    allowedSources={allowedSources}
+                    selectedSources={originSourceFilter}
+                    onChange={setOriginSourceFilter}
+                  />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
                     {filteredOrigins.map((orig) => {
@@ -901,20 +1045,25 @@ export function CharacterWizardModal({
                               : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-600'
                           }`}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-black text-white text-sm">
-                              {orig.name}
-                            </span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-amber-300">
+                          <div className="flex items-center justify-between gap-1.5 mb-1">
+                            <span className="font-black text-white text-sm">{orig.name}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-amber-300 shrink-0">
                               <Icon name="sparkles" /> {orig.powerName}
                             </span>
                           </div>
+                          {orig.sourceId && orig.sourceId !== 'ordem-base' && (
+                            <div className="mb-1.5">
+                              <SourceTagBadge sourceId={orig.sourceId} system="ordem-paranormal" />
+                            </div>
+                          )}
                           <p className="text-[11px] text-zinc-400 line-clamp-2 mb-2">
                             {orig.description}
                           </p>
                           <div className="text-[10px] font-bold text-emerald-400">
                             <Icon name="target" /> Perícias:{' '}
-                            {orig.skills.length > 0
+                            {orig.id === 'profetizado'
+                              ? 'Vontade + 1 à sua escolha'
+                              : orig.skills.length > 0
                               ? orig.skills
                                   .map(
                                     (sId) =>
@@ -991,6 +1140,13 @@ export function CharacterWizardModal({
                         <p className="text-xs font-bold text-purple-300">
                           <Icon name="conhecimento" /> Traços do Outro Lado: Escolha seu 1º Poder Paranormal gratuito (você começa com metade da Sanidade normal da classe):
                         </p>
+                        <ContentSourceFilterBar
+                          system="ordem-paranormal"
+                          allowedSources={allowedSources}
+                          selectedSources={powerSourceFilter}
+                          onChange={setPowerSourceFilter}
+                          compact
+                        />
                         <select
                           value={cultistaPowerId}
                           onChange={(e) => setCultistaPowerId(e.target.value)}
@@ -1025,6 +1181,164 @@ export function CharacterWizardModal({
                             );
                           })}
                         </select>
+                      </div>
+                    )}
+
+                    {/* Se for Profetizado: Escolher 1 perícia relacionada à premonição */}
+                    {selectedOrdemOrigin.id === 'profetizado' && (
+                      <div className="pt-2 border-t border-zinc-800 space-y-2">
+                        <p className="text-xs font-bold text-amber-300">
+                          <Icon name="eye" /> Profetizado: Além de Vontade, escolha 1 perícia treinada ligada à sua premonição:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ORDEM_SKILLS_METADATA.filter((sk) => sk.id !== 'vontade').map((sk) => {
+                            const active = profetizadoSkillId === sk.id;
+                            return (
+                              <button
+                                key={sk.id}
+                                type="button"
+                                onClick={() => setProfetizadoSkillId(sk.id)}
+                                className={`px-2 py-1 rounded text-[11px] font-bold border cursor-pointer ${
+                                  active
+                                    ? 'bg-amber-600 text-white border-amber-400'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                                }`}
+                              >
+                                {sk.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Se for Amigo dos Animais: Escolher perícia +2 do companheiro + nome opcional */}
+                    {selectedOrdemOrigin.id === 'amigo_animais' && (
+                      <div className="pt-2 border-t border-zinc-800 space-y-2.5">
+                        <p className="text-xs font-bold text-emerald-300">
+                          <Icon name="heart" /> Companheiro Animal: Escolha a perícia em que seu parceiro animal fornece +2 (aprovada pelo mestre):
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={amigoAnimaisSkillId}
+                            onChange={(e) => setAmigoAnimaisSkillId(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-emerald-500/50 text-white text-xs"
+                          >
+                            {ORDEM_SKILLS_METADATA.map((sk) => (
+                              <option key={sk.id} value={sk.id}>
+                                +2 em {sk.name} ({sk.attribute.toUpperCase()})
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={amigoAnimaisName}
+                            onChange={(e) => setAmigoAnimaisName(e.target.value)}
+                            placeholder="Nome / espécie do animal (opcional)"
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Se for Experimento: Escolher perícia física (FOR, AGI ou VIG) para +2 */}
+                    {selectedOrdemOrigin.id === 'experimento' && (
+                      <div className="pt-2 border-t border-zinc-800 space-y-2">
+                        <p className="text-xs font-bold text-red-300">
+                          <Icon name="zap" /> Mutação (Experimento): Escolha 1 perícia originalmente baseada em FOR, AGI ou VIG para receber +2 (além de RD 2 e -1d20 em Diplomacia):
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ORDEM_SKILLS_METADATA.filter((sk) =>
+                            ['for', 'agi', 'vig'].includes(sk.attribute)
+                          ).map((sk) => {
+                            const active = experimentoSkillId === sk.id;
+                            return (
+                              <button
+                                key={sk.id}
+                                type="button"
+                                onClick={() => setExperimentoSkillId(sk.id)}
+                                className={`px-2.5 py-1 rounded text-[11px] font-bold border cursor-pointer ${
+                                  active
+                                    ? 'bg-red-700 text-white border-red-400'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                                }`}
+                              >
+                                {sk.name} ({sk.attribute.toUpperCase()})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Se for Inventor Paranormal: Escolher 1 ritual de 1º círculo */}
+                    {selectedOrdemOrigin.id === 'inventor_paranormal' && (
+                      <div className="pt-2 border-t border-zinc-800 space-y-2">
+                        <p className="text-xs font-bold text-purple-300">
+                          <Icon name="wrench" /> Invenção Paranormal: Escolha o ritual de 1º círculo contido no seu Invento Paranormal inicial (Cat. 0, 1 espaço):
+                        </p>
+                        <select
+                          value={inventorRitualId}
+                          onChange={(e) => setInventorRitualId(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-purple-500/50 text-white text-xs"
+                        >
+                          {firstCircleRitualsForInventor.flatMap((rit) =>
+                            rit.id === 'ord-rit-amaldicoar-arma'
+                              ? (['Sangue', 'Morte', 'Conhecimento', 'Energia'] as const).map(
+                                  (el) => (
+                                    <option key={`${rit.id}:${el}`} value={`${rit.id}:${el}`}>
+                                      Amaldiçoar Arma — {el} (1º Círculo)
+                                    </option>
+                                  )
+                                )
+                              : [
+                                  <option key={rit.id} value={rit.id}>
+                                    {rit.name} ({rit.metadata?.element || 'Paranormal'})
+                                  </option>,
+                                ]
+                          )}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Se for Jovem Místico: Escolher Número da Sorte (1 a 6) */}
+                    {selectedOrdemOrigin.id === 'jovem_mistico' && (
+                      <div className="pt-2 border-t border-zinc-800 space-y-2">
+                        <p className="text-xs font-bold text-indigo-300">
+                          <Icon name="sparkles" /> A Culpa é das Estrelas: Escolha seu Número da Sorte fixo (1 a 6):
+                        </p>
+                        <div className="flex gap-2">
+                          {[1, 2, 3, 4, 5, 6].map((num) => (
+                            <button
+                              key={num}
+                              type="button"
+                              onClick={() => setLuckyNumber(num)}
+                              className={`w-9 h-9 rounded-lg font-mono font-black text-sm border cursor-pointer ${
+                                luckyNumber === num
+                                  ? 'bg-indigo-600 text-white border-indigo-400 shadow'
+                                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600'
+                              }`}
+                            >
+                              {num}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Se for Colegial: Nome do Melhor Amigo */}
+                    {selectedOrdemOrigin.id === 'colegial' && (
+                      <div className="pt-2 border-t border-zinc-800 space-y-2">
+                        <p className="text-xs font-bold text-amber-300">
+                          <Icon name="users" /> Poder da Amizade (Colegial): Quem é o seu melhor amigo na equipe?
+                        </p>
+                        <input
+                          type="text"
+                          value={bestFriendName}
+                          onChange={(e) => setBestFriendName(e.target.value)}
+                          placeholder="Nome do personagem melhor amigo (editável na ficha)"
+                          className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-xs"
+                        />
                       </div>
                     )}
                   </div>
@@ -1408,6 +1722,13 @@ export function CharacterWizardModal({
                       ))}
                     </select>
                   </div>
+                  <ContentSourceFilterBar
+                    system="ordem-paranormal"
+                    allowedSources={allowedSources}
+                    selectedSources={trailSourceFilter}
+                    onChange={setTrailSourceFilter}
+                    compact
+                  />
                   {selectedTrailObj && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {selectedTrailObj.powers
@@ -1537,6 +1858,14 @@ export function CharacterWizardModal({
                     />
                   </div>
 
+                  <ContentSourceFilterBar
+                    system="ordem-paranormal"
+                    allowedSources={allowedSources}
+                    selectedSources={powerSourceFilter}
+                    onChange={setPowerSourceFilter}
+                    compact
+                  />
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
                     {selectableClassAndParanormalPowers
                       .filter((pw) => {
@@ -1624,6 +1953,14 @@ export function CharacterWizardModal({
                       className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-white"
                     />
                   </div>
+
+                  <ContentSourceFilterBar
+                    system="ordem-paranormal"
+                    allowedSources={allowedSources}
+                    selectedSources={ritualSourceFilter}
+                    onChange={setRitualSourceFilter}
+                    compact
+                  />
 
                   {/* Barra Visual dos Rituais Selecionados */}
                   <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-700/60 flex flex-wrap items-center gap-2">
@@ -2098,6 +2435,12 @@ export function CharacterWizardModal({
                 </div>
 
                 {/* Separação em 2 Abas: Equipamentos Normais vs Paranormais */}
+                <ContentSourceFilterBar
+                  system="ordem-paranormal"
+                  allowedSources={allowedSources}
+                  selectedSources={itemSourceFilter}
+                  onChange={setItemSourceFilter}
+                />
                 <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800 gap-1">
                   <button
                     type="button"
@@ -2198,8 +2541,12 @@ export function CharacterWizardModal({
                       >
                         <div>
                           <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="font-bold text-white text-xs">
+                            <span className="font-bold text-white text-xs flex items-center gap-1.5 flex-wrap">
                               {item.name}
+                              <SourceTagBadge
+                                sourceId={resolveEntrySourceId(item, 'ordem-paranormal')}
+                                system="ordem-paranormal"
+                              />
                             </span>
                             <span
                               className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 ${

@@ -2,6 +2,7 @@ import {
   CharacterAbility,
   CompendiumEntryData,
   OrdemAttributes,
+  OrdemOriginMeta,
   OrdemSheetData,
   PreparedAttack,
   RPGItem,
@@ -19,6 +20,7 @@ import {
   ORDEM_ORIGINS,
   ORDEM_PATENTS,
   ORDEM_TRAILS,
+  OrdemOriginDefinition,
   T20_CLASSES,
   T20_ORIGINS,
   T20_RACES,
@@ -901,6 +903,53 @@ export function parseOrdemRitualForms(
   return forms;
 }
 
+export function buildOrdemOriginModifiers(
+  origin: OrdemOriginDefinition,
+  originMeta?: OrdemOriginMeta
+): RuleModifier[] {
+  const baseMods = [...(origin.modifiers || [])];
+
+  if (origin.id === 'amigo_animais') {
+    if (!originMeta?.amigoAnimaisDead && originMeta?.amigoAnimaisSkillId) {
+      baseMods.push({
+        id: 'orig-choice-amigo-animais',
+        targetType: 'skill_bonus',
+        targetKey: originMeta.amigoAnimaisSkillId,
+        value: 2,
+      });
+    }
+    return baseMods;
+  }
+
+  if (origin.id === 'experimento') {
+    const chosenPhys = originMeta?.experimentoSkillId || 'atletismo';
+    baseMods.push({
+      id: 'orig-choice-experimento',
+      targetType: 'skill_bonus',
+      targetKey: chosenPhys,
+      value: 2,
+    });
+    return baseMods;
+  }
+
+  if (origin.id === 'colegial') {
+    if (originMeta?.bestFriendDead) {
+      return [
+        {
+          id: 'orig-colegial-grief',
+          targetType: 'vital_max',
+          targetKey: 'pe',
+          value: -1,
+          scaleWithLevel: true,
+        },
+      ];
+    }
+    return baseMods;
+  }
+
+  return baseMods;
+}
+
 export interface BuildOrdemCharacterInput {
   originId: string;
   characterClass: 'combatente' | 'especialista' | 'ocultista' | 'mundano';
@@ -920,6 +969,7 @@ export interface BuildOrdemCharacterInput {
   chosenClassPowerIds?: string[];
   versatilityTrailId?: string;
   skillTrainingDegrees?: Record<string, 5 | 10 | 15>;
+  originMeta?: OrdemOriginMeta;
 }
 
 export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
@@ -976,7 +1026,8 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       cost: origin.powerCost,
       description: origin.powerDescription,
       isActive: isOriginPassive,
-      modifiers: origin.modifiers || [],
+      sourceId: origin.sourceId || 'ordem-base',
+      modifiers: buildOrdemOriginModifiers(origin, input.originMeta),
     },
     ...cls.initialAbilities.map((ab, idx) => ({
       id: `cls-${cls.id}-${idx}`,
@@ -985,6 +1036,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       cost: ab.cost,
       description: ab.description,
       isActive: ab.cost === 0,
+      sourceId: cls.sourceId || 'ordem-base',
       modifiers: ab.modifiers || [],
     })),
   ];
@@ -1003,6 +1055,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
         description: pEntry.description,
         element: pEntry.metadata?.element,
         isActive: pEntry.cost === 0,
+        sourceId: pEntry.metadata?.sourceId || 'ordem-base',
         modifiers: pEntry.modifiers || [],
       });
     }
@@ -1010,6 +1063,41 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
 
   const extraInventoryFromGrants: RPGItem[] = [];
   const extraAttacksFromGrants: PreparedAttack[] = [];
+
+  // Inventor Paranormal — cria Invento Paranormal (Cat. 0, 1 espaço) com o ritual de 1º círculo escolhido
+  if (origin.grantsParanormalInvention) {
+    const chosenRitId = input.originMeta?.inventorRitualId || 'ord-rit-amaldicoar-tecnologia';
+    const [rBaseId, rChosenEl] = chosenRitId.split(':');
+    const rEntry =
+      ORDEM_COMPENDIUM_ENTRIES.find((e) => e.id === rBaseId && e.category === 'spell') ||
+      ORDEM_COMPENDIUM_ENTRIES.find((e) => e.category === 'spell' && e.metadata?.circle === 1);
+    if (rEntry) {
+      const ritLabel = rChosenEl
+        ? `${rEntry.name.replace(/\s*\(1º Círculo\)/i, '')} — ${rChosenEl}`
+        : rEntry.name.replace(/\s*\(1º Círculo\)/i, '');
+      extraInventoryFromGrants.push({
+        id: 'item-invento-paranormal',
+        name: `Invento Paranormal (${ritLabel})`,
+        slots: 1,
+        baseSlots: 1,
+        quantity: 1,
+        category: 0,
+        baseCategory: 0,
+        isEquipped: true,
+        isParanormal: true,
+        isParanormalInvention: true,
+        jammed: false,
+        dailyUses: 0,
+        sourceId: 'sobrevivendo-ao-horror',
+        storedRitualName: ritLabel,
+        storedRitualCircle: 1,
+        storedRitualCost: rEntry.cost || 1,
+        storedRitualElement: rChosenEl || rEntry.metadata?.element,
+        storedRitualDescription: rEntry.description,
+        description: `Invento Paranormal (Cat. 0, 1 espaço): ativa o efeito básico de ${ritLabel} com teste de Profissão (engenheiro) DT 15 (+5 por ativação na missão) sem custo de PE. Se falhar, enguiça até manutenção no interlúdio.`,
+      });
+    }
+  }
 
   function applyBuildPowerAutoGrants(entry: CompendiumEntryData) {
     const lowerName = entry.name.toLowerCase();
@@ -1265,6 +1353,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
       isParanormal: isPara,
       isCursedSpecial: isCursed,
       itemKind,
+      sourceId: itemEntry.metadata?.sourceId || 'ordem-base',
       remainingCharges: itemEntry.metadata?.uses,
       accessoryConfig:
         isUtensilio || isVestimenta
@@ -1330,6 +1419,7 @@ export function buildOrdemCharacter(input: BuildOrdemCharacterInput): {
     peritoSkills: input.peritoSkillIds || [],
     proficiencies: finalProficiencies,
     transcendedCount,
+    originMeta: input.originMeta ? { ...input.originMeta } : undefined,
     displacement: 9,
     attributes: { ...input.attributes },
     skills,
