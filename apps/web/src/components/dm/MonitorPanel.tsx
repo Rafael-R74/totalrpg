@@ -49,7 +49,7 @@ export function MonitorDirectorPanel({
               <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" /> Projetando na TV agora
             </span>
             <h4 className="text-lg font-semibold text-zinc-100">
-              {director.activeProjection.title}
+              {director.activeProjection.title || 'Imagem sem título'}
             </h4>
           </div>
           <button
@@ -211,7 +211,8 @@ export function MonitorDirectorPanel({
                 activeProjection: {
                   type: 'handout',
                   id: 'custom-handout',
-                  title: director.handoutTitle || 'Evidência / Pista',
+                  // Sem título: o 2º monitor mostra só a imagem, sem moldura nem textos.
+                  title: (director.handoutTitle || '').trim(),
                   description: director.handoutText,
                   imageUrl: director.handoutImageUrl,
                 },

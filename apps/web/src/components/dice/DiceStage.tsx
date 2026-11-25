@@ -20,7 +20,7 @@ interface DiceStageProps {
   roll: DiceRollResult;
   /** Chamado uma vez quando o total final é revelado */
   onSettled?: () => void;
-  size?: 'modal' | 'tv' | 'hero';
+  size?: 'modal' | 'tv' | 'hero' | 'tile';
   /** Força o modo 2D (ex.: telas com muitos lançamentos simultâneos) */
   force2D?: boolean;
   className?: string;
@@ -155,8 +155,21 @@ export function DiceStage({ roll, onSettled, size = 'modal', force2D = false, cl
   const done = phase === 'done';
 
   const heightClass =
-    size === 'tv' ? 'h-[46vh] min-h-[280px]' : size === 'hero' ? 'h-[300px] sm:h-[340px]' : 'h-[210px] sm:h-[250px]';
-  const totalClass = size === 'tv' ? 'text-[7rem]' : size === 'hero' ? 'text-7xl' : 'text-6xl sm:text-7xl';
+    size === 'tv'
+      ? 'h-[46vh] min-h-[280px]'
+      : size === 'hero'
+        ? 'h-[300px] sm:h-[340px]'
+        : size === 'tile'
+          ? 'h-[9em] min-h-[110px]'
+          : 'h-[210px] sm:h-[250px]';
+  const totalClass =
+    size === 'tv'
+      ? 'text-[7rem]'
+      : size === 'hero'
+        ? 'text-7xl'
+        : size === 'tile'
+          ? 'text-[2.8em]'
+          : 'text-6xl sm:text-7xl';
 
   const tone = model.critical ? 'text-yellow-300' : model.fumble ? 'text-red-400' : 'text-zinc-100';
   const keptValue = model.keptIndex !== null ? model.dice[model.keptIndex].value : null;
@@ -171,7 +184,7 @@ export function DiceStage({ roll, onSettled, size = 'modal', force2D = false, cl
         }}
       >
         {use3D ? (
-          <Suspense fallback={<StaticDice model={model} phase="rolling" />}>
+          <Suspense fallback={<StaticDice model={model} phase="rolling" small={size === 'tile'} />}>
             <DiceScene
               model={model}
               seed={seed}
@@ -179,12 +192,12 @@ export function DiceStage({ roll, onSettled, size = 'modal', force2D = false, cl
               impacts={impacts}
               colors={colors}
               timing={TIMING}
-              compact={size === 'modal'}
+              compact={size === 'modal' || size === 'tile'}
               onReady={() => setSceneReady(true)}
             />
           </Suspense>
         ) : (
-          <StaticDice model={model} phase={phase} animate={!reduced} />
+          <StaticDice model={model} phase={phase} animate={!reduced} small={size === 'tile'} />
         )}
 
         {/* Modificadores voando contra o dado mantido */}
@@ -254,13 +267,24 @@ export function DiceStage({ roll, onSettled, size = 'modal', force2D = false, cl
 }
 
 /** Bandeja 2D: mesma informação, sem WebGL. */
-function StaticDice({ model, phase, animate = false }: { model: StageModel; phase: ScenePhase; animate?: boolean }) {
+function StaticDice({
+  model,
+  phase,
+  animate = false,
+  small = false,
+}: {
+  model: StageModel;
+  phase: ScenePhase;
+  animate?: boolean;
+  /** Cards pequenos (iniciativa no 2º monitor): dados menores, numa linha só quando possível */
+  small?: boolean;
+}) {
   const isPool = model.mode === 'pool' && model.dice.length > 1;
   const selected = phase !== 'rolling';
   const many = model.dice.length > 8;
   return (
-    <div className="absolute inset-0 flex items-center justify-center px-4">
-      <div className={`flex flex-wrap items-center justify-center ${many ? 'gap-1.5 max-w-[34rem]' : 'gap-3'}`}>
+    <div className={`absolute inset-0 flex items-center justify-center ${small ? 'px-1' : 'px-4'}`}>
+      <div className={`flex flex-wrap items-center justify-center ${many || small ? 'gap-1.5 max-w-[34rem]' : 'gap-3'}`}>
         {model.dice.map((d, i) => {
           const kept = isPool ? d.kept : true;
           const dim = isPool && selected && !kept;
@@ -277,7 +301,7 @@ function StaticDice({ model, phase, animate = false }: { model: StageModel; phas
               <DieFace2D
                 sides={d.sides}
                 value={d.value}
-                size={many ? 40 : isPool && kept && selected ? 76 : 60}
+                size={small ? (isPool && kept && selected ? 44 : 36) : many ? 40 : isPool && kept && selected ? 76 : 60}
                 tone={isPool && kept && selected ? (model.fumble ? 'danger' : 'gold') : 'base'}
               />
             </span>

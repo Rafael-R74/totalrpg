@@ -43,6 +43,7 @@ export interface MonitorDemo {
   merchants: CampaignMerchant[];
   rolls: DiceRollResult[];
   initiative?: Record<string, { roll: DiceRollResult; isSpinning: boolean }>;
+  spotlights?: DiceRollResult[];
   batch?: {
     batchId: string;
     characterName: string;
@@ -72,8 +73,9 @@ const DEFAULT_DIRECTOR: MonitorDirectorState = {
 /** Modo palco: tela grande e deitada, onde tudo deve caber sem rolar a página. */
 const STAGE_QUERY = '(min-width: 1024px) and (min-height: 560px) and (orientation: landscape)';
 
-/** 0 = maior … 4 = mais compacto; 2 é o tamanho natural. */
-type Density = 0 | 1 | 2 | 3 | 4;
+/** 0 = maior … 6 = mais compacto; 2 é o tamanho natural. */
+type Density = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+const MAX_DENSITY: Density = 6;
 
 function getNarrativeHealthStatus(current?: number, max?: number): {
   label: string;
@@ -99,20 +101,23 @@ function vitalColor(id: string, fallback?: string) {
   return fallback || 'var(--trpg-muted)';
 }
 
-function useStageMode() {
-  const [stage, setStage] = useState(() => window.matchMedia(STAGE_QUERY).matches);
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
-    const mq = window.matchMedia(STAGE_QUERY);
-    const onChange = () => setStage(mq.matches);
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return stage;
+  }, [query]);
+  return matches;
 }
 
 /**
- * Escala da grade no modo palco: começa em `start` (maior) e desce um degrau por vez
- * até caber na altura disponível. Fora do palco fica no tamanho natural e a página rola.
+ * Escala da grade no modo palco: experimenta do maior (`start`) ao mais compacto e fica
+ * com o primeiro que cabe na altura disponível. Mede direto no DOM (sem renderizar cada
+ * degrau) e mede de novo sempre que a grade ou os cards mudam de tamanho — fontes que
+ * chegam depois, PV que mudam, personagens que entram. Fora do palco a página rola.
  */
 function useFitDensity(
   ref: RefObject<HTMLElement>,
@@ -122,13 +127,42 @@ function useFitDensity(
 ): Density {
   const [density, setDensity] = useState<Density>(start);
   useLayoutEffect(() => {
-    setDensity(start);
-  }, [resetKey, enabled, start]);
-  useLayoutEffect(() => {
     const el = ref.current;
-    if (!enabled || !el || density >= 4) return;
-    if (el.scrollHeight > el.clientHeight + 2) setDensity((d) => (d < 4 ? ((d + 1) as Density) : d));
-  });
+    if (!enabled || !el) return;
+    let timer = 0;
+    const measure = () => {
+      const before = el.dataset.density;
+      let chosen: Density = MAX_DENSITY;
+      for (let d = start; d <= MAX_DENSITY; d++) {
+        el.dataset.density = String(d);
+        if (el.scrollHeight <= el.clientHeight + 1) {
+          chosen = d as Density;
+          break;
+        }
+      }
+      el.dataset.density = String(chosen);
+      if (before !== String(chosen)) setDensity(chosen);
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(measure, 40);
+    };
+    measure();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    Array.from(el.children).forEach((c) => ro.observe(c));
+    const mo = new MutationObserver(() => {
+      Array.from(el.children).forEach((c) => ro.observe(c));
+      schedule();
+    });
+    mo.observe(el, { childList: true });
+    document.fonts?.ready.then(schedule).catch(() => {});
+    return () => {
+      window.clearTimeout(timer);
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [resetKey, enabled, start]);
   return enabled ? density : 2;
 }
 
@@ -166,7 +200,8 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
   const [allPostIts, setAllPostIts] = useState<StickyPostIt[]>([]);
 
   const [publicRolls, setPublicRolls] = useState<DiceRollResult[]>([]);
-  const [spotlightRoll, setSpotlightRoll] = useState<DiceRollResult | null>(null);
+  // Rolagens em destaque: várias ao mesmo tempo ficam lado a lado, cada uma some no seu tempo.
+  const [spotlightRolls, setSpotlightRolls] = useState<DiceRollResult[]>([]);
 
   const [isInitiativeModalOpen, setIsInitiativeModalOpen] = useState(false);
   const [initiativeEntries, setInitiativeEntries] = useState<
@@ -193,7 +228,8 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
   const railTrackRef = useRef<HTMLDivElement | null>(null);
   const railPositionedRef = useRef(false);
   const [viewportTick, setViewportTick] = useState(0);
-  const stageMode = useStageMode();
+  const stageMode = useMediaQuery(STAGE_QUERY);
+  const isNarrow = useMediaQuery('(max-width: 639px)');
 
   async function fetchCharactersOnly() {
     try {
@@ -238,6 +274,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
           setIsInitiativeModalOpen(true);
         }
         if (demo.batch) setBatchSpotlight(demo.batch);
+        if (demo.spotlights) setSpotlightRolls(demo.spotlights);
       });
       return;
     }
@@ -357,7 +394,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
     );
 
     monitorSocket.on('combat:initiativeRequested', () => {
-      setSpotlightRoll(null);
+      setSpotlightRolls([]);
       setBatchSpotlight(null);
       setInitiativeEntries({});
       setAllRevealedCountdown(false);
@@ -378,20 +415,13 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
           [charId]: { roll: newRoll, isSpinning: true },
         }));
 
-        setTimeout(() => {
-          setInitiativeEntries((prev) => {
-            if (!prev[charId]) return prev;
-            return {
-              ...prev,
-              [charId]: { ...prev[charId], isSpinning: false },
-            };
-          });
-        }, 800);
+        // Os dados do card avisam quando pararam (onSettled); isto é só uma rede de segurança.
+        setTimeout(() => settleInitiative(charId, newRoll.id), 7000);
         return;
       }
 
       if (newRoll.batchId) {
-        setSpotlightRoll(null);
+        setSpotlightRolls([]);
         setSpinningBatchRollIds((prev) => ({ ...prev, [newRoll.id]: true }));
         setTimeout(() => {
           setSpinningBatchRollIds((prev) => {
@@ -441,7 +471,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       }
 
       setBatchSpotlight(null);
-      setSpotlightRoll(newRoll);
+      showSpotlight(newRoll);
     });
 
     return () => {
@@ -518,13 +548,38 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
   }, [isInitiativeModalOpen, initiativeEntries, campaign]);
 
   // O holofote some sozinho alguns segundos depois que o total aparece (ver onSettled do DiceStage).
-  const spotlightTimer = useRef<number>();
-  useEffect(() => () => window.clearTimeout(spotlightTimer.current), []);
+  const spotlightTimers = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    const timers = spotlightTimers.current;
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, []);
+  /** Até 4 rolagens em destaque; a mais antiga sai se chegar uma quinta. */
+  function showSpotlight(roll: DiceRollResult) {
+    setSpotlightRolls((prev) => [...prev.filter((r) => r.id !== roll.id), roll].slice(-4));
+  }
+  function removeSpotlight(rollId: string) {
+    window.clearTimeout(spotlightTimers.current.get(rollId));
+    spotlightTimers.current.delete(rollId);
+    setSpotlightRolls((prev) => prev.filter((r) => r.id !== rollId));
+  }
+  function clearSpotlights() {
+    spotlightTimers.current.forEach((t) => window.clearTimeout(t));
+    spotlightTimers.current.clear();
+    setSpotlightRolls([]);
+  }
   function handleSpotlightSettled(rollId: string) {
-    window.clearTimeout(spotlightTimer.current);
-    spotlightTimer.current = window.setTimeout(() => {
-      setSpotlightRoll((cur) => (cur && cur.id === rollId ? null : cur));
-    }, 3800);
+    window.clearTimeout(spotlightTimers.current.get(rollId));
+    spotlightTimers.current.set(
+      rollId,
+      window.setTimeout(() => removeSpotlight(rollId), 3800)
+    );
+  }
+  function settleInitiative(charId: string, rollId: string) {
+    setInitiativeEntries((prev) => {
+      const entry = prev[charId];
+      if (!entry || entry.roll.id !== rollId || !entry.isSpinning) return prev;
+      return { ...prev, [charId]: { ...entry, isSpinning: false } };
+    });
   }
 
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
@@ -577,46 +632,61 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
           characters={campaign.characters}
           entries={initiativeEntries}
           allRevealed={allRevealedCountdown}
+          onSettled={settleInitiative}
           onClose={() => setIsInitiativeModalOpen(false)}
         />
       )}
 
-      {director.activeProjection && !isInitiativeModalOpen && (
-        <div className="mon-overlay is-projection">
-          <div className="mon-sheet is-narrow" role="dialog" aria-label={director.activeProjection.title}>
-            <div className="mon-sheet-head">
-              <h2>{director.activeProjection.title}</h2>
+      {director.activeProjection && !isInitiativeModalOpen && (() => {
+        const proj = director.activeProjection;
+        // Imagem sem título: projeta a imagem pura, sem moldura nem textos.
+        if (!proj.title?.trim() && proj.imageUrl) {
+          return (
+            <div className="mon-overlay is-projection is-bare">
+              <img src={proj.imageUrl} alt="" className="mon-projection-bare" />
             </div>
-            {director.activeProjection.imageUrl && (
-              <img src={director.activeProjection.imageUrl} alt="" className="mon-projection-img" />
-            )}
-            {director.activeProjection.description && (
-              <p className="mon-projection-text">{director.activeProjection.description}</p>
-            )}
+          );
+        }
+        return (
+          <div className="mon-overlay is-projection">
+            <div className="mon-sheet is-narrow" role="dialog" aria-label={proj.title || 'Projeção'}>
+              {proj.title?.trim() && (
+                <div className="mon-sheet-head">
+                  <p>{proj.subtitle || 'Em exibição pelo mestre'}</p>
+                  <h2>{proj.title}</h2>
+                </div>
+              )}
+              {proj.imageUrl && <img src={proj.imageUrl} alt="" className="mon-projection-img" />}
+              {proj.description && <p className="mon-projection-text">{proj.description}</p>}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {spotlightRoll && !isInitiativeModalOpen && (
-        <div className="mon-overlay" onClick={() => setSpotlightRoll(null)}>
-          <div
-            className="mon-sheet is-narrow"
-            role="dialog"
-            aria-label={`${spotlightRoll.characterName}: ${stripEmoji(spotlightRoll.label)}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mon-sheet-head">
-              <p>{spotlightRoll.characterName}</p>
-              <h2>{stripEmoji(spotlightRoll.label)}</h2>
-              <p className="trpg-num">{spotlightRoll.formula}</p>
-            </div>
-            <DiceStage
-              key={spotlightRoll.id}
-              roll={spotlightRoll}
-              size="tv"
-              className="w-full"
-              onSettled={() => handleSpotlightSettled(spotlightRoll.id)}
-            />
+      {spotlightRolls.length > 0 && !isInitiativeModalOpen && (
+        <div className="mon-overlay" onClick={clearSpotlights}>
+          <div className="mon-spotlights" data-count={spotlightRolls.length}>
+            {spotlightRolls.map((roll) => (
+              <div
+                key={roll.id}
+                className="mon-sheet is-narrow is-spotlight"
+                role="dialog"
+                aria-label={`${roll.characterName}: ${stripEmoji(roll.label)}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mon-sheet-head">
+                  <p>{roll.characterName}</p>
+                  <h2>{stripEmoji(roll.label)}</h2>
+                  <p className="trpg-num">{roll.formula}</p>
+                </div>
+                <DiceStage
+                  roll={roll}
+                  size={isNarrow && spotlightRolls.length > 1 ? 'modal' : 'tv'}
+                  className="w-full"
+                  onSettled={() => handleSpotlightSettled(roll.id)}
+                />
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -822,7 +892,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
         ) : (
           <div className="mon-ticker-list mon-scroll-x">
             {publicRolls.map((roll) => (
-              <button key={roll.id} type="button" onClick={() => setSpotlightRoll(roll)} className="mon-roll">
+              <button key={roll.id} type="button" onClick={() => showSpotlight(roll)} className="mon-roll">
                 <span className="mon-roll-text">
                   <b>{roll.characterName}</b>
                   <span>{stripEmoji(roll.label)}</span>
@@ -935,13 +1005,17 @@ function InitiativeOverlay({
   characters,
   entries,
   allRevealed,
+  onSettled,
   onClose,
 }: {
   characters: DMScreenCharacter[];
   entries: Record<string, { roll: DiceRollResult; isSpinning: boolean }>;
   allRevealed: boolean;
+  onSettled: (charId: string, rollId: string) => void;
   onClose: () => void;
 }) {
+  // Muitos jogadores: dados 2D para não abrir dezenas de cenas 3D ao mesmo tempo.
+  const force2D = characters.length > 6;
   return (
     <div className="mon-overlay" onClick={onClose}>
       <div className="mon-sheet" role="dialog" aria-label="Iniciativa" onClick={(e) => e.stopPropagation()}>
@@ -951,7 +1025,7 @@ function InitiativeOverlay({
           </p>
           <h2>{allRevealed ? 'Ordem definida. Preparando os turnos.' : 'Rolem a iniciativa'}</h2>
         </div>
-        <div className="mon-tiles">
+        <div className="mon-tiles is-initiative">
           {characters.map((char) => {
             const entry = entries[char.id];
             const state = !entry ? 'is-waiting' : entry.isSpinning ? 'is-rolling' : 'is-done';
@@ -966,17 +1040,16 @@ function InitiativeOverlay({
                   <span className="mon-tile-wait">
                     <Icon name="hourglass" /> Aguardando
                   </span>
-                ) : entry.isSpinning ? (
-                  <span className="mon-tile-wait is-rolling">
-                    <Icon name="d20" /> Rolando
-                  </span>
                 ) : (
-                  <>
-                    <span className="mon-tile-total">{entry.roll.total}</span>
-                    <span className="mon-tile-sub">
-                      {entry.roll.formula}: {entry.roll.rolls.join(', ')}
-                    </span>
-                  </>
+                  // Mesma animação de dados dos testes, em tamanho de card.
+                  <DiceStage
+                    key={entry.roll.id}
+                    roll={entry.roll}
+                    size="tile"
+                    force2D={force2D}
+                    className="w-full"
+                    onSettled={() => onSettled(char.id, entry.roll.id)}
+                  />
                 )}
               </div>
             );

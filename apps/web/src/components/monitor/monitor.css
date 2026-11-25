@@ -259,6 +259,16 @@
   --mon-min: 15.5em;
   gap: 0.6em;
 }
+.mon-grid[data-density='5'] {
+  font-size: 0.64em;
+  --mon-min: 14em;
+  gap: 0.5em;
+}
+.mon-grid[data-density='6'] {
+  font-size: 0.56em;
+  --mon-min: 13em;
+  gap: 0.45em;
+}
 .mon-grid.is-threats,
 .mon-grid.is-shop {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--mon-min)), 1fr));
@@ -273,7 +283,9 @@
 .mon-grid.is-threats[data-density='3'] {
   --mon-min: 12.5em;
 }
-.mon-grid.is-threats[data-density='4'] {
+.mon-grid.is-threats[data-density='4'],
+.mon-grid.is-threats[data-density='5'],
+.mon-grid.is-threats[data-density='6'] {
   --mon-min: 11em;
 }
 
@@ -435,11 +447,15 @@
   background: var(--trpg-pv);
   color: #fff;
 }
-.mon-grid[data-density='4'] .mon-portrait {
+.mon-grid[data-density='4'] .mon-portrait,
+.mon-grid[data-density='5'] .mon-portrait,
+.mon-grid[data-density='6'] .mon-portrait {
   width: 3.4em;
   height: 3.4em;
 }
-.mon-grid[data-density='4'] .mon-card {
+.mon-grid[data-density='4'] .mon-card,
+.mon-grid[data-density='5'] .mon-card,
+.mon-grid[data-density='6'] .mon-card {
   padding: 0.65em;
   gap: 0.55em;
 }
@@ -781,6 +797,18 @@
   line-height: 1;
   font-variant-numeric: tabular-nums lining-nums;
 }
+.mon-overlay.is-bare {
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+.mon-projection-bare {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 .mon-projection-img {
   max-height: 68dvh;
   max-width: 100%;
@@ -874,5 +902,64 @@
   }
   .mon-tile-wait.is-rolling svg {
     animation: none;
+  }
+}
+
+/* Iniciativa: cards um pouco mais largos para caber o dado */
+.mon-tiles.is-initiative {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5em), 1fr));
+}
+.mon-tiles.is-initiative .mon-tile {
+  max-width: 17em;
+  gap: 0.4em;
+}
+
+/* Várias rolagens em destaque: lado a lado em tamanhos iguais */
+.mon-spotlights {
+  width: 100%;
+  margin: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 46em);
+  justify-content: center;
+  align-items: stretch;
+  gap: clamp(0.6em, 1.5vw, 1.2em);
+}
+.mon-spotlights .mon-sheet {
+  max-width: none;
+  margin: 0;
+}
+.mon-sheet.is-spotlight {
+  justify-content: center;
+}
+.mon-sheet.is-spotlight .mon-sheet-head h2 {
+  overflow-wrap: anywhere;
+}
+@media (min-width: 640px) {
+  .mon-spotlights[data-count='2'],
+  .mon-spotlights[data-count='4'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 92em;
+  }
+  .mon-spotlights[data-count='3'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .mon-spotlights[data-count='3'] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: 120em;
+  }
+  .mon-spotlights[data-count='4'] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: 130em;
+  }
+  .mon-spotlights:not([data-count='1']) .mon-sheet-head h2 {
+    font-size: clamp(1.3em, 2.2vw, 2.2em);
+  }
+}
+@media (min-width: 1024px) and (max-height: 900px) {
+  .mon-spotlights:not([data-count='1']) .mon-sheet {
+    padding: 1em;
+    gap: 0.6em;
   }
 }
