@@ -6,6 +6,8 @@ interface ImageUploadFieldProps {
   value?: string;
   onChange: (newUrl: string) => void;
   compact?: boolean;
+  /** Imagens já usadas: escolher uma não abre o seletor de arquivos do sistema */
+  recentImages?: string[];
 }
 
 export function ImageUploadField({
@@ -13,14 +15,29 @@ export function ImageUploadField({
   value,
   onChange,
   compact = false,
+  recentImages,
 }: ImageUploadFieldProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    await uploadFile(file);
+  }
 
+  /** Colar (Ctrl+V) ou arrastar uma imagem também envia, sem abrir o seletor de arquivos. */
+  function pickImageFile(list: DataTransferItemList | FileList | null | undefined): File | null {
+    if (!list) return null;
+    for (const entry of Array.from(list as ArrayLike<DataTransferItem | File>)) {
+      const file = entry instanceof File ? entry : entry.kind === 'file' ? entry.getAsFile() : null;
+      if (file && file.type.startsWith('image/')) return file;
+    }
+    return null;
+  }
+
+  async function uploadFile(file: File) {
     setIsUploading(true);
     try {
       const uploadedUrl = await uploadImageFile(file);
@@ -35,8 +52,37 @@ export function ImageUploadField({
     }
   }
 
+  const otherRecents = (recentImages || []).filter((u) => u && u !== value);
+
   return (
-    <div className="flex flex-col gap-1">
+    <div
+      className={`flex flex-col gap-1 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
+        isDragging ? 'ring-2 ring-zinc-300 bg-zinc-900/60' : ''
+      }`}
+      tabIndex={0}
+      onPaste={(e) => {
+        const file = pickImageFile(e.clipboardData?.items);
+        if (file) {
+          e.preventDefault();
+          uploadFile(file);
+        }
+      }}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types).includes('Files')) {
+          e.preventDefault();
+          setIsDragging(true);
+        }
+      }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={(e) => {
+        setIsDragging(false);
+        const file = pickImageFile(e.dataTransfer.files);
+        if (file) {
+          e.preventDefault();
+          uploadFile(file);
+        }
+      }}
+    >
       {label && (
         <label className="block text-[10px] uppercase text-zinc-400 font-bold">
           {label}
@@ -84,6 +130,27 @@ export function ImageUploadField({
           </button>
         )}
       </div>
+      <p className="text-[11px] text-zinc-500">
+        {isDragging ? 'Solte a imagem para enviar.' : 'Também dá para colar (Ctrl+V) com o campo selecionado ou arrastar uma imagem até aqui.'}
+      </p>
+      {otherRecents.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-zinc-400">Usadas nesta mesa</span>
+          <div className="flex flex-wrap gap-1.5">
+            {otherRecents.map((url) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => onChange(url)}
+                className="w-11 h-11 rounded-md overflow-hidden border border-zinc-700 hover:border-zinc-300 transition"
+                title="Usar esta imagem"
+              >
+                <img src={url} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

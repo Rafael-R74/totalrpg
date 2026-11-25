@@ -171,13 +171,19 @@ export function DiceStage({ roll, onSettled, size = 'modal', force2D = false, cl
           ? 'text-[2.8em]'
           : 'text-6xl sm:text-7xl';
 
-  const tone = model.critical ? 'text-yellow-300' : model.fumble ? 'text-red-400' : 'text-zinc-100';
+  const tone =
+    model.critical || model.natural20 ? 'text-yellow-300' : model.fumble ? 'text-red-400' : 'text-zinc-100';
+  // 20 natural / 1 natural: efeito curto assim que o dado que decide aparece
+  const natFx = model.natural20 ? 'nat20' : model.fumble ? 'nat1' : null;
+  const showNatFx = Boolean(natFx) && phase !== 'rolling' && !reduced;
   const keptValue = model.keptIndex !== null ? model.dice[model.keptIndex].value : null;
 
   return (
     <div className={`relative ${className}`}>
       <div
-        className={`relative ${heightClass} overflow-hidden rounded-xl`}
+        className={`relative ${heightClass} overflow-hidden rounded-xl ${
+          showNatFx && natFx === 'nat1' ? 'trpg-natfx-shake' : ''
+        }`}
         style={{
           background:
             'radial-gradient(ellipse 60% 70% at 50% 45%, color-mix(in oklab, var(--trpg-elevated) 70%, transparent), transparent 75%)',
@@ -212,6 +218,20 @@ export function DiceStage({ roll, onSettled, size = 'modal', force2D = false, cl
               {signed(mod.value)}
             </span>
           ) : null
+        )}
+        {showNatFx && natFx && (
+          <div key={`${roll.id}-natfx`} className={`trpg-natfx trpg-natfx-${natFx}`} aria-hidden="true">
+            <span className="trpg-natfx-glow" />
+            {natFx === 'nat20' ? (
+              <span className="trpg-natfx-rays" />
+            ) : (
+              <svg className="trpg-natfx-crack" viewBox="0 0 200 100" preserveAspectRatio="none">
+                <path d="M-5 38 L38 46 L52 30 L78 58 L101 41 L122 66 L141 47 L166 61 L205 52" />
+                <path d="M78 58 L84 80 M122 66 L116 88" />
+              </svg>
+            )}
+            <span className="trpg-natfx-stamp">{natFx === 'nat20' ? '20 natural' : '1 natural'}</span>
+          </div>
         )}
         {impacts > 0 && (
           <span key={`ring-${impacts}`} className="trpg-impact-ring pointer-events-none absolute left-1/2 top-[44%] z-0" aria-hidden="true" />
@@ -248,8 +268,10 @@ export function DiceStage({ roll, onSettled, size = 'modal', force2D = false, cl
                   {signed(m.value)}
                 </span>
               ))}
-              {model.critical && done && (
-                <strong className="text-yellow-300 font-semibold">{model.isAttack ? 'Crítico' : '20 natural'}</strong>
+              {(model.critical || model.natural20) && done && (
+                <strong className="text-yellow-300 font-semibold">
+                  {model.critical && model.isAttack ? 'Crítico' : '20 natural'}
+                </strong>
               )}
               {model.fumble && done && <strong className="text-red-300 font-semibold">1 natural</strong>}
             </>

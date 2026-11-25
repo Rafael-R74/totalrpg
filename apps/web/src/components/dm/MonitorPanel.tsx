@@ -1,5 +1,7 @@
+import { useMemo, useState } from 'react';
 import { MonitorDirectorState, CampaignMerchant } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
+import { MonitorScenes } from './MonitorScenes';
 
 import { Icon } from '../ui/Icon';
 interface MonitorDirectorPanelProps {
@@ -7,6 +9,8 @@ interface MonitorDirectorPanelProps {
   director: MonitorDirectorState;
   merchants: CampaignMerchant[];
   onChangeDirector: (updated: MonitorDirectorState) => void;
+  /** Encerra combate, fecha loja/projeção/post-its e limpa a TV, sem recarregar a janela */
+  onResetMonitor?: () => void;
 }
 
 export function MonitorDirectorPanel({
@@ -14,7 +18,23 @@ export function MonitorDirectorPanel({
   director,
   merchants,
   onChangeDirector,
+  onResetMonitor,
 }: MonitorDirectorPanelProps) {
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+
+  // Imagens já usadas na mesa: o mestre escolhe sem abrir o seletor de arquivos
+  // (o navegador costuma tirar a TV da tela cheia quando esse seletor abre).
+  const recentImages = useMemo(() => {
+    const urls = [
+      director.backgroundUrl,
+      director.handoutImageUrl,
+      director.activeProjection?.imageUrl,
+      ...(director.scenePresets || []).map((s) => s.backgroundUrl),
+    ].filter((u): u is string => Boolean(u));
+    return Array.from(new Set(urls)).slice(0, 12);
+  }, [director]);
+
   function handleOpenSecondMonitorWindow() {
     const url = `${window.location.origin}/?monitorCampaignId=${campaignId}`;
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -32,15 +52,63 @@ export function MonitorDirectorPanel({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenSecondMonitorWindow}
-          className="trpg-btn-primary"
-        >
-          <Icon name="tv" size={17} /> Abrir tela da TV
-          <span className="text-xs font-normal opacity-80">em nova janela</span>
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {onResetMonitor && (
+            <button
+              type="button"
+              onClick={() => {
+                setResetDone(false);
+                setConfirmReset(true);
+              }}
+              className="trpg-btn-secondary"
+            >
+              <Icon name="refresh" size={17} /> Reiniciar TV
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleOpenSecondMonitorWindow}
+            className="trpg-btn-primary"
+          >
+            <Icon name="tv" size={17} /> Abrir tela da TV
+            <span className="text-xs font-normal opacity-80">em nova janela</span>
+          </button>
+        </div>
       </div>
+
+      {confirmReset && (
+        <div className="border border-zinc-600 bg-zinc-900 rounded-xl p-4 flex flex-col gap-3" role="alert">
+          <div>
+            <p className="text-sm font-semibold text-zinc-100">Reiniciar a TV?</p>
+            <p className="text-sm text-zinc-400 mt-1 max-w-[70ch]">
+              Encerra o combate (ordem de turnos e ameaças), fecha a loja, a projeção e os post-its da TV, limpa as
+              rolagens e volta para a tela padrão. Os personagens dos jogadores e as ambientações salvas continuam. A
+              TV não recarrega nem sai da tela cheia.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="trpg-btn-danger trpg-btn-sm"
+              onClick={() => {
+                onResetMonitor?.();
+                setConfirmReset(false);
+                setResetDone(true);
+              }}
+            >
+              <Icon name="refresh" size={15} /> Reiniciar TV
+            </button>
+            <button type="button" className="trpg-btn-quiet trpg-btn-sm" onClick={() => setConfirmReset(false)}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      {resetDone && !confirmReset && (
+        <p className="text-sm text-zinc-300 flex items-center gap-2" role="status">
+          <Icon name="check" size={15} /> TV reiniciada.
+        </p>
+      )}
 
       {director.activeProjection && (
         <div className="bg-amber-950/40 border border-amber-700 p-4 rounded-xl flex flex-wrap justify-between items-center gap-4">
@@ -160,33 +228,11 @@ export function MonitorDirectorPanel({
         )}
       </div>
 
-      {/* 3. AMBIENTAÇÃO DA CENA E PROJEÇÃO DE IMAGEM COM UPLOAD DIRETO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl flex flex-col gap-3">
-          <span className="text-xs font-bold text-amber-400 uppercase">
-            Ambientação da Cena Atual
-          </span>
-          <input
-            type="text"
-            value={director.sceneTitle || ''}
-            onChange={(e) => onChangeDirector({ ...director, sceneTitle: e.target.value })}
-            placeholder="Título do Local (Ex: Mansão Endiabrada)"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
-          />
-          <input
-            type="text"
-            value={director.sceneSubtitle || ''}
-            onChange={(e) => onChangeDirector({ ...director, sceneSubtitle: e.target.value })}
-            placeholder="Subtítulo / Clima (Ex: Meia-noite • Chuva Forte)"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
-          />
-          <ImageUploadField
-            label="Imagem de Ambiente / Fundo do 2º Monitor"
-            value={director.backgroundUrl || ''}
-            onChange={(newUrl) => onChangeDirector({ ...director, backgroundUrl: newUrl })}
-          />
-        </div>
+      {/* 3. AMBIENTAÇÕES SALVAS */}
+      <MonitorScenes director={director} onChangeDirector={onChangeDirector} recentImages={recentImages} />
 
+      {/* 4. PROJEÇÃO DE IMAGEM LIVRE */}
+      <div className="grid grid-cols-1">
         <div className="bg-zinc-950 border border-purple-900/50 p-4 rounded-xl flex flex-col justify-between gap-3">
           <span className="text-xs font-bold text-purple-400 uppercase">
             Projetar Imagem / Mapa / Pista Livre
@@ -195,13 +241,14 @@ export function MonitorDirectorPanel({
             type="text"
             value={director.handoutTitle || ''}
             onChange={(e) => onChangeDirector({ ...director, handoutTitle: e.target.value })}
-            placeholder="Título da Pista / Mapa"
+            placeholder="Título da pista ou mapa (vazio = só a imagem)"
             className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white"
           />
           <ImageUploadField
             label="Arquivo de Imagem da Pista / Mapa"
             value={director.handoutImageUrl || ''}
             onChange={(newUrl) => onChangeDirector({ ...director, handoutImageUrl: newUrl })}
+            recentImages={recentImages}
           />
           <button
             type="button"

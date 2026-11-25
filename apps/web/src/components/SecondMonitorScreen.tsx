@@ -17,7 +17,7 @@ import { DMScreenCampaignData, DMScreenCharacter, fetchDMScreenData } from '../s
 import { CombatantEntry } from './DMScreen';
 import { FloatingPostItsLayer } from './dm/NotesAndPostItsManager';
 import { TempVitalBar } from './TempVitalBar';
-import { useTheme } from '../theme/themeEngine';
+import { useTheme, type PaletteId } from '../theme/themeEngine';
 
 import { Icon, stripEmoji } from './ui/Icon';
 import { DiceStage } from './dice/DiceStage';
@@ -190,7 +190,7 @@ function MonitorPortrait({ url, name, fallbackIcon }: { url?: string | null; nam
 }
 
 export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
-  const { setActiveSystem } = useTheme();
+  const { setActiveSystem, setPaletteOverride } = useTheme();
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
   const [director, setDirector] = useState<MonitorDirectorState>(DEFAULT_DIRECTOR);
   const [combatants, setCombatants] = useState<CombatantEntry[]>([]);
@@ -393,6 +393,18 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       }
     );
 
+    // Mestre reiniciou a TV: limpa tudo o que só existe aqui (rolagens, destaques, janelas).
+    monitorSocket.on('monitor:reset', ({ campaignId: cId }) => {
+      if (cId !== campaignId) return;
+      clearSpotlights();
+      setPublicRolls([]);
+      setBatchSpotlight(null);
+      setSpinningBatchRollIds({});
+      setInitiativeEntries({});
+      setAllRevealedCountdown(false);
+      setIsInitiativeModalOpen(false);
+    });
+
     monitorSocket.on('combat:initiativeRequested', () => {
       setSpotlightRolls([]);
       setBatchSpotlight(null);
@@ -488,6 +500,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       monitorSocket.off('monitor:updated');
       monitorSocket.off('combat:initiativeRequested');
       monitorSocket.off('dice:rolled');
+      monitorSocket.off('monitor:reset');
     };
   }, [campaignId]);
 
@@ -582,18 +595,48 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
     });
   }
 
-  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+  // Paleta da ambientação ativa (só nesta janela). Sem ambientação: paleta padrão da mesa.
   useEffect(() => {
-    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    setPaletteOverride((director.scenePalette as PaletteId | null | undefined) || null);
+  }, [director.scenePalette, setPaletteOverride]);
+  useEffect(() => () => setPaletteOverride(null), [setPaletteOverride]);
+
+  /*
+   * Tela cheia: o navegador encerra a tela cheia de página sozinho em certas situações
+   * (ex.: quando outra janela abre o seletor de arquivos) e só deixa voltar com um clique
+   * nesta janela. Se ela cair sem o mestre ter pedido, qualquer clique na TV a restaura.
+   */
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+  const wantsFullscreenRef = useRef(Boolean(document.fullscreenElement));
+  const [fullscreenLost, setFullscreenLost] = useState(false);
+  useEffect(() => {
+    const onChange = () => {
+      const on = Boolean(document.fullscreenElement);
+      setIsFullscreen(on);
+      if (on) {
+        wantsFullscreenRef.current = true;
+        setFullscreenLost(false);
+      } else if (wantsFullscreenRef.current) {
+        setFullscreenLost(true);
+      }
+    };
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
+  function enterFullscreen() {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
   function toggleFullScreen() {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      enterFullscreen();
     } else {
+      wantsFullscreenRef.current = false;
       document.exitFullscreen().catch(() => {});
     }
+  }
+  function stayWindowed() {
+    wantsFullscreenRef.current = false;
+    setFullscreenLost(false);
   }
 
   if (!campaign) {
@@ -612,11 +655,39 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       style={
         director.backgroundUrl
           ? {
-              backgroundImage: `linear-gradient(to bottom, rgb(9 9 11 / 0.84), rgb(9 9 11 / 0.95)), url(${director.backgroundUrl})`,
+              backgroundImage: `linear-gradient(to bottom, rgb(9 9 11 / 0.66), rgb(9 9 11 / 0.88)), url(${director.backgroundUrl})`,
             }
           : undefined
       }
     >
+      {fullscreenLost && !isFullscreen && (
+        <div
+          className="mon-fs-restore"
+          role="button"
+          tabIndex={0}
+          onClick={enterFullscreen}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') enterFullscreen();
+          }}
+        >
+          <div className="mon-fs-restore-card">
+            <Icon name="tv" />
+            <p>Clique em qualquer lugar da TV para voltar à tela cheia.</p>
+            <small>Dica: o F11 do navegador mantém a tela cheia mesmo quando outra janela abre arquivos.</small>
+            <button
+              type="button"
+              className="trpg-btn-quiet trpg-btn-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                stayWindowed();
+              }}
+            >
+              Continuar em janela
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Post-its marcados para o 2º monitor */}
       <FloatingPostItsLayer
         postIts={monitorPostIts}

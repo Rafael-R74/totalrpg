@@ -328,6 +328,8 @@ export interface ServerToClientEvents {
     attack?: PreparedAttack;
   }) => void;
   'scene:ended': (payload: { campaignId: string; timestamp: number }) => void;
+  /** Mestre reiniciou o 2º monitor: limpa rolagens, destaques e janelas abertas na TV */
+  'monitor:reset': (payload: { campaignId: string }) => void;
   'activity:logged': (entry: SessionActivityLogEntry) => void;
   'admin:telemetryUpdated': (payload: { timestamp: number; reason: string }) => void;
   'admin:forceLogout': (payload: { reason: string }) => void;
@@ -406,6 +408,7 @@ export interface ClientToServerEvents {
   'presence:update': (payload: PresenceUpdatePayload) => void;
   'admin:watch': (payload: { token: string; active: boolean }) => void;
   'scene:end': (payload: { campaignId: string }) => void;
+  'monitor:reset': (payload: { campaignId: string }) => void;
   'activity:log': (
     payload: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt'> & {
       id?: string;
@@ -770,4 +773,18 @@ export interface MonitorDirectorState {
   handoutTitle?: string;
   handoutImageUrl?: string;
   handoutText?: string;
+  /** Ambientações salvas pelo mestre (fundo, título, subtítulo e paleta) */
+  scenePresets?: MonitorScenePreset[];
+  /** Ambientação ativa; null/ausente = tela padrão */
+  activeSceneId?: string | null;
+  /** Paleta da ambientação ativa (id de paleta do tema); null = paleta padrão da mesa */
+  scenePalette?: string | null;
+}
+
+export interface MonitorScenePreset {
+  id: string;
+  title: string;
+  subtitle: string;
+  backgroundUrl: string;
+  palette: string | null;
 }

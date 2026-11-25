@@ -107,6 +107,8 @@ interface DMScreenProps {
     postIts: StickyPostIt[]
   ) => void;
   onBroadcastSceneEnd?: () => void;
+  /** Avisa a TV para limpar o que é só dela (rolagens, destaques, janelas abertas) */
+  onResetSecondMonitor?: () => void;
 }
 
 function parseFormula(formula: string): { count: number; sides: number; modifier: number } {
@@ -216,6 +218,7 @@ export function DMScreen({
   dismissedPostItSignal,
   onSyncSecondMonitor,
   onBroadcastSceneEnd,
+  onResetSecondMonitor,
 }: DMScreenProps) {
   const { setActiveSystem } = useTheme();
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
@@ -483,6 +486,30 @@ export function DMScreen({
       return merged;
     });
   }, [liveActivityLog, campaignId]);
+
+  /**
+   * Reinicia o 2º monitor: encerra o combate (turnos e ameaças), fecha loja e projeção,
+   * tira os post-its da TV e volta à tela padrão. As ambientações salvas continuam guardadas.
+   */
+  function handleResetSecondMonitor() {
+    setCombatants([]);
+    setCurrentTurnIndex(0);
+    setRoundNumber(1);
+    setMonitorDirector((prev) => ({
+      ...prev,
+      activeMerchantId: null,
+      activeProjection: null,
+      activeSceneId: null,
+      sceneTitle: '',
+      sceneSubtitle: '',
+      backgroundUrl: '',
+      scenePalette: null,
+    }));
+    setPostIts((prev) =>
+      prev.some((p) => p.sharedOnMonitor) ? prev.map((p) => ({ ...p, sharedOnMonitor: false })) : prev
+    );
+    onResetSecondMonitor?.();
+  }
 
   useEffect(() => {
     if (!isHydratedRef.current) return;
@@ -2146,6 +2173,7 @@ async function handleDeliverItemToCharacter(
               director={monitorDirector}
               merchants={merchants}
               onChangeDirector={setMonitorDirector}
+              onResetMonitor={handleResetSecondMonitor}
             />
           )}
 

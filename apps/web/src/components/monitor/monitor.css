@@ -963,3 +963,36 @@
     gap: 0.6em;
   }
 }
+
+/* Tela cheia perdida sem pedido do mestre: um clique em qualquer lugar restaura */
+.mon-fs-restore {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 2em;
+  cursor: pointer;
+  background: linear-gradient(to top, rgb(5 6 8 / 0.7), transparent 45%);
+}
+.mon-fs-restore-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 34em;
+  padding: 1em 1.4em;
+  text-align: center;
+  border-radius: var(--trpg-r-xl);
+  background: var(--trpg-surface);
+  border: 1px solid var(--trpg-border-strong);
+  box-shadow: var(--trpg-shadow-float);
+}
+.mon-fs-restore-card p {
+  font-weight: 650;
+}
+.mon-fs-restore-card small {
+  color: var(--trpg-muted);
+  font-size: 0.8em;
+}

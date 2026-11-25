@@ -266,6 +266,8 @@ interface ThemeContextValue {
   effectivePalette: PaletteId;
   effectiveArtDirection: ArtDirectionId;
   setActiveSystem: (sys: SystemId | null) => void;
+  /** Sobrepõe a paleta só nesta janela (ex.: ambientação do 2º monitor); null volta ao normal */
+  setPaletteOverride: (palette: PaletteId | null) => void;
   updatePreferences: (patch: Partial<UserThemePreferences>) => void;
   updateSystemOverride: (system: SystemId, preset: Partial<SystemThemePreset>) => void;
   resetPreferences: () => void;
@@ -277,6 +279,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   effectivePalette: DEFAULT_USER_THEME_PREFERENCES.palette,
   effectiveArtDirection: DEFAULT_USER_THEME_PREFERENCES.artDirection,
   setActiveSystem: () => {},
+  setPaletteOverride: () => {},
   updatePreferences: () => {},
   updateSystemOverride: () => {},
   resetPreferences: () => {},
@@ -293,6 +296,7 @@ export function ThemeProvider({
     readStoredPreferences(userId)
   );
   const [activeSystem, setActiveSystem] = useState<SystemId | null>(null);
+  const [paletteOverride, setPaletteOverride] = useState<PaletteId | null>(null);
 
   // Recarrega do localStorage e sincroniza com o servidor quando o usuário autenticado muda
   useEffect(() => {
@@ -339,17 +343,13 @@ export function ThemeProvider({
   }, [userId]);
 
   const effectivePreset = useMemo<SystemThemePreset>(() => {
-    if (preferences.autoSystemTheme && activeSystem) {
-      return (
-        preferences.systemOverrides[activeSystem] ||
-        DEFAULT_SYSTEM_OVERRIDES[activeSystem]
-      );
-    }
-    return {
-      palette: preferences.palette,
-      artDirection: preferences.artDirection,
-    };
-  }, [preferences, activeSystem]);
+    const base: SystemThemePreset =
+      preferences.autoSystemTheme && activeSystem
+        ? preferences.systemOverrides[activeSystem] || DEFAULT_SYSTEM_OVERRIDES[activeSystem]
+        : { palette: preferences.palette, artDirection: preferences.artDirection };
+    const validOverride = paletteOverride && PALETTE_CATALOG.some((p) => p.id === paletteOverride);
+    return validOverride ? { ...base, palette: paletteOverride } : base;
+  }, [preferences, activeSystem, paletteOverride]);
 
   useEffect(() => {
     applyThemeAttributesToDocument(
@@ -403,6 +403,7 @@ export function ThemeProvider({
         effectivePalette: effectivePreset.palette,
         effectiveArtDirection: effectivePreset.artDirection,
         setActiveSystem,
+        setPaletteOverride,
         updatePreferences,
         updateSystemOverride,
         resetPreferences,

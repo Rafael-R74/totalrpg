@@ -33,8 +33,10 @@ export interface StageModel {
   critical: boolean;
   /** Há ataque: o rótulo vira Crítico; senão, 20 natural */
   isAttack: boolean;
-  /** 1 natural no dado mantido (falha crítica de leitura) */
+  /** 1 natural no d20 que vale (dado mantido, ou o único d20 da rolagem) */
   fumble: boolean;
+  /** 20 natural no d20 que vale (dado mantido, ou o único d20 da rolagem) */
+  natural20: boolean;
   /** Algum dado sem modelo 3D → usa o 2D */
   has3DUnsupported: boolean;
 }
@@ -105,7 +107,11 @@ export function buildStageModel(roll: DiceRollResult): StageModel {
   const keptValue = keptIndex !== null ? roll.rolls[keptIndex] : null;
   const critMin = roll.attackDamagePayload?.critThreatMin ?? 20;
   const critical = Boolean(isPool && keptValue !== null && keptValue >= critMin);
-  const fumble = Boolean(isPool && keptValue === 1);
+  // O d20 que decide o teste: o mantido da pilha (Ordem) ou um d20 sozinho (ex.: Tormenta 20).
+  const decidingD20 =
+    sides === 20 ? (isPool ? keptValue : roll.rolls.length === 1 ? roll.rolls[0] : null) : null;
+  const natural20 = decidingD20 === 20;
+  const fumble = decidingD20 === 1;
 
   return {
     mode: isPool ? 'pool' : 'sum',
@@ -117,6 +123,7 @@ export function buildStageModel(roll: DiceRollResult): StageModel {
     critical,
     isAttack: Boolean(roll.attackDamagePayload),
     fumble,
+    natural20,
     has3DUnsupported: dice.some((d) => !SUPPORTED_SIDES.includes(d.sides as DieSides)),
   };
 }

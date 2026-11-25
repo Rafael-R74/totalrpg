@@ -181,6 +181,11 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Mestre reinicia o 2º monitor (a TV limpa rolagens, destaques e janelas abertas)
+  socket.on('monitor:reset', ({ campaignId }) => {
+    if (campaignId) socket.to(campaignId).emit('monitor:reset', { campaignId });
+  });
+
   // Log geral de atividades da sessão em tempo real
   socket.on('activity:log', (payload) => {
     if (payload?.campaignId) {

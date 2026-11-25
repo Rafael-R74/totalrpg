@@ -1123,6 +1123,11 @@ export default function App() {
               campaignId: currentCampaignSession.campaignId,
             })
           }
+          onResetSecondMonitor={() =>
+            socket.emit('monitor:reset', {
+              campaignId: currentCampaignSession.campaignId,
+            })
+          }
           lastUpdatedCharSignal={lastUpdatedCharSignal}
           lastInitiativeSubmission={lastInitiativeSubmission}
           dismissedPostItSignal={dismissedPostItSignal}
