@@ -341,7 +341,7 @@ export interface ServerToClientEvents {
     patches: CharacterLivePatch[];
   }) => void;
   'campaign:permissionsUpdated': (permissions: SheetPermissions) => void;
-  'combat:initiativeRequested': (payload: { campaignId: string }) => void;
+  'combat:initiativeRequested': (payload: { campaignId: string; characterIds?: string[] }) => void;
   'combat:initiativeSubmitted': (payload: {
     characterId: string;
     characterName: string;
@@ -415,7 +415,8 @@ export interface ClientToServerEvents {
     patches: CharacterLivePatch[];
   }) => void;
   'campaign:syncPermissions': (payload: { campaignId: string; permissions: SheetPermissions }) => void;
-  'combat:requestInitiative': (payload: { campaignId: string }) => void;
+  /** Sem `characterIds`: todos os jogadores. Com a lista: só esses personagens rolam. */
+  'combat:requestInitiative': (payload: { campaignId: string; characterIds?: string[] }) => void;
   'postit:share': (payload: {
     campaignId: string;
     postIt: StickyPostIt;

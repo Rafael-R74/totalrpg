@@ -212,6 +212,8 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
   const [spotlightRolls, setSpotlightRolls] = useState<DiceRollResult[]>([]);
 
   const [isInitiativeModalOpen, setIsInitiativeModalOpen] = useState(false);
+  // Pedido para um grupo: só esses personagens aparecem (null = todos)
+  const [initiativeTargets, setInitiativeTargets] = useState<string[] | null>(null);
   const [initiativeEntries, setInitiativeEntries] = useState<
     Record<string, { roll: DiceRollResult; isSpinning: boolean }>
   >({});
@@ -465,7 +467,8 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
       setIsInitiativeModalOpen(false);
     });
 
-    monitorSocket.on('combat:initiativeRequested', () => {
+    monitorSocket.on('combat:initiativeRequested', (payload) => {
+      setInitiativeTargets(payload?.characterIds?.length ? payload.characterIds : null);
       setSpotlightRolls([]);
       setBatchSpotlight(null);
       setInitiativeEntries({});
@@ -618,10 +621,14 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
     railPositionedRef.current = true;
   }, [currentTurnIndex, combatants.length, viewportTick, campaign !== null]);
 
-  useEffect(() => {
-    if (!isInitiativeModalOpen || !campaign || campaign.characters.length === 0) return;
+  const initiativeCharacters = (campaign?.characters ?? []).filter(
+    (ch) => !initiativeTargets || initiativeTargets.includes(ch.id)
+  );
 
-    const allCharactersRevealed = campaign.characters.every((ch) => {
+  useEffect(() => {
+    if (!isInitiativeModalOpen || !campaign || initiativeCharacters.length === 0) return;
+
+    const allCharactersRevealed = initiativeCharacters.every((ch) => {
       const entry = initiativeEntries[ch.id];
       return entry && !entry.isSpinning;
     });
@@ -635,7 +642,7 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
 
       return () => clearTimeout(closeTimer);
     }
-  }, [isInitiativeModalOpen, initiativeEntries, campaign]);
+  }, [isInitiativeModalOpen, initiativeEntries, campaign, initiativeTargets]);
 
   // O holofote some sozinho alguns segundos depois que o total aparece (ver onSettled do DiceStage).
   const spotlightTimers = useRef<Map<string, number>>(new Map());
@@ -788,7 +795,7 @@ export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonit
 
       {isInitiativeModalOpen && (
         <InitiativeOverlay
-          characters={campaign.characters}
+          characters={initiativeCharacters}
           entries={initiativeEntries}
           allRevealed={allRevealedCountdown}
           onSettled={settleInitiative}

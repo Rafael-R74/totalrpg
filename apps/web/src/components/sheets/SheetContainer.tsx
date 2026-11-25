@@ -118,6 +118,8 @@ interface SheetContainerProps {
   externalPermissions?: SheetPermissions | null;
   externalReloadSignal?: { characterId: string; timestamp: number } | null;
   initiativeRequestSignal?: number;
+  /** Personagens chamados no último pedido (null = todos) */
+  initiativeRequestTargets?: string[] | null;
   externalCombatState?: {
     combatants: any[];
     currentTurnIndex: number;
@@ -138,6 +140,7 @@ export function SheetContainer({
   externalPermissions,
   externalReloadSignal,
   initiativeRequestSignal,
+  initiativeRequestTargets,
   externalCombatState,
 }: SheetContainerProps) {
   const { setActiveSystem } = useTheme();
@@ -418,7 +421,12 @@ export function SheetContainer({
   } | null>(null);
 
   useEffect(() => {
-    if (initiativeRequestSignal && character && character.ownerId === currentUserId) {
+    if (
+      initiativeRequestSignal &&
+      character &&
+      character.ownerId === currentUserId &&
+      (!initiativeRequestTargets || initiativeRequestTargets.includes(character.id))
+    ) {
       setShowInitiativePrompt(true);
     }
   }, [initiativeRequestSignal]);

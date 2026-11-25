@@ -178,6 +178,8 @@ export default function App() {
     timestamp: number;
   } | null>(null);
   const [initiativeRequestSignal, setInitiativeRequestSignal] = useState<number>(0);
+  // Pedido para um grupo: só esses personagens recebem (null = todos)
+  const [initiativeRequestTargets, setInitiativeRequestTargets] = useState<string[] | null>(null);
   const [lastInitiativeSubmission, setLastInitiativeSubmission] = useState<{
     characterId: string;
     characterName: string;
@@ -322,7 +324,8 @@ export default function App() {
       );
     });
 
-    socket.on('combat:initiativeRequested', () => {
+    socket.on('combat:initiativeRequested', (payload) => {
+      setInitiativeRequestTargets(payload?.characterIds?.length ? payload.characterIds : null);
       setInitiativeRequestSignal(Date.now());
     });
 
@@ -1008,6 +1011,7 @@ export default function App() {
           externalCombatState={liveCombatState}
           externalReloadSignal={lastUpdatedCharSignal}
           initiativeRequestSignal={initiativeRequestSignal}
+          initiativeRequestTargets={initiativeRequestTargets}
           onCharacterSaved={(charId, campId) => {
             const room = campId || openedCharacter.campaignId;
             if (room) {
@@ -1117,9 +1121,10 @@ export default function App() {
               })),
             })
           }
-          onRequestPlayersInitiative={() =>
+          onRequestPlayersInitiative={(characterIds) =>
             socket.emit('combat:requestInitiative', {
               campaignId: currentCampaignSession.campaignId,
+              ...(characterIds && characterIds.length > 0 ? { characterIds } : {}),
             })
           }
           onSharePostIt={(postIt, action) =>

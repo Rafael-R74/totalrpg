@@ -154,8 +154,14 @@ io.on('connection', (socket) => {
   });
 
   // Mestre solicita Teste de Iniciativa para todos os jogadores da campanha
-  socket.on('combat:requestInitiative', ({ campaignId }) => {
-    socket.to(campaignId).emit('combat:initiativeRequested', { campaignId });
+  socket.on('combat:requestInitiative', ({ campaignId, characterIds }) => {
+    const ids = Array.isArray(characterIds)
+      ? characterIds.filter((id): id is string => typeof id === 'string')
+      : undefined;
+    socket.to(campaignId).emit('combat:initiativeRequested', {
+      campaignId,
+      ...(ids && ids.length > 0 ? { characterIds: ids } : {}),
+    });
   });
 
   // Mestre compartilha ou oculta um Post-it destacado na tela de um jogador específico (ou todos)
