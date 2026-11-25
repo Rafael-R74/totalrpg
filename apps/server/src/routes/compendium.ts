@@ -79,6 +79,22 @@ async function ensureOrdemCompendiumSynchronized(): Promise<void> {
               metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
             },
           });
+        } else if (item.category === 'origin') {
+          await prisma.compendiumEntry.update({
+            where: { id: existingId },
+            data: {
+              ...(hasPack ? { description: item.description } : {}),
+              cost: item.cost,
+              modifiers: (item.modifiers || []) as unknown as Prisma.InputJsonValue,
+              metadata: (item.metadata || {}) as unknown as Prisma.InputJsonValue,
+            },
+          });
+        } else if (hasPack && (item.category === 'condition' || item.category === 'item')) {
+          // Textos completos do Content Pack também para condições e itens já gravados no banco
+          await prisma.compendiumEntry.update({
+            where: { id: existingId },
+            data: { description: item.description },
+          });
         }
       }
 

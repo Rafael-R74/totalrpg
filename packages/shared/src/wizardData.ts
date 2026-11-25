@@ -1,4 +1,4 @@
-import { OrdemAttributes, T20Attributes, RuleModifier, CharacterAbility } from './index';
+import { OrdemAttributes, T20Attributes, RuleModifier, CharacterAbility, CompendiumEntryData } from './index';
 
 // ============================================================================
 // 1. ORDEM PARANORMAL RPG v1.3 — METADADOS DAS 28 PERÍCIAS (TABELA 2.1, p. 41)
@@ -602,6 +602,38 @@ export const ORDEM_ORIGINS: OrdemOriginDefinition[] = [
     modifiers: [{ id: 'orig-rep-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 5 }],
   },
 ];
+
+/**
+ * Entrada de Compêndio (categoria "origin") gerada a partir de uma origem.
+ * Reconstruída pelo Content Pack depois que os textos completos são aplicados.
+ */
+export function buildOrdemOriginCompendiumEntry(o: OrdemOriginDefinition): CompendiumEntryData {
+  const skillNames = o.skills.map((id) => ORDEM_SKILLS_METADATA.find((s) => s.id === id)?.name || id);
+  const skillsText = skillNames.length
+    ? skillNames.join(' e ')
+    : o.freeSkillChoices
+    ? `${o.freeSkillChoices} à escolha do mestre`
+    : '—';
+  const power = `${o.powerName}${o.powerCost ? ` (${o.powerCost} PE)` : ''}: ${o.powerDescription}`;
+  return {
+    id: `ord-origin-${o.id}`,
+    system: 'ordem-paranormal',
+    category: 'origin',
+    name: o.name,
+    description: `${o.description}
+
+Perícias treinadas: ${skillsText}.
+
+${power}`,
+    cost: o.powerCost || 0,
+    modifiers: o.modifiers || [],
+    metadata: { requirements: `Perícias: ${skillsText}`, ...(o.sourceId ? { sourceId: o.sourceId } : {}) },
+  };
+}
+
+export function buildOrdemOriginCompendiumEntries(): CompendiumEntryData[] {
+  return ORDEM_ORIGINS.map(buildOrdemOriginCompendiumEntry);
+}
 
 // ============================================================================
 // 3. ORDEM PARANORMAL RPG v1.3 — AS 4 CLASSES OFICIAIS (p. 24-35, 171-172)

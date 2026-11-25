@@ -1,5 +1,6 @@
 import { CompendiumEntryData } from './index';
 import { buildOrdemRitualCompendiumEntries } from './ordemRituals';
+import { buildOrdemOriginCompendiumEntries } from './wizardData';
 import { DYING_CONDITION_DESCRIPTION, UNCONSCIOUS_CONDITION_DESCRIPTION } from './dyingRules';
 
 export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
@@ -1415,6 +1416,9 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
   // 5. TODOS OS RITUAIS DE 1º A 4º CÍRCULO (Livro v1.3, p. 122-150)
   // ==========================================================================
   ...buildOrdemRitualCompendiumEntries(),
+
+  // Origens (Livro v1.3 p. 16-21 + Sobrevivendo ao Horror): geradas a partir de ORDEM_ORIGINS
+  ...buildOrdemOriginCompendiumEntries(),
 
   // ==========================================================================
   // 6. ARMAS, PROTEÇÕES E EQUIPAMENTOS (Livro v1.3, p. 56-67)

@@ -8,6 +8,7 @@ import {
 } from './ordemEquipmentData';
 import {
   ORDEM_ORIGINS,
+  buildOrdemOriginCompendiumEntry,
   ORDEM_CLASSES,
   ORDEM_TRAILS,
   ORDEM_INSANITY_EFFECTS,
@@ -241,6 +242,12 @@ export function applyContentPack(pack: TotalRpgContentPack): ContentPackApplySta
       if (item.powerDescription) {
         origin.powerDescription = item.powerDescription;
       }
+    }
+    // Reconstrói as entradas de Compêndio das origens com os textos completos
+    for (const entry of ORDEM_COMPENDIUM_ENTRIES) {
+      if (entry.category !== 'origin') continue;
+      const origin = ORDEM_ORIGINS.find((o) => `ord-origin-${o.id}` === entry.id);
+      if (origin) entry.description = buildOrdemOriginCompendiumEntry(origin).description;
     }
   }
 

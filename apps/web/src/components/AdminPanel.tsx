@@ -858,7 +858,7 @@ export function AdminPanel() {
                         )}
                       </div>
 
-                      <p className="text-xs text-zinc-400">{entry.description}</p>
+                      <p className="text-xs text-zinc-400 whitespace-pre-line">{entry.description}</p>
 
                       {entry.modifiers && entry.modifiers.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">
