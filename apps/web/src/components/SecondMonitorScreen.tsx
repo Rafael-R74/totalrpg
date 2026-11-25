@@ -21,7 +21,9 @@ import { useTheme } from '../theme/themeEngine';
 
 import { Icon, stripEmoji } from './ui/Icon';
 import { DiceStage } from './dice/DiceStage';
-const monitorSocket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
+import { BACKEND_ORIGIN } from '../config';
+
+const monitorSocket: Socket<ServerToClientEvents, ClientToServerEvents> = io(BACKEND_ORIGIN);
 
 interface SecondMonitorScreenProps {
   campaignId: string;

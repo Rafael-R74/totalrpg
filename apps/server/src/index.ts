@@ -12,48 +12,116 @@ import { campaignsRouter } from './routes/campaigns';
 import { charactersRouter } from './routes/characters';
 import { compendiumRouter } from './routes/compendium'; 
 import { contentPackRouter } from './routes/contentPack';
+import { adminRouter } from './routes/admin';
 import { loadLocalContentPacks } from './contentPackService';
 import {
   clearCampaignActivityLog,
   recordCampaignActivity,
 } from './activityLogService';
+import {
+  attachAdminTelemetryIo,
+  flushAdminTelemetry,
+  recordAdminEvent,
+  registerSocketConnected,
+  touchUserTelemetry,
+  unregisterSocketConnected,
+  updateSocketPresence,
+  verifyTokenIdentity,
+} from './adminTelemetryService';
 import path from 'path';
+import fs from 'node:fs';
 import uploadsRouter from './routes/uploads';
+import {
+  getCorsOrigin,
+  getUploadsDir,
+  getWebDistDir,
+  SERVER_PORT,
+} from './config';
+import { initDatabasePragmas, prisma, syncConfiguredAdmins } from './prisma';
 
 loadLocalContentPacks();
 
 const app = express();
+app.set('trust proxy', 1);
 
-app.use(cors());
+const corsOrigin = getCorsOrigin();
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '25mb' }));
 
-// Serve os arquivos de imagem enviados pelos usuários
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+// Garante pasta de uploads e serve os arquivos de imagem enviados pelos usuários
+const uploadsDirectory = getUploadsDir();
+fs.mkdirSync(uploadsDirectory, { recursive: true });
+app.use('/uploads', express.static(uploadsDirectory));
 
-// Registramos as rotas de autenticação sob o prefixo /api/auth
+// Registramos as rotas da API
 app.use('/api/auth', authRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/characters', charactersRouter);
 app.use('/api/compendium', compendiumRouter);
 app.use('/api/content-pack', contentPackRouter);
 app.use('/api/uploads', uploadsRouter);
-// Rota de teste básica da API
-app.get('/api/health', (req, res) => {
+app.use('/api/admin', adminRouter);
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'TotalRPG Backend & Database 100% Operacionais!' });
 });
+
+// Em produção, o próprio Express serve o bundle estático do frontend (apps/web/dist)
+const webDistDir = getWebDistDir();
+if (webDistDir) {
+  app.use(express.static(webDistDir));
+  app.use((req, res, next) => {
+    if (
+      req.method !== 'GET' ||
+      req.path.startsWith('/api') ||
+      req.path.startsWith('/uploads') ||
+      req.path.startsWith('/socket.io')
+    ) {
+      return next();
+    }
+    res.sendFile(path.join(webDistDir, 'index.html'));
+  });
+}
 
 const httpServer = http.createServer(app);
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
-    origin: '*',
-  }
+    origin: corsOrigin,
+  },
 });
 
 app.set('io', io);
+attachAdminTelemetryIo(io);
 
 io.on('connection', (socket) => {
   console.log(`🔌 Cliente conectado: ${socket.id}`);
+  registerSocketConnected(socket);
+
+  socket.on('presence:update', (payload) => {
+    if (payload && typeof payload === 'object') {
+      updateSocketPresence(socket, payload);
+    }
+  });
+
+  socket.on('admin:watch', async ({ token, active }) => {
+    if (!active) {
+      socket.leave('admin-watch');
+      return;
+    }
+    const identity = verifyTokenIdentity(token);
+    if (!identity) return;
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: identity.userId },
+        select: { isAdmin: true },
+      });
+      if (user?.isAdmin) {
+        socket.join('admin-watch');
+      }
+    } catch {
+      // ignore
+    }
+  });
 
   socket.on('session:join', ({ campaignId, role }) => {
     socket.join(campaignId);
@@ -267,10 +335,21 @@ io.on('connection', (socket) => {
         batchIsCrit: Boolean(batchIsCrit),
       };
 
+      if (rollerUserId) {
+        touchUserTelemetry(rollerUserId, { incrementRolls: true });
+      }
+
       if (isSecret) {
         socket.emit('dice:rolled', result);
       } else {
         io.to(campaignId).emit('dice:rolled', result);
+        recordAdminEvent({
+          category: 'dice',
+          userId: rollerUserId,
+          summary: `${characterName} rolou ${label} → ${total}`,
+          details: `${result.formula} [${rolls.join(', ')}]`,
+          tone: 'info',
+        });
       }
 
       // Se esta rolagem foi um Teste de Iniciativa, envia o resultado para a fila de combate da mesa!
@@ -373,10 +452,38 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`❌ Cliente desconectado: ${socket.id}`);
+    unregisterSocketConnected(socket.id);
   });
 });
 
-const PORT = 3333;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Servidor TotalRPG (HTTP + WebSocket) rodando em http://localhost:${PORT}`);
-});
+async function startServer() {
+  try {
+    await initDatabasePragmas();
+    await syncConfiguredAdmins();
+
+    httpServer.listen(SERVER_PORT, '0.0.0.0', () => {
+      console.log(
+        `🚀 Servidor TotalRPG (HTTP + WebSocket) rodando na porta ${SERVER_PORT}${
+          webDistDir ? ' [servindo frontend estático]' : ''
+        }`
+      );
+    });
+  } catch (err) {
+    console.error('❌ Falha crítica ao iniciar o servidor TotalRPG:', err);
+    process.exit(1);
+  }
+}
+
+async function gracefulShutdown(signal: string) {
+  console.log(`🛑 Recebido ${signal}. Encerrando conexões e sincronizando SQLite WAL...`);
+  flushAdminTelemetry();
+  httpServer.close(async () => {
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
+
+void startServer();

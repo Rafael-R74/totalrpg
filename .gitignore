@@ -9,9 +9,13 @@ apps/server/uploads/
 *.pdf
 .agents/
 apps/server/prisma/dev.db
+apps/server/prisma/*.db-wal
+apps/server/prisma/*.db-shm
+apps/server/prisma/*.db-journal
 .claude
 DESIGN.md
 OVERHAUL_PROGRESS.md
+DEPLOY_VPS.md
 apps/web/src/components/dice/DiceLab.tsx
 
 # Local Content Packs (BYOC - textos de livros de regras fora do Git)

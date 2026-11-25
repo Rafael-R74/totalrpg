@@ -8,7 +8,7 @@ import {
   TotalRpgContentPack,
   ContentPackApplyStats,
 } from '@totalrpg/shared';
-const API_URL = 'http://localhost:3333/api';
+import { API_URL } from '../config';
 
 // Interface do retorno de login/cadastro
 export interface AuthResponse {
@@ -100,6 +100,18 @@ export async function loginUser(emailOrUsername: string, password: string): Prom
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao realizar login.');
   return data;
+}
+
+export async function fetchCurrentUser(): Promise<{
+  user: { id: string; username: string; email: string; isAdmin: boolean };
+} | null> {
+  const token = localStorage.getItem('totalrpg_token');
+  if (!token) return null;
+  const response = await fetch(`${API_URL}/auth/me`, {
+    headers: getAuthHeader(),
+  });
+  if (!response.ok) return null;
+  return response.json();
 }
 
 export async function fetchUserPreferences(): Promise<{ preferences: any | null }> {
@@ -576,4 +588,171 @@ export async function applyCampaignSceneEffect(
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao sincronizar efeito de cena na campanha.');
   return data;
+}
+
+// --- PAINEL DE ADMIN GERAL & TELEMETRIA ---
+export interface AdminOverviewResponse {
+  generatedAt: number;
+  serverHealth: {
+    uptimeSeconds: number;
+    nodeVersion: string;
+    environment: string;
+    memoryRssMb: number;
+    memoryHeapMb: number;
+    memoryLimitMb: number;
+    sqliteBytes: number;
+    uploadsCount: number;
+    uploadsBytes: number;
+    contentPackLoaded: boolean;
+    contentPackFiles: string[];
+  };
+  totals: {
+    totalUsers: number;
+    adminsCount: number;
+    activeUsers24h: number;
+    onlineAuthenticatedUsers: number;
+    onlineGuestSockets: number;
+    totalLiveSockets: number;
+    totalCharacters: number;
+    charactersInCampaigns: number;
+    charactersInVault: number;
+    charactersBySystem: Record<string, number>;
+    totalCampaigns: number;
+    pendingInvites: number;
+    compendiumEntries: number;
+    systemSkills: number;
+    totalEventsLogged: number;
+  };
+  themeStats: {
+    palettes: Record<string, number>;
+    artDirections: Record<string, number>;
+    diceModes: Record<string, number>;
+    autoSystemThemeCount: number;
+  };
+  liveConnections: Array<{
+    socketId: string;
+    userId?: string;
+    username?: string;
+    connectedAt: number;
+    lastActivityAt: number;
+    ip: string;
+    device: string;
+    view: string;
+    contextLabel?: string;
+    system?: SystemId | null;
+    palette?: string;
+    artDirection?: string;
+    diceMode?: string;
+  }>;
+  users: Array<{
+    id: string;
+    username: string;
+    email: string;
+    isAdmin: boolean;
+    createdAt: string;
+    isOnline: boolean;
+    openTabsCount: number;
+    currentView: string | null;
+    currentContextLabel: string | null;
+    lastSeenAt: number;
+    lastLoginAt: number | null;
+    loginCount: number;
+    totalRolls: number;
+    lastIp: string | null;
+    device: string | null;
+    theme: {
+      palette: string;
+      artDirection: string;
+      diceMode: string;
+      density: string;
+      autoSystemTheme: boolean;
+      hasSavedCustomPrefs: boolean;
+    };
+    charactersCount: number;
+    campaignsAsDmCount: number;
+    characters: Array<{ id: string; name: string; system: string }>;
+  }>;
+  characters: Array<{
+    id: string;
+    name: string;
+    portraitUrl: string;
+    system: SystemId;
+    ownerId: string;
+    ownerUsername: string;
+    campaignId: string | null;
+    campaignName: string | null;
+    summary: {
+      className: string | null;
+      trail: string | null;
+      origin: string | null;
+      nex: number | null;
+      level: number | null;
+      patent: string | null;
+    };
+    vitals: Array<{
+      id: string;
+      label: string;
+      current: number;
+      max: number;
+      color: string;
+    }>;
+  }>;
+  campaigns: Array<{
+    id: string;
+    name: string;
+    description: string;
+    system: SystemId;
+    inviteCode: string;
+    createdAt: string;
+    dmUsername: string;
+    lockAllSheets: boolean;
+    allowTrade: boolean;
+    requiredNex: number | null;
+    requiredPatent: string | null;
+    playersCount: number;
+    pendingInvitesCount: number;
+    characters: Array<{ id: string; name: string; ownerUsername: string }>;
+  }>;
+  events: Array<{
+    id: string;
+    createdAt: number;
+    category: 'auth' | 'connection' | 'theme' | 'character' | 'campaign' | 'dice' | 'system';
+    userId?: string;
+    username?: string;
+    summary: string;
+    details?: string;
+    ip?: string;
+    device?: string;
+    tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'purple';
+  }>;
+}
+
+export async function fetchAdminOverview(): Promise<AdminOverviewResponse> {
+  const response = await fetch(`${API_URL}/admin/overview`, {
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao carregar Painel de Admin Geral.');
+  return data;
+}
+
+export async function toggleUserAdminStatus(
+  userId: string
+): Promise<{ user: { id: string; username: string; isAdmin: boolean } }> {
+  const response = await fetch(`${API_URL}/admin/users/${userId}/toggle-admin`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao alterar permissão do usuário.');
+  return data;
+}
+
+export async function clearAdminEventsHistory(): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/events`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao limpar histórico de eventos.');
 }

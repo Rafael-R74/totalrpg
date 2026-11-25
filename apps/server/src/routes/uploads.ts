@@ -2,6 +2,7 @@ import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
+import { getUploadsDir } from '../config';
 
 const uploadsRouter = Router();
 
@@ -40,7 +41,7 @@ uploadsRouter.post('/', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'A imagem deve ter no máximo 15MB.' });
     }
 
-    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const uploadsDir = getUploadsDir();
     await fs.mkdir(uploadsDir, { recursive: true });
 
     const safeBaseName = String(fileName || 'imagem')
@@ -53,9 +54,7 @@ uploadsRouter.post('/', async (req: AuthenticatedRequest, res) => {
 
     await fs.writeFile(filePath, fileBuffer);
 
-    const host = req.get('host') || 'localhost:3333';
-    const protocol = req.protocol || 'http';
-    const fileUrl = `${protocol}://${host}/uploads/${uniqueFileName}`;
+    const fileUrl = `/uploads/${uniqueFileName}`;
 
     return res.status(201).json({ url: fileUrl });
   } catch (error) {

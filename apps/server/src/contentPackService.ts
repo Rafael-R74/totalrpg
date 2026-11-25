@@ -6,25 +6,14 @@ import {
   type ContentPackApplyStats,
   type TotalRpgContentPack,
 } from '@totalrpg/shared';
+import { getPacksDir } from './config';
 
 let cachedMergedPack: TotalRpgContentPack | null = null;
 let loadedPackFiles: string[] = [];
 let cachedStats: ContentPackApplyStats | null = null;
 
 function resolvePacksDirectory(): string {
-  const candidates = [
-    path.resolve(__dirname, '../../../data/packs'),
-    path.resolve(process.cwd(), 'data/packs'),
-    path.resolve(process.cwd(), '../../data/packs'),
-  ];
-
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) {
-      return dir;
-    }
-  }
-
-  return candidates[0];
+  return getPacksDir();
 }
 
 export function loadLocalContentPacks(): ContentPackApplyStats | null {

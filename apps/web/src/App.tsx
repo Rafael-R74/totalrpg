@@ -17,7 +17,7 @@ const diceLabLoader = Object.values(diceLabModules)[0];
 const DiceLab = diceLabLoader ? lazy(() => diceLabLoader().then((m) => ({ default: m.DiceLab }))) : null;
 import { UserSettingsPanel } from './components/UserSettingsPanel';
 import { ThemeProvider, useTheme } from './theme/themeEngine';
-import { AuthResponse, fetchContentPack } from './services/api';
+import { AuthResponse, fetchContentPack, fetchCurrentUser } from './services/api';
 import { io, Socket } from 'socket.io-client';
 import { SecondMonitorScreen } from './components/SecondMonitorScreen';
 import {
@@ -36,15 +36,52 @@ import {
   applyContentPack,
   SessionActivityLogEntry,
   CharacterLivePatch,
+  PresenceViewId,
 } from '@totalrpg/shared';
+import { BACKEND_ORIGIN } from './config';
 
-const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io('http://localhost:3333');
+const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(BACKEND_ORIGIN, {
+  auth: () => ({
+    token: localStorage.getItem('totalrpg_token') || undefined,
+  }),
+});
 
-function ActiveSystemBridge({ system }: { system: SystemId | null }) {
-  const { setActiveSystem } = useTheme();
+function ActiveSystemBridge({
+  system,
+  view,
+  contextLabel,
+  userKey,
+}: {
+  system: SystemId | null;
+  view: PresenceViewId;
+  contextLabel?: string;
+  userKey?: string | null;
+}) {
+  const { setActiveSystem, effectivePalette, effectiveArtDirection, preferences } = useTheme();
+
   useEffect(() => {
     setActiveSystem(system);
   }, [system, setActiveSystem]);
+
+  useEffect(() => {
+    const emitPresence = () => {
+      socket.emit('presence:update', {
+        token: localStorage.getItem('totalrpg_token') || null,
+        view,
+        contextLabel,
+        system,
+        palette: effectivePalette,
+        artDirection: effectiveArtDirection,
+        diceMode: preferences.dice,
+      });
+    };
+    emitPresence();
+    socket.on('connect', emitPresence);
+    return () => {
+      socket.off('connect', emitPresence);
+    };
+  }, [view, contextLabel, system, effectivePalette, effectiveArtDirection, preferences.dice, userKey]);
+
   return null;
 }
 
@@ -53,7 +90,12 @@ export default function App() {
     preloadDiceScene();
   }, []);
 
-  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; email: string } | null>(() => {
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    username: string;
+    email: string;
+    isAdmin?: boolean;
+  } | null>(() => {
     const saved = localStorage.getItem('totalrpg_user');
     return saved ? JSON.parse(saved) : null;
   });
@@ -109,6 +151,34 @@ export default function App() {
   } | null>(null);
   const sheetSpendResourceRef = useRef<((amount: number) => boolean) | null>(null);
   const [, setContentPackVersion] = useState(0);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let active = true;
+    fetchCurrentUser()
+      .then((res) => {
+        if (!active || !res?.user) return;
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          if (
+            prev.isAdmin === res.user.isAdmin &&
+            prev.username === res.user.username &&
+            prev.email === res.user.email
+          ) {
+            return prev;
+          }
+          const updated = { ...prev, ...res.user };
+          localStorage.setItem('totalrpg_user', JSON.stringify(updated));
+          return updated;
+        });
+      })
+      .catch(() => {
+        // mantém dados locais caso offline
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id]);
 
   useEffect(() => {
     let active = true;
@@ -418,6 +488,12 @@ export default function App() {
   if (monitorCampaignId) {
     return (
       <ThemeProvider userId={currentUser?.id}>
+        <ActiveSystemBridge
+          system={null}
+          view="second-monitor"
+          contextLabel={`Mesa ${monitorCampaignId.slice(0, 8)}`}
+          userKey={currentUser?.id}
+        />
         <SecondMonitorScreen campaignId={monitorCampaignId} />
       </ThemeProvider>
     );
@@ -426,6 +502,11 @@ export default function App() {
   if (!currentUser) {
     return (
       <ThemeProvider userId={null}>
+        <ActiveSystemBridge
+          system={null}
+          view={dedicatedAuthMode ? 'auth' : 'landing'}
+          userKey="guest"
+        />
         {dedicatedAuthMode ? (
           <AuthScreen
             initialMode={dedicatedAuthMode}
@@ -448,9 +529,26 @@ export default function App() {
     );
   }
 
+  const activePresenceView: PresenceViewId = openedCharacter
+    ? 'sheet'
+    : currentCampaignSession?.role === 'dm'
+      ? 'dm-screen'
+      : 'dashboard';
+
+  const activePresenceContext = openedCharacter
+    ? `Ficha #${openedCharacter.characterId.slice(0, 6)}`
+    : currentCampaignSession
+      ? `Campanha #${currentCampaignSession.campaignId.slice(0, 6)}`
+      : undefined;
+
   return (
     <ThemeProvider userId={currentUser.id}>
-      <ActiveSystemBridge system={activeSessionSystem} />
+      <ActiveSystemBridge
+        system={activeSessionSystem}
+        view={activePresenceView}
+        contextLabel={activePresenceContext}
+        userKey={currentUser.id}
+      />
       <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
         <Dialog
           open={isQuickSettingsOpen}
@@ -795,12 +893,18 @@ export default function App() {
 
       <AppHeader
         username={currentUser.username}
+        isAdmin={Boolean(currentUser.isAdmin)}
         system={activeSessionSystem}
         onHome={() => {
           setOpenedCharacter(null);
           setCurrentCampaignSession(null);
         }}
         onOpenAppearance={() => setIsQuickSettingsOpen(true)}
+        onOpenAdminOverview={() => {
+          setOpenedCharacter(null);
+          setCurrentCampaignSession(null);
+          setDashboardRequestedTab('admin-overview');
+        }}
         onLogout={() => {
           setDedicatedAuthMode(null);
           handleLogout();
@@ -985,6 +1089,7 @@ export default function App() {
         /* VISÃO 3: Dashboard Principal */
         <Dashboard
           currentUser={currentUser}
+          socket={socket}
           requestedTab={dashboardRequestedTab}
           onRequestedTabHandled={() => setDashboardRequestedTab(null)}
           onEnterSession={(campaignId, role, system) => {

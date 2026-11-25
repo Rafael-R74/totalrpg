@@ -5,30 +5,39 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { prisma } from '../prisma';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
+import { getJwtSecret, getPacksDir, isConfiguredAdminIdentity } from '../config';
+import {
+  extractCleanIpFromRequest,
+  recordAdminEvent,
+  summarizeUserAgent,
+  touchUserTelemetry,
+} from '../adminTelemetryService';
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
-const USER_PREFS_FILE = path.resolve(
-  __dirname,
-  '../../../../data/packs/user-ui-preferences.local.json'
-);
+const JWT_SECRET = getJwtSecret();
 
-function readAllUserPrefs(): Record<string, unknown> {
+function getUserPrefsFilePath(): string {
+  return path.join(getPacksDir(), 'user-ui-preferences.local.json');
+}
+
+export function readAllUserPrefs(): Record<string, unknown> {
   try {
-    if (!fs.existsSync(USER_PREFS_FILE)) return {};
-    return JSON.parse(fs.readFileSync(USER_PREFS_FILE, 'utf-8')) || {};
+    const prefsFile = getUserPrefsFilePath();
+    if (!fs.existsSync(prefsFile)) return {};
+    return JSON.parse(fs.readFileSync(prefsFile, 'utf-8')) || {};
   } catch {
     return {};
   }
 }
 
 function writeAllUserPrefs(data: Record<string, unknown>) {
-  const dir = path.dirname(USER_PREFS_FILE);
+  const prefsFile = getUserPrefsFilePath();
+  const dir = path.dirname(prefsFile);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(USER_PREFS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  fs.writeFileSync(prefsFile, JSON.stringify(data, null, 2), 'utf-8');
 }
 
 // 1. Rota de cadastro
@@ -55,12 +64,14 @@ authRouter.post('/register', async (req, res) => {
     // Criptografa a senha com bcrypt
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Salva o usuário no banco SQLite usando o Prisma
+    // Salva o usuário no banco SQLite usando o Prisma (promove automaticamente caso listado no .env)
+    const shouldBeAdmin = isConfiguredAdminIdentity(email, username);
     const user = await prisma.user.create({
       data: {
         username,
         email,
-        password: hashedPassword
+        password: hashedPassword,
+        isAdmin: shouldBeAdmin,
       }
     });
 
@@ -70,6 +81,25 @@ authRouter.post('/register', async (req, res) => {
       JWT_SECRET,
       { expiresIn: '7d' } 
     );
+
+    const ip = extractCleanIpFromRequest(req);
+    const device = summarizeUserAgent(req.headers['user-agent']);
+    touchUserTelemetry(user.id, {
+      lastLoginAt: Date.now(),
+      incrementLogin: true,
+      lastIp: ip,
+      lastDevice: device,
+    });
+    recordAdminEvent({
+      category: 'auth',
+      userId: user.id,
+      username: user.username,
+      summary: `Nova conta criada: @${user.username} (${user.email})`,
+      details: `${device} • IP ${ip}${user.isAdmin ? ' • Promovido a Admin' : ''}`,
+      ip,
+      device,
+      tone: 'success',
+    });
 
     return res.status(201).json({
       message: 'Usuário criado com sucesso!',
@@ -96,6 +126,9 @@ authRouter.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Informe usuário/e-mail e senha.' });
     }
 
+    const ip = extractCleanIpFromRequest(req);
+    const device = summarizeUserAgent(req.headers['user-agent']);
+
     // Busca o usuário pelo e-mail OU pelo nome de usuário
     const user = await prisma.user.findFirst({
       where: {
@@ -107,6 +140,14 @@ authRouter.post('/login', async (req, res) => {
     });
 
     if (!user) {
+      recordAdminEvent({
+        category: 'auth',
+        summary: `Tentativa de login recusada para "${String(emailOrUsername).slice(0, 40)}"`,
+        details: `${device} • IP ${ip}`,
+        ip,
+        device,
+        tone: 'warning',
+      });
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
 
@@ -114,8 +155,44 @@ authRouter.post('/login', async (req, res) => {
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
+      recordAdminEvent({
+        category: 'auth',
+        userId: user.id,
+        username: user.username,
+        summary: `Senha incorreta no login de @${user.username}`,
+        details: `${device} • IP ${ip}`,
+        ip,
+        device,
+        tone: 'warning',
+      });
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
+
+    let effectiveIsAdmin = user.isAdmin;
+    if (!effectiveIsAdmin && isConfiguredAdminIdentity(user.email, user.username)) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isAdmin: true },
+      });
+      effectiveIsAdmin = true;
+    }
+
+    touchUserTelemetry(user.id, {
+      lastLoginAt: Date.now(),
+      incrementLogin: true,
+      lastIp: ip,
+      lastDevice: device,
+    });
+    recordAdminEvent({
+      category: 'auth',
+      userId: user.id,
+      username: user.username,
+      summary: `Login realizado por @${user.username}`,
+      details: `${device} • IP ${ip}`,
+      ip,
+      device,
+      tone: 'info',
+    });
 
     // Gera o token JWT de acesso
     const token = jwt.sign(
@@ -127,16 +204,58 @@ authRouter.post('/login', async (req, res) => {
     return res.json({
       message: 'Login realizado com sucesso!',
       token,
-        user: {
+      user: {
         id: user.id,
         username: user.username,
         email: user.email,
-        isAdmin: user.isAdmin
-      }
+        isAdmin: effectiveIsAdmin,
+      },
     });
   } catch (error) {
     console.error('Erro no login:', error);
     return res.status(500).json({ error: 'Erro interno ao realizar login.' });
+  }
+});
+
+// 2.5. Sincronizar perfil e status de Admin da sessão atual
+authRouter.get('/me', authMiddleware as any, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Não autenticado.' });
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { id: true, username: true, email: true, isAdmin: true },
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    let effectiveIsAdmin = user.isAdmin;
+    if (!effectiveIsAdmin && isConfiguredAdminIdentity(user.email, user.username)) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isAdmin: true },
+      });
+      effectiveIsAdmin = true;
+    }
+
+    touchUserTelemetry(user.id, {
+      lastIp: extractCleanIpFromRequest(req),
+      lastDevice: summarizeUserAgent(req.headers['user-agent']),
+    });
+
+    return res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        isAdmin: effectiveIsAdmin,
+      },
+    });
+  } catch (error) {
+    console.error('Erro em /auth/me:', error);
+    return res.status(500).json({ error: 'Erro ao validar sessão.' });
   }
 });
 
@@ -164,8 +283,33 @@ authRouter.put('/preferences', authMiddleware as any, async (req: AuthenticatedR
       return res.status(400).json({ error: 'Objeto de preferências inválido.' });
     }
     const all = readAllUserPrefs();
+    const prev = (all[req.userId] || {}) as Record<string, any>;
     all[req.userId] = preferences;
     writeAllUserPrefs(all);
+
+    const nextPref = preferences as Record<string, any>;
+    const changes: string[] = [];
+    if (nextPref.palette && nextPref.palette !== prev.palette) {
+      changes.push(`Paleta: ${nextPref.palette}`);
+    }
+    if (nextPref.artDirection && nextPref.artDirection !== prev.artDirection) {
+      changes.push(`Direção: ${nextPref.artDirection}`);
+    }
+    if (nextPref.dice && nextPref.dice !== prev.dice) {
+      changes.push(`Dados: ${nextPref.dice}`);
+    }
+    if (changes.length > 0) {
+      recordAdminEvent({
+        category: 'theme',
+        userId: req.userId,
+        username: req.username,
+        summary: `@${req.username || 'usuário'} alterou aparência (${changes.join(' • ')})`,
+        ip: extractCleanIpFromRequest(req),
+        device: summarizeUserAgent(req.headers['user-agent']),
+        tone: 'purple',
+      });
+    }
+
     return res.json({ message: 'Preferências salvas com sucesso.', preferences });
   } catch (error) {
     console.error('Erro ao salvar preferências visuais:', error);

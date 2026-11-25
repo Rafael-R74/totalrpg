@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
+import { IS_PRODUCTION } from '../config';
 import {
   ORDEM_COMPENDIUM_ENTRIES,
   ORDEM_SKILLS_METADATA,
@@ -285,13 +286,28 @@ compendiumRouter.post('/skill', async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// Rota de Inicialização Rápida: Torna o usuário atual Admin e popula exemplos iniciais
+// Rota de Inicialização Rápida: Em dev permite ativar o primeiro Admin; em produção exige isAdmin
 compendiumRouter.post('/seed', async (req: AuthenticatedRequest, res) => {
   try {
-    await prisma.user.update({
-      where: { id: req.userId },
-      data: { isAdmin: true },
-    });
+    const caller = req.userId
+      ? await prisma.user.findUnique({
+          where: { id: req.userId },
+          select: { isAdmin: true },
+        })
+      : null;
+
+    if (IS_PRODUCTION && !caller?.isAdmin) {
+      return res.status(403).json({
+        error: 'Apenas administradores podem sincronizar ou popular o Compêndio em produção.',
+      });
+    }
+
+    if (!IS_PRODUCTION && req.userId && !caller?.isAdmin) {
+      await prisma.user.update({
+        where: { id: req.userId },
+        data: { isAdmin: true },
+      });
+    }
 
     await ensureOrdemCompendiumSynchronized();
 

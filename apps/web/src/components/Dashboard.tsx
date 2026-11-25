@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
-import { SystemId, ORDEM_NEX_PROGRESSION, ORDEM_PATENTS } from '@totalrpg/shared';
+import type { Socket } from 'socket.io-client';
+import {
+  SystemId,
+  ORDEM_NEX_PROGRESSION,
+  ORDEM_PATENTS,
+  ServerToClientEvents,
+  ClientToServerEvents,
+} from '@totalrpg/shared';
 import {
   CampaignData,
   CharacterData,
@@ -19,6 +26,7 @@ import {
   deleteCampaign,
 } from '../services/api';
 import { AdminPanel } from './AdminPanel';
+import { PlatformAdminDashboard } from './PlatformAdminDashboard';
 import { CharacterWizardModal } from './CharacterWizardModal';
 import { UserSettingsPanel } from './UserSettingsPanel';
 import { SYSTEM_META, SystemSigilBadge } from './BrandMark';
@@ -26,10 +34,17 @@ import { Dialog } from './ui/Dialog';
 import { Icon, IconName } from './ui/Icon';
 import { Portrait } from './ui/Portrait';
 
-export type DashboardTabId = 'player' | 'characters' | 'dm' | 'admin' | 'settings';
+export type DashboardTabId =
+  | 'player'
+  | 'characters'
+  | 'dm'
+  | 'admin-overview'
+  | 'admin'
+  | 'settings';
 
 interface DashboardProps {
-  currentUser: { id: string; username: string; email: string };
+  currentUser: { id: string; username: string; email: string; isAdmin?: boolean };
+  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   requestedTab?: DashboardTabId | null;
   onRequestedTabHandled?: () => void;
   onEnterSession: (campaignId: string, role: 'dm' | 'player', system?: SystemId) => void;
@@ -38,6 +53,7 @@ interface DashboardProps {
 
 export function Dashboard({
   currentUser,
+  socket,
   requestedTab,
   onRequestedTabHandled,
   onEnterSession,
@@ -111,7 +127,7 @@ export function Dashboard({
   }
 
   useEffect(() => {
-    if (activeTab !== 'admin' && activeTab !== 'settings') {
+    if (activeTab !== 'admin' && activeTab !== 'admin-overview' && activeTab !== 'settings') {
       loadDashboardData();
     }
   }, [activeTab]);
@@ -258,7 +274,12 @@ export function Dashboard({
     { id: 'player', label: 'Minhas mesas', icon: 'd20', count: invites.length > 0 ? invites.length : undefined },
     { id: 'characters', label: 'Personagens', icon: 'user' },
     { id: 'dm', label: 'Mestrar', icon: 'shield' },
-    { id: 'admin', label: 'Compêndio', icon: 'library' },
+    ...(currentUser.isAdmin
+      ? ([
+          { id: 'admin-overview', label: 'Painel Admin', icon: 'activity' },
+          { id: 'admin', label: 'Compêndio', icon: 'library' },
+        ] as Array<{ id: DashboardTabId; label: string; icon: IconName }>)
+      : []),
     { id: 'settings', label: 'Configurações', icon: 'settings' },
   ];
 
@@ -1016,7 +1037,15 @@ export function Dashboard({
         </div>
       )}
 
-      {activeTab === 'admin' && <AdminPanel />}
+      {activeTab === 'admin-overview' && currentUser.isAdmin && (
+        <PlatformAdminDashboard
+          currentUserId={currentUser.id}
+          socket={socket}
+          onOpenCharacter={onOpenCharacter}
+        />
+      )}
+
+      {activeTab === 'admin' && currentUser.isAdmin && <AdminPanel />}
 
       {activeTab === 'settings' && <UserSettingsPanel currentUser={currentUser} />}
     </div>

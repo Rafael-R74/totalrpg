@@ -1,39 +1,26 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: vtt-postgres
+  totalrpg-app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: totalrpg-app:latest
+    container_name: totalrpg-app
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-vtt_admin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME:-vtt_db}
+      NODE_ENV: production
+      TZ: America/Sao_Paulo
+      PORT: 3333
+      DATA_DIR: /app/data
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/prod.db?connection_limit=1}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://seu-dominio.com}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
     volumes:
-      - vtt_pgdata:/var/lib/postgresql/data
+      # Mapeia a pasta inteira para suportar prod.db + prod.db-wal + prod.db-shm, uploads/ e packs/
+      - ./data:/app/data
+    mem_limit: 512m
     deploy:
       resources:
         limits:
           memory: 512M
-    networks:
-      - vtt-internal
-
-  redis:
-    image: redis:7-alpine
-    container_name: vtt-redis
-    restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
-    volumes:
-      - vtt_redisdata:/data
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-    networks:
-      - vtt-internal
-
-volumes:
-  vtt_pgdata:
-  vtt_redisdata:
-
-networks:
-  vtt-internal:
-    driver: bridge

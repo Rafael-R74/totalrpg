@@ -4,6 +4,11 @@ import { prisma } from '../prisma';
 import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
 import { createDefaultOrdemSheet, createDefaultT20Sheet, VitalBar } from '@totalrpg/shared';
 import { diffAndLogCharacterUpdate } from '../activityLogService';
+import {
+  extractCleanIpFromRequest,
+  recordAdminEvent,
+  summarizeUserAgent,
+} from '../adminTelemetryService';
 
 export const charactersRouter = Router();
 
@@ -57,7 +62,16 @@ charactersRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
       isCampaignMember = teammateCount > 0;
     }
 
-    if (!isOwner && !isDM && !isCampaignMember) {
+    let isPlatformAdmin = false;
+    if (!isOwner && !isDM && !isCampaignMember && req.userId) {
+      const requester = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { isAdmin: true },
+      });
+      isPlatformAdmin = Boolean(requester?.isAdmin);
+    }
+
+    if (!isOwner && !isDM && !isCampaignMember && !isPlatformAdmin) {
       return res.status(403).json({ error: 'Sem permissão para visualizar esta ficha.' });
     }
 
@@ -120,6 +134,19 @@ charactersRouter.post('/', async (req: AuthenticatedRequest, res) => {
         inventory: (Array.isArray(initialInventory) ? initialInventory : []) as unknown as Prisma.InputJsonValue,
         attacks: (Array.isArray(initialAttacks) ? initialAttacks : []) as unknown as Prisma.InputJsonValue,
       },
+    });
+
+    const classLabel = String(sheetData.className || sheetData.class || '');
+    const nexLabel = typeof sheetData.nex === 'number' ? ` • NEX ${sheetData.nex}%` : '';
+    recordAdminEvent({
+      category: 'character',
+      userId: req.userId,
+      username: req.username,
+      summary: `@${req.username || 'usuário'} criou o personagem "${newCharacter.name}"`,
+      details: `Sistema: ${system}${classLabel ? ` • ${classLabel}` : ''}${nexLabel}`,
+      ip: extractCleanIpFromRequest(req),
+      device: summarizeUserAgent(req.headers['user-agent']),
+      tone: 'success',
     });
 
     return res.status(201).json(newCharacter);
@@ -211,6 +238,17 @@ charactersRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {
 
     await prisma.character.delete({
       where: { id: characterId },
+    });
+
+    recordAdminEvent({
+      category: 'character',
+      userId: req.userId,
+      username: req.username,
+      summary: `@${req.username || 'usuário'} excluiu o personagem "${existing.name}"`,
+      details: `Sistema: ${existing.system}`,
+      ip: extractCleanIpFromRequest(req),
+      device: summarizeUserAgent(req.headers['user-agent']),
+      tone: 'warning',
     });
 
     return res.json({ message: 'Personagem excluído com sucesso.' });

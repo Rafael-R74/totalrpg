@@ -277,6 +277,24 @@ export function resolveTempVitalMax(
   return baselineMax;
 }
 
+export type PresenceViewId =
+  | 'landing'
+  | 'auth'
+  | 'dashboard'
+  | 'sheet'
+  | 'dm-screen'
+  | 'second-monitor';
+
+export interface PresenceUpdatePayload {
+  token?: string | null;
+  view: PresenceViewId;
+  contextLabel?: string;
+  system?: SystemId | null;
+  palette?: string;
+  artDirection?: string;
+  diceMode?: string;
+}
+
 // Eventos enviados pelo servidor para o cliente
 export interface ServerToClientEvents {
   'vital:updated': (data: VitalBar) => void;
@@ -303,6 +321,7 @@ export interface ServerToClientEvents {
   }) => void;
   'scene:ended': (payload: { campaignId: string; timestamp: number }) => void;
   'activity:logged': (entry: SessionActivityLogEntry) => void;
+  'admin:telemetryUpdated': (payload: { timestamp: number; reason: string }) => void;
   'monitor:updated': (payload: {
     director: MonitorDirectorState;
     combatState: {
@@ -374,6 +393,8 @@ export interface ClientToServerEvents {
     rollResult: DiceRollResult;
     dieIndex?: number;
   }) => void;
+  'presence:update': (payload: PresenceUpdatePayload) => void;
+  'admin:watch': (payload: { token: string; active: boolean }) => void;
   'scene:end': (payload: { campaignId: string }) => void;
   'activity:log': (
     payload: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt'> & {

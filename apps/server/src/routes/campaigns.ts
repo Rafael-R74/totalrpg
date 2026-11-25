@@ -9,6 +9,11 @@ import {
   recordCampaignActivity,
   syncCampaignActivityLogFromClient,
 } from '../activityLogService';
+import {
+  extractCleanIpFromRequest,
+  recordAdminEvent,
+  summarizeUserAgent,
+} from '../adminTelemetryService';
 
 export const campaignsRouter = Router();
 
@@ -68,6 +73,17 @@ campaignsRouter.post('/', async (req: AuthenticatedRequest, res) => {
         requiredPatent: system === 'ordem-paranormal' ? parsedReqPatent : null,
         dmId: req.userId!
       }
+    });
+
+    recordAdminEvent({
+      category: 'campaign',
+      userId: req.userId,
+      username: req.username,
+      summary: `@${req.username || 'mestre'} criou a campanha "${newCampaign.name}"`,
+      details: `Sistema: ${system} • Código: ${newCampaign.inviteCode}`,
+      ip: extractCleanIpFromRequest(req),
+      device: summarizeUserAgent(req.headers['user-agent']),
+      tone: 'success',
     });
 
     return res.status(201).json(newCampaign);
@@ -378,6 +394,17 @@ campaignsRouter.post('/join-code', async (req: AuthenticatedRequest, res) => {
       category: 'system',
       summary: 'Entrou na campanha usando o código de convite',
       tone: 'success',
+    });
+
+    recordAdminEvent({
+      category: 'campaign',
+      userId: req.userId,
+      username: req.username,
+      summary: `@${req.username || 'jogador'} entrou na campanha "${campaign.name}" com "${character.name}"`,
+      details: `Código: ${campaign.inviteCode}`,
+      ip: extractCleanIpFromRequest(req),
+      device: summarizeUserAgent(req.headers['user-agent']),
+      tone: 'info',
     });
 
     return res.json({ message: `Personagem vinculado à campanha ${campaign.name}!` });
@@ -975,6 +1002,16 @@ campaignsRouter.delete('/:campaignId', async (req: AuthenticatedRequest, res) =>
         where: { id: campaignId },
       }),
     ]);
+
+    recordAdminEvent({
+      category: 'campaign',
+      userId: req.userId,
+      username: req.username,
+      summary: `@${req.username || 'mestre'} encerrou e excluiu a campanha "${existing.name}"`,
+      ip: extractCleanIpFromRequest(req),
+      device: summarizeUserAgent(req.headers['user-agent']),
+      tone: 'warning',
+    });
 
     return res.json({ message: 'Campanha encerrada e excluída com sucesso.' });
   } catch (error) {

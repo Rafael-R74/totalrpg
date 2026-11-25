@@ -10,14 +10,25 @@ export interface Crumb {
 
 interface AppHeaderProps {
   username: string;
+  isAdmin?: boolean;
   crumbs: Crumb[];
   system?: SystemId | null;
   onHome: () => void;
   onOpenAppearance: () => void;
+  onOpenAdminOverview?: () => void;
   onLogout: () => void;
 }
 
-export function AppHeader({ username, crumbs, system, onHome, onOpenAppearance, onLogout }: AppHeaderProps) {
+export function AppHeader({
+  username,
+  isAdmin,
+  crumbs,
+  system,
+  onHome,
+  onOpenAppearance,
+  onOpenAdminOverview,
+  onLogout,
+}: AppHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -84,6 +95,17 @@ export function AppHeader({ username, crumbs, system, onHome, onOpenAppearance, 
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          {isAdmin && onOpenAdminOverview && (
+            <button
+              type="button"
+              onClick={onOpenAdminOverview}
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-amber-700/60 bg-amber-950/35 px-2.5 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-900/45 transition cursor-pointer mr-1"
+              title="Abrir Painel de Admin Geral"
+            >
+              <Icon name="activity" size={14} className="text-amber-400" />
+              Admin
+            </button>
+          )}
           <button type="button" onClick={onOpenAppearance} className="trpg-icon-btn" aria-label="Aparência" title="Aparência">
             <Icon name="palette" size={19} />
           </button>
@@ -107,9 +129,29 @@ export function AppHeader({ username, crumbs, system, onHome, onOpenAppearance, 
                 role="menu"
                 className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl"
               >
-                <div className="px-3 py-2 text-xs text-zinc-400">
-                  Conectado como <span className="text-zinc-100 font-semibold">{username}</span>
+                <div className="px-3 py-2 text-xs text-zinc-400 flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    Conectado como <span className="text-zinc-100 font-semibold">{username}</span>
+                  </span>
+                  {isAdmin && (
+                    <span className="shrink-0 rounded bg-amber-950/70 border border-amber-700/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                      Admin
+                    </span>
+                  )}
                 </div>
+                {isAdmin && onOpenAdminOverview && (
+                  <button
+                    role="menuitem"
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onOpenAdminOverview();
+                    }}
+                    className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-amber-200 hover:bg-amber-950/40"
+                  >
+                    <Icon name="activity" size={16} className="text-amber-400" /> Painel Admin Geral
+                  </button>
+                )}
                 <button
                   role="menuitem"
                   type="button"

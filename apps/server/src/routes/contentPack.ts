@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import type { TotalRpgContentPack } from '@totalrpg/shared';
-import { authMiddleware } from '../middlewares/authMiddleware';
+import { prisma } from '../prisma';
+import { authMiddleware, AuthenticatedRequest } from '../middlewares/authMiddleware';
 import {
   getLoadedContentPackState,
   saveImportedContentPack,
 } from '../contentPackService';
 import { resetOrdemCompendiumSync } from './compendium';
+import {
+  extractCleanIpFromRequest,
+  recordAdminEvent,
+  summarizeUserAgent,
+} from '../adminTelemetryService';
 
 export const contentPackRouter = Router();
 
@@ -37,8 +43,21 @@ contentPackRouter.get('/', (_req, res) => {
   return res.json(getLoadedContentPackState());
 });
 
-contentPackRouter.post('/import', authMiddleware as any, (req, res) => {
+contentPackRouter.post('/import', authMiddleware as any, async (req: AuthenticatedRequest, res) => {
   try {
+    const currentUser = req.userId
+      ? await prisma.user.findUnique({
+          where: { id: req.userId },
+          select: { isAdmin: true },
+        })
+      : null;
+
+    if (!currentUser?.isAdmin) {
+      return res.status(403).json({
+        error: 'Apenas administradores podem importar Content Packs no servidor.',
+      });
+    }
+
     if (!isValidContentPackBody(req.body)) {
       return res.status(400).json({
         error:
@@ -48,6 +67,17 @@ contentPackRouter.post('/import', authMiddleware as any, (req, res) => {
 
     const stats = saveImportedContentPack(req.body);
     resetOrdemCompendiumSync();
+
+    recordAdminEvent({
+      category: 'system',
+      userId: req.userId,
+      username: req.username,
+      summary: `Content Pack local importado por @${req.username || 'admin'}`,
+      details: `${stats?.totalApplied ?? 0} descrições aplicadas`,
+      ip: extractCleanIpFromRequest(req),
+      device: summarizeUserAgent(req.headers['user-agent']),
+      tone: 'purple',
+    });
 
     return res.json({
       message: 'Content Pack importado e aplicado com sucesso!',
