@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { MonitorDirectorState, CampaignMerchant } from '@totalrpg/shared';
 import { ImageUploadField } from '../ImageUploadField';
 import { MonitorScenes } from './MonitorScenes';
+import { MonitorMirror } from './MonitorMirror';
 
 import { Icon } from '../ui/Icon';
 interface MonitorDirectorPanelProps {
@@ -109,6 +110,8 @@ export function MonitorDirectorPanel({
           <Icon name="check" size={15} /> TV reiniciada.
         </p>
       )}
+
+      <MonitorMirror campaignId={campaignId} />
 
       {director.activeProjection && (
         <div className="bg-amber-950/40 border border-amber-700 p-4 rounded-xl flex flex-wrap justify-between items-center gap-4">

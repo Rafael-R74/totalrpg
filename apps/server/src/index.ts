@@ -186,6 +186,15 @@ io.on('connection', (socket) => {
     if (campaignId) socket.to(campaignId).emit('monitor:reset', { campaignId });
   });
 
+  // Tamanho da janela da TV → espelho do mestre; e o pedido do espelho → TV
+  socket.on('monitor:viewport', ({ campaignId, width, height }) => {
+    if (!campaignId || !(width > 0) || !(height > 0)) return;
+    socket.to(campaignId).emit('monitor:viewport', { campaignId, width, height });
+  });
+  socket.on('monitor:viewportRequest', ({ campaignId }) => {
+    if (campaignId) socket.to(campaignId).emit('monitor:viewportRequest', { campaignId });
+  });
+
   // Log geral de atividades da sessão em tempo real
   socket.on('activity:log', (payload) => {
     if (payload?.campaignId) {

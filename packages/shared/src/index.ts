@@ -330,6 +330,10 @@ export interface ServerToClientEvents {
   'scene:ended': (payload: { campaignId: string; timestamp: number }) => void;
   /** Mestre reiniciou o 2º monitor: limpa rolagens, destaques e janelas abertas na TV */
   'monitor:reset': (payload: { campaignId: string }) => void;
+  /** Tamanho real da janela da TV (para o espelho do mestre montar o mesmo layout) */
+  'monitor:viewport': (payload: { campaignId: string; width: number; height: number }) => void;
+  /** Espelho abriu e pede que a TV informe o tamanho */
+  'monitor:viewportRequest': (payload: { campaignId: string }) => void;
   'activity:logged': (entry: SessionActivityLogEntry) => void;
   'admin:telemetryUpdated': (payload: { timestamp: number; reason: string }) => void;
   'admin:forceLogout': (payload: { reason: string }) => void;
@@ -408,6 +412,8 @@ export interface ClientToServerEvents {
   'presence:update': (payload: PresenceUpdatePayload) => void;
   'admin:watch': (payload: { token: string; active: boolean }) => void;
   'scene:end': (payload: { campaignId: string }) => void;
+  'monitor:viewport': (payload: { campaignId: string; width: number; height: number }) => void;
+  'monitor:viewportRequest': (payload: { campaignId: string }) => void;
   'monitor:reset': (payload: { campaignId: string }) => void;
   'activity:log': (
     payload: Omit<SessionActivityLogEntry, 'id' | 'timestamp' | 'createdAt'> & {

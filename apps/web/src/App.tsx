@@ -529,7 +529,10 @@ export default function App() {
           contextLabel={`Mesa ${monitorCampaignId.slice(0, 8)}`}
           userKey={currentUser?.id}
         />
-        <SecondMonitorScreen campaignId={monitorCampaignId} />
+        <SecondMonitorScreen
+          campaignId={monitorCampaignId}
+          preview={new URLSearchParams(window.location.search).get('preview') === '1'}
+        />
       </ThemeProvider>
     );
   }

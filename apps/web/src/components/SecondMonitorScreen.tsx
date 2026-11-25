@@ -55,6 +55,8 @@ export interface MonitorDemo {
 
 interface SecondMonitorScreenProps {
   campaignId: string;
+  /** Espelho reduzido dentro do escudo do mestre: sem tela cheia e com dados 2D (leve) */
+  preview?: boolean;
 }
 
 const DEFAULT_DIRECTOR: MonitorDirectorState = {
@@ -189,7 +191,7 @@ function MonitorPortrait({ url, name, fallbackIcon }: { url?: string | null; nam
   );
 }
 
-export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
+export function SecondMonitorScreen({ campaignId, preview = false }: SecondMonitorScreenProps) {
   const { setActiveSystem, setPaletteOverride } = useTheme();
   const [campaign, setCampaign] = useState<DMScreenCampaignData | null>(null);
   const [director, setDirector] = useState<MonitorDirectorState>(DEFAULT_DIRECTOR);
@@ -256,6 +258,31 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Janela da TV mudou de tamanho (tela cheia, outro monitor): avisa o espelho do mestre.
+  useEffect(() => {
+    if (preview || campaignId === 'demo') return;
+    let timer = 0;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        monitorSocket.emit('monitor:viewport', {
+          campaignId,
+          width: window.innerWidth,
+          height: window.innerHeight,
+        });
+      }, 250);
+    };
+    window.addEventListener('resize', onResize);
+    // Também observa a própria página: pega mudanças de tamanho que não disparam 'resize'.
+    const ro = new ResizeObserver(onResize);
+    ro.observe(document.documentElement);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('resize', onResize);
+      ro.disconnect();
+    };
+  }, [campaignId, preview]);
 
   useEffect(() => {
     // Demonstração local (sem servidor): só em desenvolvimento.
@@ -333,8 +360,29 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
     }
 
     if (!monitorSocket.connected) monitorSocket.connect();
-    const joinSession = () => monitorSocket.emit('session:join', { campaignId, role: 'monitor' });
+    // A TV informa o tamanho real da janela: o espelho do mestre monta o mesmo layout.
+    // A prévia (espelho) pede esse tamanho ao entrar e o repassa para o escudo.
+    const reportViewport = () => {
+      if (preview) return;
+      monitorSocket.emit('monitor:viewport', {
+        campaignId,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    const joinSession = () => {
+      monitorSocket.emit('session:join', { campaignId, role: 'monitor' });
+      if (preview) monitorSocket.emit('monitor:viewportRequest', { campaignId });
+      else reportViewport();
+    };
     joinSession();
+    monitorSocket.on('monitor:viewportRequest', ({ campaignId: cId }) => {
+      if (cId === campaignId) reportViewport();
+    });
+    monitorSocket.on('monitor:viewport', ({ campaignId: cId, width, height }) => {
+      if (!preview || cId !== campaignId || window.parent === window) return;
+      window.parent.postMessage({ type: 'totalrpg:tv-viewport', campaignId, width, height }, window.location.origin);
+    });
     // Se a conexão cair e voltar, entra de novo na sala da mesa.
     monitorSocket.io.on('reconnect', joinSession);
 
@@ -501,8 +549,10 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
       monitorSocket.off('combat:initiativeRequested');
       monitorSocket.off('dice:rolled');
       monitorSocket.off('monitor:reset');
+      monitorSocket.off('monitor:viewport');
+      monitorSocket.off('monitor:viewportRequest');
     };
-  }, [campaignId]);
+  }, [campaignId, preview]);
 
   const activeMerchant = merchants.find((m) => m.id === director.activeMerchantId) || null;
   const showTurnRail = director.showCombatTracker && combatants.length > 0;
@@ -660,7 +710,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
           : undefined
       }
     >
-      {fullscreenLost && !isFullscreen && (
+      {!preview && fullscreenLost && !isFullscreen && (
         <div
           className="mon-fs-restore"
           role="button"
@@ -704,6 +754,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
           entries={initiativeEntries}
           allRevealed={allRevealedCountdown}
           onSettled={settleInitiative}
+          force2D={preview}
           onClose={() => setIsInitiativeModalOpen(false)}
         />
       )}
@@ -752,6 +803,7 @@ export function SecondMonitorScreen({ campaignId }: SecondMonitorScreenProps) {
                 </div>
                 <DiceStage
                   roll={roll}
+                  force2D={preview}
                   size={isNarrow && spotlightRolls.length > 1 ? 'modal' : 'tv'}
                   className="w-full"
                   onSettled={() => handleSpotlightSettled(roll.id)}
@@ -1078,15 +1130,17 @@ function InitiativeOverlay({
   allRevealed,
   onSettled,
   onClose,
+  force2D: forcePreview2D = false,
 }: {
   characters: DMScreenCharacter[];
   entries: Record<string, { roll: DiceRollResult; isSpinning: boolean }>;
   allRevealed: boolean;
   onSettled: (charId: string, rollId: string) => void;
   onClose: () => void;
+  force2D?: boolean;
 }) {
-  // Muitos jogadores: dados 2D para não abrir dezenas de cenas 3D ao mesmo tempo.
-  const force2D = characters.length > 6;
+  // Muitos jogadores (ou prévia do mestre): dados 2D para não abrir várias cenas 3D.
+  const force2D = forcePreview2D || characters.length > 6;
   return (
     <div className="mon-overlay" onClick={onClose}>
       <div className="mon-sheet" role="dialog" aria-label="Iniciativa" onClick={(e) => e.stopPropagation()}>
