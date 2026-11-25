@@ -1889,7 +1889,11 @@ export function computeOrdemInventoryDerivedEffects(
 
   // Poderes que concedem RD (ex.: Eu Já Sabia — Teórico da Conspiração, Mutação — Experimento, Resistir a <Elemento>)
   const normOrig = (sheetData?.origin || '').trim().toLowerCase();
-  if (normOrig.includes('teórico') || normOrig === 'teorico_conspiracao') {
+  if (
+    normOrig.includes('teórico') ||
+    normOrig === 'teorico_conspiracao' ||
+    sheetData?.originMeta?.flashbackOriginId === 'teorico_conspiracao'
+  ) {
     const intVal = Number(sheetData?.attributes?.int ?? 0);
     if (intVal > 0) addRd('Mental', intVal, 'Eu Já Sabia (INT)');
   }

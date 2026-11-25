@@ -16,6 +16,8 @@ import {
   PreparedAttack,
   calculateActiveBonuses,
   buildOrdemOriginModifiers,
+  buildOrdemOriginAbility,
+  buildParanormalInventionItem,
   matchesContentSourceFilter,
   resolveEntrySourceId,
   ORDEM_CLASSES,
@@ -67,6 +69,7 @@ import {
 import { OrdemSheet } from './OrdemSheet';
 import { TormentaSheet } from './TormentaSheet';
 import { SheetExtras } from './SheetExtras';
+import { FLASHBACK_GRANT, type FlashbackChoice } from './SahEspecialistaPowers';
 import { ImageUploadField } from '../ImageUploadField';
 import { TempVitalBar } from '../TempVitalBar';
 import { useTheme } from '../../theme/themeEngine';
@@ -570,7 +573,8 @@ export function SheetContainer({
               (ce) =>
                 (ce.id.startsWith('ord-pwr-comb-') ||
                   ce.id.startsWith('sah-pwr-comb-') ||
-                  ce.id.startsWith('ord-pwr-esp-')) &&
+                  ce.id.startsWith('ord-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-esp-')) &&
                 ce.name.toLowerCase() === lowerAbName
             );
             if (officialClassPower) {
@@ -633,7 +637,8 @@ export function SheetContainer({
               (ce) =>
                 (ce.id.startsWith('ord-pwr-comb-') ||
                   ce.id.startsWith('sah-pwr-comb-') ||
-                  ce.id.startsWith('ord-pwr-esp-')) &&
+                  ce.id.startsWith('ord-pwr-esp-') ||
+                  ce.id.startsWith('sah-pwr-esp-')) &&
                 ce.name.toLowerCase() === entry.name.toLowerCase()
             );
             return officialClassEntry
@@ -1146,15 +1151,24 @@ export function SheetContainer({
       const prevAbs: CharacterAbility[] = Array.isArray(baseRaw.abilities)
         ? baseRaw.abilities
         : [];
-      const nextAbs = origDef
+      const fbDef = nextMeta.flashbackOriginId
+        ? ORDEM_ORIGINS.find((o) => o.id === nextMeta.flashbackOriginId)
+        : undefined;
+      const nextAbs = origDef || fbDef
         ? prevAbs.map((ab) => {
-            if (ab.id !== `orig-${origDef.id}`) return ab;
-            const rebuiltMods = buildOrdemOriginModifiers(origDef, nextMeta);
+            const def =
+              origDef && ab.id === `orig-${origDef.id}`
+                ? origDef
+                : fbDef && ab.id === `orig-${fbDef.id}`
+                ? fbDef
+                : undefined;
+            if (!def) return ab;
+            const rebuiltMods = buildOrdemOriginModifiers(def, nextMeta);
             return {
               ...ab,
               modifiers: rebuiltMods,
               isActive:
-                origDef.id === 'colegial' && nextMeta.bestFriendDead
+                def.id === 'colegial' && nextMeta.bestFriendDead
                   ? true
                   : ab.isActive,
             };
@@ -1169,6 +1183,55 @@ export function SheetContainer({
         },
       };
     });
+  }
+
+  /**
+   * Flashback (Especialista, SaH): recebe o poder de uma segunda origem.
+   * Troca o poder anterior do Flashback (e o invento, se era Inventor Paranormal).
+   */
+  function handleApplyFlashback(choice: FlashbackChoice | null) {
+    applyLocalCharacterUpdate((base) => {
+      const baseRaw = (base.sheetData || {}) as Record<string, any>;
+      const prevMeta: OrdemOriginMeta = baseRaw.originMeta || {};
+      const prevAbs: CharacterAbility[] = Array.isArray(baseRaw.abilities) ? baseRaw.abilities : [];
+      const prevInv: RPGItem[] = Array.isArray(base.inventory) ? (base.inventory as RPGItem[]) : [];
+      const prevFb = prevMeta.flashbackOriginId;
+      const nextMeta: OrdemOriginMeta = { ...prevMeta, ...(choice?.meta || {}) };
+      if (choice) nextMeta.flashbackOriginId = choice.originId;
+      else delete nextMeta.flashbackOriginId;
+
+      let nextAbs = prevAbs.filter((ab) => ab.grantedBy !== FLASHBACK_GRANT);
+      let nextInv = prevInv;
+      // O invento antigo do Flashback sai junto (o da origem principal fica)
+      const mainNorm = String(baseRaw.origin || '').trim().toLowerCase();
+      const mainIsInventor = mainNorm === 'inventor_paranormal' || mainNorm === 'inventor paranormal';
+      if (prevFb === 'inventor_paranormal' && !mainIsInventor) {
+        nextInv = nextInv.filter((it) => !it.isParanormalInvention);
+      }
+
+      const def = choice ? ORDEM_ORIGINS.find((o) => o.id === choice.originId) : undefined;
+      if (def) {
+        nextAbs = [...nextAbs, buildOrdemOriginAbility(def, nextMeta, FLASHBACK_GRANT)];
+        if (def.grantsParanormalInvention && !nextInv.some((it) => it.isParanormalInvention)) {
+          const invento = buildParanormalInventionItem(choice?.inventorRitualId);
+          if (invento) nextInv = [...nextInv, { ...invento, id: `item-invento-flashback-${Date.now()}` }];
+        }
+      }
+
+      return {
+        ...base,
+        inventory: nextInv as any,
+        sheetData: { ...baseRaw, originMeta: nextMeta, abilities: nextAbs },
+      };
+    });
+    if (choice) {
+      const def = ORDEM_ORIGINS.find((o) => o.id === choice.originId);
+      logSheetActivity({
+        category: 'ability',
+        summary: `Flashback: recebeu ${def?.powerName || 'poder'} (Poder de ${def?.name || choice.originId})`,
+        tone: 'purple',
+      });
+    }
   }
 
   function handleHealPv(amount: number, label?: string) {
@@ -6350,6 +6413,7 @@ export function SheetContainer({
         }}
         onTriggerOriginSpecial={handleTriggerOriginSpecial}
         onUpdateOriginMeta={handleUpdateOriginMeta}
+        onApplyFlashback={handleApplyFlashback}
         onLosePermanentSanity={handleLosePermanentSanity}
         vislumbresSuccessPending={Boolean(
           vislumbresResult?.passed && !vislumbresResult?.peGranted

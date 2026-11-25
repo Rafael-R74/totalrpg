@@ -264,6 +264,18 @@ export function validateCharacterSourcesForCampaign(
       }
     }
 
+    // 1b. Origem recebida por Flashback (Especialista)
+    const fbOriginId = String(sheet.originMeta?.flashbackOriginId || '');
+    if (fbOriginId) {
+      const fbOrig = ORDEM_ORIGINS.find((o) => o.id === fbOriginId);
+      if (fbOrig) {
+        const src = fbOrig.sourceId || 'ordem-base';
+        if (!allowedSet.has(src)) {
+          addViolation('Origem (Flashback)', fbOrig.name, src);
+        }
+      }
+    }
+
     // 2. Trilha
     const rawTrail = String(sheet.trail || '').trim().toLowerCase();
     if (rawTrail) {

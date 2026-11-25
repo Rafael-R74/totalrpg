@@ -60,6 +60,9 @@ import { applyCampaignSceneEffect, fetchCampaignTradeTargets } from '../../servi
 import { Icon, stripEmoji } from '../ui/Icon';
 import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
 import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilterBar';
+import { SahCombatentePowerControls, isSahCombatenteControlled } from './SahCombatentePowers';
+import { SahEspecialistaPowerControls, isSahEspecialistaControlled } from './SahEspecialistaPowers';
+import type { FlashbackChoice, SahPowerProps } from './sahPowerKit';
 interface SheetExtrasProps {
   system: SystemId;
   allowedSources?: string[] | null;
@@ -121,6 +124,8 @@ interface SheetExtrasProps {
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
   onTriggerOriginSpecial?: (originId: string) => void;
   onUpdateOriginMeta?: (patch: Partial<OrdemOriginMeta>) => void;
+  /** Flashback (Especialista, SaH): define a segunda origem (null remove) */
+  onApplyFlashback?: (choice: FlashbackChoice | null) => void;
   onLosePermanentSanity?: (amount: number, reason: string) => void;
   vislumbresSuccessPending?: boolean;
   onRollVislumbresPe?: () => void;
@@ -277,6 +282,7 @@ export function SheetExtras({
   onUpdateSceneEffects,
   onTriggerOriginSpecial,
   onUpdateOriginMeta,
+  onApplyFlashback,
   onLosePermanentSanity,
   vislumbresSuccessPending,
   onRollVislumbresPe,
@@ -293,6 +299,9 @@ export function SheetExtras({
     (o) => o.id === normOrigin || o.name.toLowerCase() === normOrigin
   );
   const originId = originObj?.id || '';
+  // Origem principal ou recebida por Flashback (Especialista, SaH)
+  const hasOriginPower = (id: string) =>
+    originId === id || ordemSheetData?.originMeta?.flashbackOriginId === id;
   const hasFerramentasParanormais = abilities.some(
     (ab) =>
       ab.isActive !== false &&
@@ -478,6 +487,9 @@ export function SheetExtras({
     const lowerId = (ab.id || '').toLowerCase();
     const lowerName = (ab.name || '').toLowerCase();
 
+    // Poderes do Sobrevivendo ao Horror (controles em SahCombatentePowers.tsx / SahEspecialistaPowers.tsx)
+    if (isSahCombatenteControlled(ab) || isSahEspecialistaControlled(ab)) return true;
+
     // Poderes de Origem com botão dedicado na seção de Perícias (OrdemSheet.tsx) ou controles próprios na aba Poderes
     if (
       [
@@ -536,23 +548,7 @@ export function SheetExtras({
       lowerName.includes('tecnica sublime') ||
       lowerId === 'trail-guerreiro-65' ||
       lowerName.includes('força opressora') ||
-      lowerName.includes('forca opressora') ||
-      lowerId.includes('sah-pwr-comb-ciente-das-cicatrizes') ||
-      lowerName.includes('ciente das cicatrizes') ||
-      lowerId.includes('sah-pwr-comb-correria-desesperada') ||
-      lowerName.includes('correria desesperada') ||
-      lowerId.includes('sah-pwr-comb-instinto-de-fuga') ||
-      lowerName.includes('instinto de fuga') ||
-      lowerId.includes('sah-pwr-comb-paranoia-defensiva') ||
-      lowerName.includes('paranoia defensiva') ||
-      lowerId.includes('sah-pwr-comb-sacrificar-os-joelhos') ||
-      lowerName.includes('sacrificar os joelhos') ||
-      lowerId.includes('sah-pwr-comb-sem-tempo-irmao') ||
-      lowerName.includes('sem tempo, irmão') ||
-      lowerName.includes('sem tempo, irmao') ||
-      lowerId.includes('sah-pwr-comb-valentao') ||
-      lowerName.includes('valentão') ||
-      lowerName.includes('valentao')
+      lowerName.includes('forca opressora')
     ) {
       return true;
     }
@@ -745,129 +741,6 @@ export function SheetExtras({
   const [discursoAllies, setDiscursoAllies] = useState<Array<{ id: string; name: string; username?: string }>>([]);
   const [selectedDiscursoCharIds, setSelectedDiscursoCharIds] = useState<Record<string, boolean>>({});
   const [isLoadingDiscursoAllies, setIsLoadingDiscursoAllies] = useState(false);
-
-  // Estados para Paranoia Defensiva (Combatente — Sobrevivendo ao Horror)
-  const [isParanoiaModalOpen, setIsParanoiaModalOpen] = useState(false);
-  const [paranoiaSelfChoice, setParanoiaSelfChoice] = useState<'defense' | 'skill'>('defense');
-  const [paranoiaAllies, setParanoiaAllies] = useState<Array<{ id: string; name: string; username?: string }>>([]);
-  const [selectedParanoiaCharIds, setSelectedParanoiaCharIds] = useState<Record<string, boolean>>({});
-  const [isLoadingParanoiaAllies, setIsLoadingParanoiaAllies] = useState(false);
-
-  async function handleOpenParanoiaModal() {
-    setParanoiaSelfChoice('defense');
-    if (isInCampaign && campaignId) {
-      setIsLoadingParanoiaAllies(true);
-      setIsParanoiaModalOpen(true);
-      try {
-        const data = await fetchCampaignTradeTargets(campaignId);
-        const list = (data.characters || [])
-          .filter((c: any) => c.id !== characterId)
-          .map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            username: c.owner?.username,
-          }));
-        setParanoiaAllies(list);
-        const initialSel: Record<string, boolean> = {};
-        for (const ally of list) {
-          initialSel[ally.id] = true;
-        }
-        setSelectedParanoiaCharIds(initialSel);
-      } catch (err: any) {
-        setParanoiaAllies([]);
-        setAbilityUseFeedback(`Erro ao buscar aliados: ${err.message}`);
-      } finally {
-        setIsLoadingParanoiaAllies(false);
-      }
-    } else {
-      setParanoiaAllies([]);
-      setSelectedParanoiaCharIds({});
-      setIsParanoiaModalOpen(true);
-    }
-  }
-
-  async function handleConfirmParanoiaDefensiva() {
-    const usedInScene = Boolean(
-      isInCampaign &&
-        (ordemSheetData?.sceneEffects || []).some(
-          (e) => e.id === 'pwr-scene-paranoia-defensiva-used'
-        )
-    );
-    if (usedInScene) {
-      setIsParanoiaModalOpen(false);
-      return;
-    }
-
-    const selfEffect: SceneEffect =
-      paranoiaSelfChoice === 'defense'
-        ? {
-            id: 'pwr-scene-paranoia-defensiva-def',
-            name: 'Paranoia Defensiva (+5 Defesa)',
-            source: 'Próx. Ataque',
-            description: '+5 na Defesa contra o próximo ataque sofrido nesta cena',
-            modifiers: [
-              {
-                id: 'mod-paranoia-def',
-                targetType: 'defense',
-                targetKey: 'defense',
-                value: 5,
-              },
-            ],
-          }
-        : {
-            id: 'pwr-scene-paranoia-defensiva-skill',
-            name: 'Paranoia Defensiva (+5 Perícia)',
-            source: '1 Teste na Cena',
-            description: '+5 em um único teste de perícia feito até o fim da cena',
-            modifiers: [
-              {
-                id: 'mod-paranoia-skill',
-                targetType: 'skill_bonus',
-                targetKey: 'all',
-                value: 5,
-              },
-            ],
-          };
-
-    if (!onSpendResource(3, selfEffect)) {
-      return;
-    }
-
-    if (isInCampaign) {
-      onAddSceneEffect?.({
-        id: 'pwr-scene-paranoia-defensiva-used',
-        name: 'Paranoia Defensiva (Usado na Cena)',
-        source: '1x/Cena',
-        description: 'Já utilizado nesta cena (1 rodada, -3 PE)',
-      });
-    }
-
-    const chosenAllyIds = Object.keys(selectedParanoiaCharIds).filter(
-      (id) => selectedParanoiaCharIds[id]
-    );
-    if (isInCampaign && campaignId && chosenAllyIds.length > 0) {
-      const allyEffect: SceneEffect = {
-        id: 'pwr-scene-paranoia-defensiva-ally',
-        name: 'Paranoia Defensiva (Aliado)',
-        source: 'Cena',
-        description: `Concedido por ${characterName || 'Combatente'}: escolha +5 Defesa no próximo ataque OU +5 em 1 teste de perícia na cena`,
-      };
-      try {
-        await applyCampaignSceneEffect(campaignId, chosenAllyIds, allyEffect);
-      } catch (err: any) {
-        console.error('Erro ao aplicar Paranoia Defensiva em aliados:', err);
-      }
-    }
-
-    setIsParanoiaModalOpen(false);
-    setAbilityUseFeedback(
-      `Paranoia Defensiva ativada (-3 PE): você recebeu ${
-        paranoiaSelfChoice === 'defense'
-          ? '+5 na Defesa (próximo ataque)'
-          : '+5 no próximo teste de perícia'
-      }${chosenAllyIds.length > 0 ? ` e ${chosenAllyIds.length} aliado(s) notificado(s)` : ''}!`
-    );
-  }
 
   async function handleOpenDiscursoModal(dice: 1 | 2, pe: number) {
     setDiscursoBonusDice(dice);
@@ -2287,140 +2160,6 @@ export function SheetExtras({
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black cursor-pointer shadow-lg shadow-amber-950/50"
               >
                 <Icon name="megaphone" /> Confirmar Discurso (-{discursoPeCost} PE)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE PARANOIA DEFENSIVA (COMBATENTE - SOBREVIVENDO AO HORROR) */}
-      {isParanoiaModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-cyan-500/60 rounded-2xl max-w-md w-full p-5 shadow-2xl flex flex-col gap-4 max-h-[85vh]">
-            <div className="flex justify-between items-start gap-2 border-b border-zinc-800 pb-3">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
-                  <Icon name="shield" /> Paranoia Defensiva (Combatente)
-                </span>
-                <h3 className="text-base font-extrabold text-white">
-                  Escolha seu bônus e aliados presentes
-                </h3>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Gasta 1 rodada e <strong>3 PE</strong> (1x/cena). Você e cada aliado escolhem +5 na Defesa (próx. ataque) ou +5 em 1 teste de perícia.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsParanoiaModalOpen(false)}
-                className="text-zinc-400 hover:text-white text-sm font-bold px-2 py-1 bg-zinc-800 rounded-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <span className="block text-[11px] font-bold uppercase text-zinc-300">
-                Sua escolha para esta cena:
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setParanoiaSelfChoice('defense')}
-                  className={`p-2.5 rounded-xl border text-left text-xs font-bold transition cursor-pointer ${
-                    paranoiaSelfChoice === 'defense'
-                      ? 'bg-cyan-600/25 border-cyan-400 text-white'
-                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600'
-                  }`}
-                >
-                  <span className="block">+5 na Defesa</span>
-                  <span className="text-[10px] font-normal text-zinc-300">
-                    Contra o próximo ataque sofrido
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setParanoiaSelfChoice('skill')}
-                  className={`p-2.5 rounded-xl border text-left text-xs font-bold transition cursor-pointer ${
-                    paranoiaSelfChoice === 'skill'
-                      ? 'bg-cyan-600/25 border-cyan-400 text-white'
-                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600'
-                  }`}
-                >
-                  <span className="block">+5 em 1 Perícia</span>
-                  <span className="text-[10px] font-normal text-zinc-300">
-                    Em um único teste até o fim da cena
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            {isInCampaign && (
-              <div className="space-y-2">
-                <span className="block text-[11px] font-bold uppercase text-zinc-300">
-                  Aliados presentes na cena:
-                </span>
-                {isLoadingParanoiaAllies ? (
-                  <p className="text-xs text-zinc-400 py-3 text-center">
-                    Carregando aliados...
-                  </p>
-                ) : paranoiaAllies.length === 0 ? (
-                  <p className="text-xs text-zinc-500">
-                    Nenhum outro aliado encontrado na campanha.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-1.5 overflow-y-auto max-h-48 pr-1">
-                    {paranoiaAllies.map((ally) => {
-                      const checked = Boolean(selectedParanoiaCharIds[ally.id]);
-                      return (
-                        <label
-                          key={ally.id}
-                          className={`flex items-center justify-between gap-2 p-2.5 rounded-xl border cursor-pointer transition ${
-                            checked
-                              ? 'bg-cyan-950/35 border-cyan-600/70 text-white'
-                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() =>
-                                setSelectedParanoiaCharIds((prev) => ({
-                                  ...prev,
-                                  [ally.id]: !prev[ally.id],
-                                }))
-                              }
-                            />
-                            <span className="text-xs font-semibold truncate">{ally.name}</span>
-                          </div>
-                          {ally.username && (
-                            <span className="text-[10px] text-zinc-500 shrink-0">
-                              {ally.username}
-                            </span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800 mt-auto">
-              <button
-                type="button"
-                onClick={() => setIsParanoiaModalOpen(false)}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={isLoadingParanoiaAllies}
-                onClick={handleConfirmParanoiaDefensiva}
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-xl text-xs font-black cursor-pointer shadow-lg"
-              >
-                <Icon name="shield" /> Ativar Paranoia (-3 PE)
               </button>
             </div>
           </div>
@@ -5412,343 +5151,36 @@ export function SheetExtras({
                                 <Icon name="brain" /> Analisar Ambiente (-2 PE → +INT Def/Resist na Cena)
                               </button>
                             )}
-                          {(ab.id.includes('sah-pwr-comb-ciente-das-cicatrizes') ||
-                            ab.name.toLowerCase().includes('ciente das cicatrizes')) &&
-                            ordemSheetData && (() => {
-                              const lutaSk = ordemSheetData.skills.find((s) => s.id === 'luta');
-                              const pontSk = ordemSheetData.skills.find((s) => s.id === 'pontaria');
-                              const trainedLuta = (lutaSk?.trainingDegree || 0) >= 5;
-                              const trainedPont = (pontSk?.trainingDegree || 0) >= 5;
-                              const rollCicatriz = (skId: 'luta' | 'pontaria', label: string, attrVal: number) => {
-                                const sk = ordemSheetData.skills.find((s) => s.id === skId);
-                                const dice =
-                                  attrVal + bonuses.skillDiceAll + (bonuses.skillDice[skId] || 0);
-                                const mod =
-                                  (sk?.trainingDegree || 0) +
-                                  (sk?.otherModifier || 0) +
-                                  bonuses.skillBonusAll +
-                                  (bonuses.skillBonus[skId] || 0);
-                                onRoll(`Ciente das Cicatrizes (Pista c/ ${label})`, dice, 20, mod);
-                              };
-                              return (
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {(trainedLuta || !trainedPont) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => rollCicatriz('luta', 'Luta', effFor)}
-                                      className="px-2.5 py-1.5 bg-zinc-900 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700/70 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                                    >
-                                      <Icon name="search" /> Pista c/ Luta
-                                    </button>
-                                  )}
-                                  {(trainedPont || !trainedLuta) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => rollCicatriz('pontaria', 'Pontaria', effAgi)}
-                                      className="px-2.5 py-1.5 bg-zinc-900 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700/70 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                                    >
-                                      <Icon name="search" /> Pista c/ Pontaria
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          {(ab.id.includes('sah-pwr-comb-correria-desesperada') ||
-                            ab.name.toLowerCase().includes('correria desesperada')) &&
-                            ordemSheetData && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const atlSk = ordemSheetData.skills.find(
-                                    (s) => s.id === 'atletismo'
-                                  );
-                                  const atlDice =
-                                    effFor +
-                                    bonuses.skillDiceAll +
-                                    (bonuses.skillDice['atletismo'] || 0) +
-                                    1;
-                                  const atlMod =
-                                    (atlSk?.trainingDegree || 0) +
-                                    (atlSk?.otherModifier || 0) +
-                                    bonuses.skillBonusAll +
-                                    (bonuses.skillBonus['atletismo'] || 0);
-                                  onRoll(
-                                    'Correria Desesperada — Fugir (+1d20)',
-                                    atlDice,
-                                    20,
-                                    atlMod
-                                  );
-                                }}
-                                className="px-3 py-1.5 bg-emerald-950/70 hover:bg-emerald-700 text-emerald-200 hover:text-white border border-emerald-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                              >
-                                <Icon name="d20" /> Fugir: Atletismo (+1d20)
-                              </button>
-                            )}
-                          {(ab.id.includes('sah-pwr-comb-instinto-de-fuga') ||
-                            ab.name.toLowerCase().includes('instinto de fuga')) &&
-                            ordemSheetData && (() => {
-                              const effs = ordemSheetData.sceneEffects || [];
-                              const isActiveFuga = effs.some(
-                                (e) => e.id === 'pwr-scene-instinto-fuga'
-                              );
-                              return isActiveFuga ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onUpdateSceneEffects?.(
-                                      effs.filter((e) => e.id !== 'pwr-scene-instinto-fuga')
-                                    );
-                                    setAbilityUseFeedback(
-                                      'Instinto de Fuga encerrado (+2 em perícias removido).'
-                                    );
-                                  }}
-                                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white border border-amber-300 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow"
-                                >
-                                  ✓ Em Perseguição (+2 Perícias) • Encerrar
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onAddSceneEffect?.({
-                                      id: 'pwr-scene-instinto-fuga',
-                                      name: 'Instinto de Fuga',
-                                      source: 'Cena de Perseguição',
-                                      description: '+2 em todos os testes de perícia durante a cena',
-                                      modifiers: [
-                                        {
-                                          id: 'mod-instinto-fuga-all',
-                                          targetType: 'skill_bonus',
-                                          targetKey: 'all',
-                                          value: 2,
-                                        },
-                                      ],
-                                    });
-                                    setAbilityUseFeedback(
-                                      'Instinto de Fuga ativado: +2 em todos os testes de perícia na cena!'
-                                    );
-                                  }}
-                                  className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                                >
-                                  Ativar Cena de Perseguição (+2 Perícias na Cena)
-                                </button>
-                              );
-                            })()}
-                          {(ab.id.includes('sah-pwr-comb-paranoia-defensiva') ||
-                            ab.name.toLowerCase().includes('paranoia defensiva')) &&
-                            ordemSheetData && (() => {
-                              const effs = ordemSheetData.sceneEffects || [];
-                              const hasDefBuff = effs.some(
-                                (e) => e.id === 'pwr-scene-paranoia-defensiva-def'
-                              );
-                              const hasSkillBuff = effs.some(
-                                (e) => e.id === 'pwr-scene-paranoia-defensiva-skill'
-                              );
-                              const usedInScene = Boolean(
-                                isInCampaign &&
-                                  effs.some(
-                                    (e) => e.id === 'pwr-scene-paranoia-defensiva-used'
-                                  )
-                              );
-                              return (
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {hasDefBuff && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        onUpdateSceneEffects?.(
-                                          effs.filter(
-                                            (e) => e.id !== 'pwr-scene-paranoia-defensiva-def'
-                                          )
-                                        );
-                                        setAbilityUseFeedback(
-                                          'Paranoia Defensiva: +5 Defesa consumido após o ataque.'
-                                        );
-                                      }}
-                                      className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white border border-cyan-300 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow"
-                                    >
-                                      Consumir +5 Defesa
-                                    </button>
-                                  )}
-                                  {hasSkillBuff && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        onUpdateSceneEffects?.(
-                                          effs.filter(
-                                            (e) => e.id !== 'pwr-scene-paranoia-defensiva-skill'
-                                          )
-                                        );
-                                        setAbilityUseFeedback(
-                                          'Paranoia Defensiva: +5 em Perícia consumido.'
-                                        );
-                                      }}
-                                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-300 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow"
-                                    >
-                                      Consumir +5 Perícia
-                                    </button>
-                                  )}
-                                  {usedInScene ? (
-                                    <span className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-500 rounded-lg text-xs font-bold whitespace-nowrap">
-                                      ✓ Usado na Cena
-                                    </span>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={handleOpenParanoiaModal}
-                                      className="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-700 text-cyan-200 hover:text-white border border-cyan-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                                    >
-                                      <Icon name="shield" /> Paranoia Defensiva (-3 PE{isInCampaign ? ' • 1x/Cena' : ''})
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          {(ab.id.includes('sah-pwr-comb-sacrificar-os-joelhos') ||
-                            ab.name.toLowerCase().includes('sacrificar os joelhos')) &&
-                            ordemSheetData && (() => {
-                              const usedInScene = Boolean(
-                                isInCampaign &&
-                                  (ordemSheetData.sceneEffects || []).some(
-                                    (e) => e.id === 'pwr-scene-sacrificar-joelhos'
-                                  )
-                              );
-                              return usedInScene ? (
-                                <span className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-500 rounded-lg text-xs font-bold whitespace-nowrap">
-                                  ✓ Usado na Perseguição
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (
-                                      !onSpendResource(
-                                        2,
-                                        isInCampaign
-                                          ? {
-                                              id: 'pwr-scene-sacrificar-joelhos',
-                                              name: 'Sacrificar os Joelhos (Usado na Cena)',
-                                              source: '1x/Cena',
-                                              description:
-                                                'Sucesso automático em Esforço Extra na perseguição',
-                                            }
-                                          : undefined
-                                      )
-                                    ) {
-                                      return;
-                                    }
-                                    setAbilityUseFeedback(
-                                      'Sacrificar os Joelhos (-2 PE): sucesso automático no teste de Esforço Extra!'
-                                    );
-                                  }}
-                                  className="px-3 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                                >
-                                  <Icon name="zap" /> Esforço Extra Automático (-2 PE{isInCampaign ? ' • 1x/Cena' : ''})
-                                </button>
-                              );
-                            })()}
-                          {(ab.id.includes('sah-pwr-comb-sem-tempo-irmao') ||
-                            ab.name.toLowerCase().includes('sem tempo, irmão') ||
-                            ab.name.toLowerCase().includes('sem tempo, irmao')) &&
-                            ordemSheetData && (() => {
-                              const usedInScene = Boolean(
-                                isInCampaign &&
-                                  (ordemSheetData.sceneEffects || []).some(
-                                    (e) => e.id === 'pwr-scene-sem-tempo-irmao'
-                                  )
-                              );
-                              return usedInScene ? (
-                                <span className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-500 rounded-lg text-xs font-bold whitespace-nowrap">
-                                  ✓ Usado na Investigação
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (isInCampaign) {
-                                      onAddSceneEffect?.({
-                                        id: 'pwr-scene-sem-tempo-irmao',
-                                        name: 'Sem Tempo, Irmão (Usado na Cena)',
-                                        source: '1x/Cena',
-                                        description:
-                                          'Passou automaticamente em Facilitar Investigação (+1 rolagem na tabela de eventos de investigação)',
-                                      });
-                                    }
-                                    setAbilityUseFeedback(
-                                      'Sem Tempo, Irmão (0 PE): auxílio automático em Facilitar Investigação! Role +1 evento na tabela de investigação.'
-                                    );
-                                  }}
-                                  className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                                >
-                                  <Icon name="search" /> Facilitar Investigação Automático (0 PE{isInCampaign ? ' • 1x/Cena' : ''})
-                                </button>
-                              );
-                            })()}
-                          {(ab.id.includes('sah-pwr-comb-valentao') ||
-                            ab.name.toLowerCase().includes('valentão') ||
-                            ab.name.toLowerCase().includes('valentao')) &&
-                            ordemSheetData && (() => {
-                              const usedInScene = Boolean(
-                                isInCampaign &&
-                                  (ordemSheetData.sceneEffects || []).some(
-                                    (e) => e.id === 'pwr-scene-valentao-assustar'
-                                  )
-                              );
-                              return usedInScene ? (
-                                <span className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-500 rounded-lg text-xs font-bold whitespace-nowrap">
-                                  ✓ Assustar Livre Usado na Cena
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (
-                                      !onSpendResource(
-                                        1,
-                                        isInCampaign
-                                          ? {
-                                              id: 'pwr-scene-valentao-assustar',
-                                              name: 'Valentão — Assustar (Usado na Cena)',
-                                              source: '1x/Cena',
-                                              description:
-                                                'Teste de Intimidação para assustar feito como ação livre',
-                                            }
-                                          : undefined
-                                      )
-                                    ) {
-                                      return;
-                                    }
-                                    const effPre =
-                                      Number(ordemSheetData.attributes.pre || 0) +
-                                      (bonuses.attributes['pre'] || 0);
-                                    const intSk = ordemSheetData.skills.find(
-                                      (s) => s.id === 'intimidacao'
-                                    );
-                                    const bestAttr = Math.max(effFor, effPre);
-                                    const dice =
-                                      bestAttr +
-                                      bonuses.skillDiceAll +
-                                      (bonuses.skillDice['intimidacao'] || 0);
-                                    const mod =
-                                      (intSk?.trainingDegree || 0) +
-                                      (intSk?.otherModifier || 0) +
-                                      bonuses.skillBonusAll +
-                                      (bonuses.skillBonus['intimidacao'] || 0);
-                                    onRoll(
-                                      `Valentão — Assustar [Ação Livre • -1 PE${
-                                        effFor >= effPre ? ' • FOR' : ''
-                                      }]`,
-                                      dice,
-                                      20,
-                                      mod
-                                    );
-                                  }}
-                                  className="px-3 py-1.5 bg-red-950/70 hover:bg-red-700 text-red-200 hover:text-white border border-red-700 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap"
-                                >
-                                  <Icon name="d20" /> Assustar — Ação Livre (-1 PE{isInCampaign ? ' • 1x/Cena' : ''})
-                                </button>
-                              );
-                            })()}
+                          {ordemSheetData && (() => {
+                            const sahProps: SahPowerProps = {
+                              ab,
+                              sheet: ordemSheetData,
+                              abilities,
+                              inventory,
+                              bonuses,
+                              compendiumEntries,
+                              allowedSources,
+                              isInCampaign,
+                              isEditMode,
+                              campaignId,
+                              characterId,
+                              characterName,
+                              onRoll: (label, count, sides, modifier) => onRoll(label, count, sides, modifier),
+                              onSpendResource,
+                              onAddSceneEffect,
+                              onUpdateSceneEffects,
+                              onGrantTempPe,
+                              onUpdateAbilities,
+                              onApplyFlashback,
+                              onFeedback: setAbilityUseFeedback,
+                            };
+                            return (
+                              <>
+                                <SahCombatentePowerControls {...sahProps} />
+                                <SahEspecialistaPowerControls {...sahProps} />
+                              </>
+                            );
+                          })()}
                           {(ab.id === 'ord-pwr-esp-nerd' ||
                             ab.name.toLowerCase().includes('nerd')) &&
                             ordemSheetData && (() => {
@@ -6885,7 +6317,7 @@ export function SheetExtras({
                       {/* Rodapé do Card: Controles secundários, Imagem, Trocas e Exclusão */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/70">
                         <div className="flex flex-wrap items-center gap-3">
-                          {(originId === 'engenheiro' || hasMochilaUtilidades) &&
+                          {(hasOriginPower('engenheiro') || hasMochilaUtilidades) &&
                             !attacks.some(
                               (a) => a.name.toLowerCase() === item.name.toLowerCase()
                             ) && (
@@ -7008,7 +6440,7 @@ export function SheetExtras({
                             if (!healFormulaRaw) return null;
                             const parsed = parseDiceFormula(healFormulaRaw);
                             const agenteSaudeBonus =
-                              system === 'ordem-paranormal' && originId === 'agente_saude'
+                              system === 'ordem-paranormal' && hasOriginPower('agente_saude')
                                 ? Math.max(0, effInt)
                                 : 0;
                             const finalMod = parsed.modifier + agenteSaudeBonus;

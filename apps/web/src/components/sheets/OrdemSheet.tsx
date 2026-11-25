@@ -13,6 +13,7 @@ import {
   ComputedBonuses,
   SystemSkillDefinition,
   ORDEM_ORIGINS,
+  type OrdemOriginDefinition,
   ORDEM_TRAILS,
   ORDEM_PATENTS,
   ORDEM_SKILLS_METADATA,
@@ -96,7 +97,9 @@ export function OrdemSheet({
   onRoll,
   onTriggerOriginSpecial,
 }: OrdemSheetProps) {
-  const [armOriginBoost, setArmOriginBoost] = useState(false);
+  // Poder de origem armado (+5 no próximo teste). Guarda qual origem, pois o Flashback pode dar uma segunda.
+  const [armedOriginId, setArmedOriginId] = useState<string | null>(null);
+  const armedOriginObj = armedOriginId ? ORDEM_ORIGINS.find((o) => o.id === armedOriginId) : undefined;
   // Controle por perícia para ignorar a penalidade -5 de Kit (caso o uso específico não exija kit)
   const [ignoreMissingKitBySkill, setIgnoreMissingKitBySkill] = useState<Record<string, boolean>>({});
   const [customProfInput, setCustomProfInput] = useState('');
@@ -139,11 +142,17 @@ export function OrdemSheet({
     (o) => o.id === normOrigin || o.name.toLowerCase() === normOrigin
   );
   const originId = originObj?.id || '';
+  // Flashback (Especialista, SaH): poder de uma segunda origem
+  const flashbackOriginObj = (() => {
+    const fbId = safeData.originMeta?.flashbackOriginId;
+    return fbId && fbId !== originId ? ORDEM_ORIGINS.find((o) => o.id === fbId) : undefined;
+  })();
+  const hasOriginPower = (id: string) => originId === id || flashbackOriginObj?.id === id;
 
   const effectiveCredit = getOrdemEffectiveCredit(safeData.patent, safeData.origin);
-  const isTeoricoConspiracao = originId === 'teorico_conspiracao';
+  const isTeoricoConspiracao = hasOriginPower('teorico_conspiracao');
   const mentalResistance = isTeoricoConspiracao ? Math.max(0, effectiveInt) : 0;
-  const isTrabalhadorRural = originId === 'trabalhador_rural';
+  const isTrabalhadorRural = hasOriginPower('trabalhador_rural');
 
   const sceneEffects = safeData.sceneEffects || [];
   const faroPistasUsedInScene = Boolean(
@@ -442,6 +451,261 @@ export function OrdemSheet({
       sk.id === skillId ? { ...sk, ...changes } : sk
     );
     onChange({ ...safeData, skills: updatedSkills });
+  }
+
+  /** Barra de automação do poder de origem na seção de perícias (origem principal ou do Flashback). */
+  function renderOriginPowerBar(originId: string, originObj: OrdemOriginDefinition | undefined) {
+    const armOriginBoost = armedOriginId === originId;
+    const setArmOriginBoost = (next: (prev: boolean) => boolean) =>
+      setArmedOriginId(next(armOriginBoost) ? originId : null);
+    return (
+      <>
+        {[
+          'academico',
+          'atleta',
+          'executivo',
+          'investigador',
+          'trabalhador_rural',
+          'ti',
+          'trambiqueiro',
+          'diplomata',
+          'explorador',
+          'fotografo',
+          'legista_noturno',
+          'motorista',
+          'reporter_investigativo',
+          'psicologo',
+          'jovem_mistico',
+          'cosplayer',
+        ].includes(originId) && (
+          <div className="mb-3 p-3 rounded-xl bg-amber-950/20 border border-amber-700/40 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs text-amber-200 min-w-0 flex-1 basis-64">
+              <strong className="text-amber-400">
+                <Icon name="sparkles" /> {originObj?.powerName} (Poder de {originObj?.name}):
+              </strong>{' '}
+              <span className="text-zinc-300">{originObj?.powerDescription}</span>
+            </div>
+
+            {originId === 'ti' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSpendResource && !onSpendResource(2)) return;
+                  const tecSk = safeData.skills.find((s) => s.id === 'tecnologia');
+                  const tecDice =
+                    effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['tecnologia'] || 0);
+                  const tecMod =
+                    (tecSk?.trainingDegree || 0) +
+                    (tecSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['tecnologia'] || 0);
+                  onRoll('Motor de Busca (Substituído por Tecnologia)', tecDice, 20, tecMod);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shrink-0 shadow"
+              >
+                Usar Motor de Busca (-2 PE → Rolar Tecnologia)
+              </button>
+            ) : originId === 'diplomata' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSpendResource && !onSpendResource(2)) return;
+                  const dipSk = safeData.skills.find((s) => s.id === 'diplomacia');
+                  const dipDice =
+                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['diplomacia'] || 0);
+                  const dipMod =
+                    (dipSk?.trainingDegree || 0) +
+                    (dipSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['diplomacia'] || 0);
+                  onRoll('Conexões (Substituído por Diplomacia • -2 PE)', dipDice, 20, dipMod);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shrink-0 shadow"
+              >
+                Usar Conexões (-2 PE → Rolar Diplomacia)
+              </button>
+            ) : originId === 'psicologo' ? (
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const profSk = safeData.skills.find((s) => s.id === 'profissao');
+                    const profDice =
+                      effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['profissao'] || 0);
+                    const profMod =
+                      (profSk?.trainingDegree || 0) +
+                      (profSk?.otherModifier || 0) +
+                      bonuses.skillBonusAll +
+                      (bonuses.skillBonus['profissao'] || 0);
+                    onRoll('Terapia (Profissão como Diplomacia)', profDice, 20, profMod);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-amber-600/60 text-xs font-bold cursor-pointer"
+                >
+                  Profissão como Diplomacia (0 PE)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSpendResource && !onSpendResource(2)) return;
+                    const profSk = safeData.skills.find((s) => s.id === 'profissao');
+                    const profDice =
+                      effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['profissao'] || 0);
+                    const profMod =
+                      (profSk?.trainingDegree || 0) +
+                      (profSk?.otherModifier || 0) +
+                      bonuses.skillBonusAll +
+                      (bonuses.skillBonus['profissao'] || 0);
+                    onRoll('Terapia — Resistência Mental (-2 PE • 1x/Rodada)', profDice, 20, profMod);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shadow"
+                >
+                  Terapia: Resistência Mental (-2 PE)
+                </button>
+              </div>
+            ) : originId === 'cosplayer' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const artSk = safeData.skills.find((s) => s.id === 'artes');
+                  const artDice =
+                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['artes'] || 0);
+                  const artMod =
+                    (artSk?.trainingDegree || 0) +
+                    (artSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['artes'] || 0);
+                  onRoll('Não É Fantasia, É Cosplay! (Disfarce com Artes)', artDice, 20, artMod);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-amber-950 text-amber-300 border border-amber-600/60 text-xs font-bold cursor-pointer shrink-0"
+              >
+                Rolar Disfarce c/ Artes
+              </button>
+            ) : originId === 'jovem_mistico' ? (
+              (() => {
+                const usedEstrelas = Boolean(
+                  isInCampaign && sceneEffects.some((e) => e.id === 'orig-scene-culpa-estrelas-used')
+                );
+                const fixedLucky = safeData.originMeta?.luckyNumber || 6;
+                const extraLucky = safeData.originMeta?.extraLuckyNumbers || [];
+                const allLucky = Array.from(new Set([fixedLucky, ...extraLucky])).sort();
+                return (
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <span className="px-2 py-1 rounded bg-indigo-950/70 border border-indigo-700/60 text-[11px] font-mono font-bold text-indigo-200">
+                      Sorte: {allLucky.join(', ')}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={usedEstrelas}
+                      onClick={() => onTriggerOriginSpecial?.('jovem_mistico')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
+                        usedEstrelas
+                          ? 'bg-zinc-900 border border-zinc-700 text-zinc-500 cursor-not-allowed'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow'
+                      }`}
+                    >
+                      {usedEstrelas
+                        ? '✓ Estrelas já consultadas na cena'
+                        : 'A Culpa é das Estrelas (-1 PE → Rolar 1d6)'}
+                    </button>
+                  </div>
+                );
+              })()
+            ) : originId === 'trambiqueiro' ? (
+              <button
+                type="button"
+                disabled={impostorUsedInScene}
+                onClick={() => {
+                  if (impostorUsedInScene) return;
+                  if (
+                    onSpendResource &&
+                    !onSpendResource(
+                      2,
+                      isInCampaign
+                        ? {
+                            id: 'orig-scene-impostor',
+                            name: 'Impostor (Poder de Trambiqueiro)',
+                            source: '1x/Cena',
+                            description: 'Teste de perícia substituído por Enganação nesta cena',
+                          }
+                        : undefined
+                    )
+                  ) {
+                    return;
+                  }
+                  const engSk = safeData.skills.find((s) => s.id === 'enganacao');
+                  const engDice =
+                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['enganacao'] || 0);
+                  const engMod =
+                    (engSk?.trainingDegree || 0) +
+                    (engSk?.otherModifier || 0) +
+                    bonuses.skillBonusAll +
+                    (bonuses.skillBonus['enganacao'] || 0);
+                  onRoll('Impostor (Substituído por Enganação — 1x/Cena)', engDice, 20, engMod);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
+                  impostorUsedInScene
+                    ? 'bg-zinc-900 border border-zinc-700 text-zinc-500 cursor-not-allowed'
+                    : 'bg-amber-600 hover:bg-amber-500 text-white cursor-pointer shadow'
+                }`}
+              >
+                {impostorUsedInScene
+                  ? '✓ Impostor já usado nesta cena'
+                  : 'Usar Impostor (-2 PE → Rolar Enganação, 1x/Cena)'}
+              </button>
+            ) : originId === 'investigador' && faroPistasUsedInScene ? (
+              <span className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-500 text-xs font-bold shrink-0">
+                ✓ Faro para Pistas já usado nesta cena
+              </span>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                {originId === 'reporter_investigativo' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const invSk = safeData.skills.find((s) => s.id === 'investigacao');
+                      const invDice =
+                        effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['investigacao'] || 0);
+                      const invMod =
+                        (invSk?.trainingDegree || 0) +
+                        (invSk?.otherModifier || 0) +
+                        bonuses.skillBonusAll +
+                        (bonuses.skillBonus['investigacao'] || 0);
+                      onRoll('Encontrar a Verdade (Investigação como Diplomacia)', invDice, 20, invMod);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 text-xs font-bold cursor-pointer"
+                  >
+                    Persuadir c/ Investigação (0 PE)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!armOriginBoost) {
+                      if (
+                        onCheckResource &&
+                        !onCheckResource(originObj?.powerCost || 0, originObj?.powerName)
+                      ) {
+                        return;
+                      }
+                    }
+                    setArmOriginBoost((prev) => !prev);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                    armOriginBoost
+                      ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow-lg'
+                      : 'bg-zinc-900 hover:bg-amber-950 text-amber-300 border-amber-600/60'
+                  }`}
+                >
+                  {armOriginBoost
+                    ? `${originObj?.powerName} ARMADO (+5 no próx. teste, -${originObj?.powerCost} PE)`
+                    : `Armar ${originObj?.powerName} (+5 no próx. teste, -${originObj?.powerCost} PE)`}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </>
+    );
   }
 
   return (
@@ -1184,7 +1448,7 @@ export function OrdemSheet({
                   }`}
                 >
                   <Icon name="library" /> Ler ({interludeMental}):{' '}
-                  {originId === 'nerd_entusiasta' ? '+2d6 INT/PRE (O Inteligentão)' : '+1d6 INT/PRE'}
+                  {hasOriginPower('nerd_entusiasta') ? '+2d6 INT/PRE (O Inteligentão)' : '+1d6 INT/PRE'}
                   {armInterludeMental ? ' ✓ ARMADO' : ''}
                 </button>
                 {allowAttrEdit && (
@@ -1224,7 +1488,7 @@ export function OrdemSheet({
               armInterludeMental &&
               interludeMental > 0 &&
               ['int', 'pre'].includes(attrKey);
-            const lerDiceBonusCount = originId === 'nerd_entusiasta' ? 2 : 1;
+            const lerDiceBonusCount = hasOriginPower('nerd_entusiasta') ? 2 : 1;
             const rawTotalDice =
               effectiveVal + extraDice + (isInterludePhysAttr ? 1 : 0);
 
@@ -1237,11 +1501,11 @@ export function OrdemSheet({
                     let labelSuffix = '';
                     let extraDiceForAttr: Array<{ count: number; sides: number; label: string }> | undefined;
                     // Acadêmico — Saber é Poder (+5 em testes usando Intelecto por 2 PE)
-                    if (armOriginBoost && originId === 'academico' && attrKey === 'int') {
+                    if (armedOriginId === 'academico' && attrKey === 'int') {
                       if (onSpendResource && !onSpendResource(2)) return;
                       attrMod += 5;
                       labelSuffix += ' [Saber é Poder +5]';
-                      setArmOriginBoost(false);
+                      setArmedOriginId(null);
                     }
                     if (isInterludePhysAttr) {
                       labelSuffix += ' [Exercitar-se +1d20]';
@@ -1254,7 +1518,7 @@ export function OrdemSheet({
                           count: lerDiceBonusCount,
                           sides: 6,
                           label:
-                            originId === 'nerd_entusiasta'
+                            hasOriginPower('nerd_entusiasta')
                               ? 'Ler (O Inteligentão)'
                               : 'Ler (Interlúdio)',
                         },
@@ -1337,250 +1601,8 @@ export function OrdemSheet({
         </div>
 
         {/* Barra de Automação Rápida do Poder de Origem para Testes de Perícia */}
-        {[
-          'academico',
-          'atleta',
-          'executivo',
-          'investigador',
-          'trabalhador_rural',
-          'ti',
-          'trambiqueiro',
-          'diplomata',
-          'explorador',
-          'fotografo',
-          'legista_noturno',
-          'motorista',
-          'reporter_investigativo',
-          'psicologo',
-          'jovem_mistico',
-          'cosplayer',
-        ].includes(originId) && (
-          <div className="mb-3 p-3 rounded-xl bg-amber-950/20 border border-amber-700/40 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs text-amber-200 min-w-0 flex-1 basis-64">
-              <strong className="text-amber-400">
-                <Icon name="sparkles" /> {originObj?.powerName} (Poder de {originObj?.name}):
-              </strong>{' '}
-              <span className="text-zinc-300">{originObj?.powerDescription}</span>
-            </div>
-
-            {originId === 'ti' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (onSpendResource && !onSpendResource(2)) return;
-                  const tecSk = safeData.skills.find((s) => s.id === 'tecnologia');
-                  const tecDice =
-                    effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['tecnologia'] || 0);
-                  const tecMod =
-                    (tecSk?.trainingDegree || 0) +
-                    (tecSk?.otherModifier || 0) +
-                    bonuses.skillBonusAll +
-                    (bonuses.skillBonus['tecnologia'] || 0);
-                  onRoll('Motor de Busca (Substituído por Tecnologia)', tecDice, 20, tecMod);
-                }}
-                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shrink-0 shadow"
-              >
-                Usar Motor de Busca (-2 PE → Rolar Tecnologia)
-              </button>
-            ) : originId === 'diplomata' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (onSpendResource && !onSpendResource(2)) return;
-                  const dipSk = safeData.skills.find((s) => s.id === 'diplomacia');
-                  const dipDice =
-                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['diplomacia'] || 0);
-                  const dipMod =
-                    (dipSk?.trainingDegree || 0) +
-                    (dipSk?.otherModifier || 0) +
-                    bonuses.skillBonusAll +
-                    (bonuses.skillBonus['diplomacia'] || 0);
-                  onRoll('Conexões (Substituído por Diplomacia • -2 PE)', dipDice, 20, dipMod);
-                }}
-                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shrink-0 shadow"
-              >
-                Usar Conexões (-2 PE → Rolar Diplomacia)
-              </button>
-            ) : originId === 'psicologo' ? (
-              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const profSk = safeData.skills.find((s) => s.id === 'profissao');
-                    const profDice =
-                      effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['profissao'] || 0);
-                    const profMod =
-                      (profSk?.trainingDegree || 0) +
-                      (profSk?.otherModifier || 0) +
-                      bonuses.skillBonusAll +
-                      (bonuses.skillBonus['profissao'] || 0);
-                    onRoll('Terapia (Profissão como Diplomacia)', profDice, 20, profMod);
-                  }}
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-amber-600/60 text-xs font-bold cursor-pointer"
-                >
-                  Profissão como Diplomacia (0 PE)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onSpendResource && !onSpendResource(2)) return;
-                    const profSk = safeData.skills.find((s) => s.id === 'profissao');
-                    const profDice =
-                      effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['profissao'] || 0);
-                    const profMod =
-                      (profSk?.trainingDegree || 0) +
-                      (profSk?.otherModifier || 0) +
-                      bonuses.skillBonusAll +
-                      (bonuses.skillBonus['profissao'] || 0);
-                    onRoll('Terapia — Resistência Mental (-2 PE • 1x/Rodada)', profDice, 20, profMod);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shadow"
-                >
-                  Terapia: Resistência Mental (-2 PE)
-                </button>
-              </div>
-            ) : originId === 'cosplayer' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const artSk = safeData.skills.find((s) => s.id === 'artes');
-                  const artDice =
-                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['artes'] || 0);
-                  const artMod =
-                    (artSk?.trainingDegree || 0) +
-                    (artSk?.otherModifier || 0) +
-                    bonuses.skillBonusAll +
-                    (bonuses.skillBonus['artes'] || 0);
-                  onRoll('Não É Fantasia, É Cosplay! (Disfarce com Artes)', artDice, 20, artMod);
-                }}
-                className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-amber-950 text-amber-300 border border-amber-600/60 text-xs font-bold cursor-pointer shrink-0"
-              >
-                Rolar Disfarce c/ Artes
-              </button>
-            ) : originId === 'jovem_mistico' ? (
-              (() => {
-                const usedEstrelas = Boolean(
-                  isInCampaign && sceneEffects.some((e) => e.id === 'orig-scene-culpa-estrelas-used')
-                );
-                const fixedLucky = safeData.originMeta?.luckyNumber || 6;
-                const extraLucky = safeData.originMeta?.extraLuckyNumbers || [];
-                const allLucky = Array.from(new Set([fixedLucky, ...extraLucky])).sort();
-                return (
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <span className="px-2 py-1 rounded bg-indigo-950/70 border border-indigo-700/60 text-[11px] font-mono font-bold text-indigo-200">
-                      Sorte: {allLucky.join(', ')}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={usedEstrelas}
-                      onClick={() => onTriggerOriginSpecial?.('jovem_mistico')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
-                        usedEstrelas
-                          ? 'bg-zinc-900 border border-zinc-700 text-zinc-500 cursor-not-allowed'
-                          : 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow'
-                      }`}
-                    >
-                      {usedEstrelas
-                        ? '✓ Estrelas já consultadas na cena'
-                        : 'A Culpa é das Estrelas (-1 PE → Rolar 1d6)'}
-                    </button>
-                  </div>
-                );
-              })()
-            ) : originId === 'trambiqueiro' ? (
-              <button
-                type="button"
-                disabled={impostorUsedInScene}
-                onClick={() => {
-                  if (impostorUsedInScene) return;
-                  if (
-                    onSpendResource &&
-                    !onSpendResource(
-                      2,
-                      isInCampaign
-                        ? {
-                            id: 'orig-scene-impostor',
-                            name: 'Impostor (Poder de Trambiqueiro)',
-                            source: '1x/Cena',
-                            description: 'Teste de perícia substituído por Enganação nesta cena',
-                          }
-                        : undefined
-                    )
-                  ) {
-                    return;
-                  }
-                  const engSk = safeData.skills.find((s) => s.id === 'enganacao');
-                  const engDice =
-                    effectivePre + bonuses.skillDiceAll + (bonuses.skillDice['enganacao'] || 0);
-                  const engMod =
-                    (engSk?.trainingDegree || 0) +
-                    (engSk?.otherModifier || 0) +
-                    bonuses.skillBonusAll +
-                    (bonuses.skillBonus['enganacao'] || 0);
-                  onRoll('Impostor (Substituído por Enganação — 1x/Cena)', engDice, 20, engMod);
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
-                  impostorUsedInScene
-                    ? 'bg-zinc-900 border border-zinc-700 text-zinc-500 cursor-not-allowed'
-                    : 'bg-amber-600 hover:bg-amber-500 text-white cursor-pointer shadow'
-                }`}
-              >
-                {impostorUsedInScene
-                  ? '✓ Impostor já usado nesta cena'
-                  : 'Usar Impostor (-2 PE → Rolar Enganação, 1x/Cena)'}
-              </button>
-            ) : originId === 'investigador' && faroPistasUsedInScene ? (
-              <span className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-500 text-xs font-bold shrink-0">
-                ✓ Faro para Pistas já usado nesta cena
-              </span>
-            ) : (
-              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                {originId === 'reporter_investigativo' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const invSk = safeData.skills.find((s) => s.id === 'investigacao');
-                      const invDice =
-                        effectiveInt + bonuses.skillDiceAll + (bonuses.skillDice['investigacao'] || 0);
-                      const invMod =
-                        (invSk?.trainingDegree || 0) +
-                        (invSk?.otherModifier || 0) +
-                        bonuses.skillBonusAll +
-                        (bonuses.skillBonus['investigacao'] || 0);
-                      onRoll('Encontrar a Verdade (Investigação como Diplomacia)', invDice, 20, invMod);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 text-xs font-bold cursor-pointer"
-                  >
-                    Persuadir c/ Investigação (0 PE)
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!armOriginBoost) {
-                      if (
-                        onCheckResource &&
-                        !onCheckResource(originObj?.powerCost || 0, originObj?.powerName)
-                      ) {
-                        return;
-                      }
-                    }
-                    setArmOriginBoost((prev) => !prev);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
-                    armOriginBoost
-                      ? 'bg-amber-500 text-zinc-950 border-amber-300 shadow-lg'
-                      : 'bg-zinc-900 hover:bg-amber-950 text-amber-300 border-amber-600/60'
-                  }`}
-                >
-                  {armOriginBoost
-                    ? `${originObj?.powerName} ARMADO (+5 no próx. teste, -${originObj?.powerCost} PE)`
-                    : `Armar ${originObj?.powerName} (+5 no próx. teste, -${originObj?.powerCost} PE)`}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        {renderOriginPowerBar(originId, originObj)}
+        {flashbackOriginObj && renderOriginPowerBar(flashbackOriginObj.id, flashbackOriginObj)}
 
         {/* Barra de Automação do Ocultista na Seção de Perícias (Intuição Paranormal) */}
         {hasIntuicaoParanormal && (
@@ -1815,7 +1837,7 @@ export function OrdemSheet({
               armInterludeMental &&
               interludeMental > 0 &&
               ['int', 'pre'].includes(attrForSkill);
-            const lerDiceBonusSkillCount = originId === 'nerd_entusiasta' ? 2 : 1;
+            const lerDiceBonusSkillCount = hasOriginPower('nerd_entusiasta') ? 2 : 1;
             const rawDiceCount =
               baseAttr +
               extraDice +
@@ -1919,7 +1941,9 @@ export function OrdemSheet({
               }
 
               // 5. Poder de Origem Armado
-              if (armOriginBoost && originObj) {
+              if (armedOriginId && armedOriginObj) {
+                const originId = armedOriginId;
+                const originObj = armedOriginObj;
                 const isEligible =
                   (originId === 'academico' && skill.attribute === 'int') ||
                   (originId === 'atleta' &&
@@ -1961,7 +1985,7 @@ export function OrdemSheet({
 
               if ((peToSpend > 0 || sceneEffectToAdd) && onSpendResource) {
                 if (!onSpendResource(peToSpend, sceneEffectToAdd)) {
-                  setArmOriginBoost(false);
+                  setArmedOriginId(null);
                   return;
                 }
               }
@@ -1970,7 +1994,7 @@ export function OrdemSheet({
               if (canUseConhecimentoAplicadoHere) setArmConhecimentoAplicado(false);
               if (armIntuicaoParanormal) setArmIntuicaoParanormal(false);
               if (usedPerito) setArmPerito(false);
-              if (armOriginBoost) setArmOriginBoost(false);
+              if (armedOriginId) setArmedOriginId(null);
 
               if (applyMissingKitPenalty) {
                 suffixParts.push('Sem Kit -5');
@@ -1987,7 +2011,7 @@ export function OrdemSheet({
                     count: lerDiceBonusSkillCount,
                     sides: 6,
                     label:
-                      originId === 'nerd_entusiasta'
+                      hasOriginPower('nerd_entusiasta')
                         ? 'Ler (O Inteligentão)'
                         : 'Ler (Interlúdio)',
                   },
@@ -1997,7 +2021,7 @@ export function OrdemSheet({
               }
 
               const mapaCelestePayload =
-                originId === 'mateiro' && skill.id === 'sobrevivencia'
+                hasOriginPower('mateiro') && skill.id === 'sobrevivencia'
                   ? {
                       canReroll: true,
                       diceCount: rawDiceCount,

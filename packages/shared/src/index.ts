@@ -546,6 +546,8 @@ export interface OrdemOriginMeta {
   cosplayDescription?: string;
   profetizadoSkillId?: string;
   eatenCreatureParts?: string[];
+  /** Flashback (Especialista, SaH): segunda origem cujo poder o personagem recebe */
+  flashbackOriginId?: string;
 }
 
 export interface OrdemSheetData {
@@ -658,6 +660,7 @@ export interface CharacterAbility {
   isSustainedActive?: boolean; // Ritual sustentado ativo no turno
   isActive?: boolean;        // Se true, aplica os modificadores passivos/sustentados na ficha
   sourceId?: string;         // Livro/suplemento de origem
+  grantedBy?: string;        // Poder que concedeu esta habilidade (ex.: Flashback, Especialista Diletante)
   modifiers?: RuleModifier[]; // Modificadores herdados do Compêndio
 }
 
