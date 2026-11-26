@@ -86,8 +86,8 @@ export function findOrdemRitualDef(idOrName?: string): OrdemRitualDef | undefine
     if (byNorm) return byNorm;
   }
 
-  // 3. Fast prefix match for generated IDs (ex: "ord-rit-chamas-do-caos-abc123")
-  if (cleanId.startsWith('ord-rit-')) {
+  // 3. Fast prefix match for generated IDs (ex: "ord-rit-chamas-do-caos-abc123", "sah-rit-esfolar-abc123")
+  if (cleanId.startsWith('ord-rit-') || cleanId.startsWith('sah-rit-')) {
     for (const [id, def] of RITUAL_BY_ID_MAP) {
       if (cleanId.startsWith(id)) {
         return def;

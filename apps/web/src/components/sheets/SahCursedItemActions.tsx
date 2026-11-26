@@ -154,7 +154,7 @@ export function SahCursedItemActions(p: SahCursedItemActionsProps) {
             p.onFeedback(`Dose d'A Praga: Fortitude DT ${dt}. Se falhar, 2d4 de dano mental e os poderes continuam na próxima cena com Ódio Incontrolável.`);
           }}
         >
-          <Icon name="d20" /> Fim do efeito (Fortitude DT {dt})
+          <Icon name="d20" /> {effectOn ? 'Encerrar efeito' : 'Efeito acabou:'} (Fortitude DT {dt})
         </button>
       ) : (
         <>
@@ -180,7 +180,10 @@ export function SahCursedItemActions(p: SahCursedItemActionsProps) {
     }
 
     case 'mandibula':
-      return uses > 0 ? (
+      // Grita até o fim da cena (efeito de cena); depois precisa descansar uma cena para ser usada de novo
+      return effectOn ? (
+        <span className="text-[11px] text-red-300">Gritando até o fim da cena</span>
+      ) : uses > 0 ? (
         <>
           <span className="text-[11px] text-zinc-400">Descansando (precisa de uma cena)</span>
           <button type="button" className={RESET} onClick={() => update({ dailyUses: 0 })}>
@@ -194,6 +197,7 @@ export function SahCursedItemActions(p: SahCursedItemActionsProps) {
           title="Ação padrão, alcance médio. Grita em 30m até o fim da cena; em furtividade, passa automaticamente em distrair. Criaturas de Sangue: Vontade DT 35 para não ir comê-la."
           onClick={() => {
             update({ dailyUses: 1 });
+            addEffect('Mandíbula Agonizante gritando', 'Cobre qualquer som em 30m; criaturas de Sangue precisam de Vontade DT 35 para não ir comê-la.');
             p.onFeedback('Mandíbula Agonizante arremessada: grita até o fim da cena (cobre sons em 30m; criaturas de Sangue: Vontade DT 35).');
           }}
         >
@@ -337,26 +341,24 @@ export function SahCursedItemActions(p: SahCursedItemActionsProps) {
         </button>
       );
 
-    case 'radio':
+    case 'radio': {
+      // Pilhas duram 12h: ligar/desligar é estado do item, não efeito de cena
+      const on = item.remainingCharges === 1;
       return (
         <button
           type="button"
-          className={effectOn ? `${BTN} bg-amber-600 text-white border-amber-300` : ZINC}
-          aria-pressed={effectOn}
+          className={on ? `${BTN} bg-amber-600 text-white border-amber-300` : ZINC}
+          aria-pressed={on}
           title="Chia se houver criatura paranormal em alcance extremo (mais alto quanto mais perto). Criaturas tendem a ser atraídas pelo chiado."
           onClick={() => {
-            if (effectOn) {
-              removeEffect();
-              p.onFeedback('Rádio Chiador desligado.');
-            } else {
-              addEffect('Rádio Chiador ligado', 'Chia se houver criatura paranormal em alcance extremo; o volume indica a distância.');
-              p.onFeedback('Rádio Chiador ligado: peça ao mestre se há chiado.');
-            }
+            update({ remainingCharges: on ? 0 : 1 });
+            p.onFeedback(on ? 'Rádio Chiador desligado.' : 'Rádio Chiador ligado: peça ao mestre se há chiado.');
           }}
         >
-          <Icon name="radio" /> {effectOn ? 'Desligar rádio' : 'Ligar rádio'}
+          <Icon name="radio" /> {on ? 'Ligado (desligar)' : 'Ligar rádio'}
         </button>
       );
+    }
 
     case 'camera':
       return (

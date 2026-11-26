@@ -99,6 +99,22 @@ import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilte
 type OrdemTrailDef = (typeof ORDEM_TRAILS)[number];
 
 /**
+ * Antecipar Vitalidade (SaH, Morte): com cargas acumuladas, a ação de interlúdio dormir
+ * não recupera PV e consome 1 carga (2 com Afinidade). Retorna null se não houver cargas.
+ */
+function getAnteciparVitalidadeSleep(
+  abilities: CharacterAbility[]
+): { abilityId: string; charges: number; next: number } | null {
+  const ab = abilities.find(
+    (a) => a.id.startsWith('sah-para-mort-antecipar-vitalidade') || /antecipar vitalidade/i.test(a.name)
+  );
+  const charges = Number(ab?.trackedCount || 0);
+  if (!ab || charges <= 0) return null;
+  const perSleep = ab.hasAffinityUpgrade || /\(afinidade\)/i.test(ab.name) ? 2 : 1;
+  return { abilityId: ab.id, charges, next: Math.max(0, charges - perSleep) };
+}
+
+/**
  * Monta a habilidade de um poder de trilha. Se o personagem já tinha esse poder,
  * preserva o estado salvo nele (ex.: elemento do Monstruoso, toggles) em vez de recriá-lo do zero.
  */
@@ -1618,6 +1634,14 @@ export function SheetContainer({
           tempHp: 0,
           tempPe: 0,
           sceneEffects: [],
+          // Rituais sustentados terminam junto com a cena
+          ...(Array.isArray(baseRaw.abilities)
+            ? {
+                abilities: baseRaw.abilities.map((ab: CharacterAbility) =>
+                  ab.isSustainedActive ? { ...ab, isSustainedActive: false } : ab
+                ),
+              }
+            : {}),
         },
       };
     }, false);
@@ -2878,13 +2902,20 @@ export function SheetContainer({
       dishes.filter((d) => d === 'energetico').length * (interludeSleep ? peLimit : 0);
     const extraSan = dishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0);
 
-    const pvGain = (interludeSleep ? sleepBaseRecovery : 0) + extraPv;
+    // Antecipar Vitalidade: com cargas, o sono não recupera PV (pratos continuam valendo)
+    const anteciparSleep = interludeSleep ? getAnteciparVitalidadeSleep(characterAbilities) : null;
+    const pvGain = (interludeSleep && !anteciparSleep ? sleepBaseRecovery : 0) + extraPv;
     const peGain = (interludeSleep ? sleepBaseRecovery : 0) + extraPe;
     const sanGain = (interludeRelax ? relaxBaseRecovery : 0) + extraSan;
 
     const summaryParts: string[] = [];
     if (pvGain > 0 || peGain > 0 || sanGain > 0) {
       summaryParts.push(`+${pvGain} PV / +${peGain} PE / +${sanGain} SAN`);
+    }
+    if (anteciparSleep) {
+      summaryParts.push(
+        `Antecipar Vitalidade: sono sem cura de PV, -${anteciparSleep.charges - anteciparSleep.next} carga(s) (restam ${anteciparSleep.next})`
+      );
     }
     if (interludeExerciseCount > 0) {
       summaryParts.push(`Exercitar-se +${interludeExerciseCount}d20 físico em estoque`);
@@ -3123,6 +3154,13 @@ export function SheetContainer({
           sceneEffects: nextSceneEffectsList,
           interludeBonusDice: nextBonusDice,
           pendingInterlude: null,
+          ...(anteciparSleep && Array.isArray(baseRaw.abilities)
+            ? {
+                abilities: (baseRaw.abilities as CharacterAbility[]).map((a) =>
+                  a.id === anteciparSleep.abilityId ? { ...a, trackedCount: anteciparSleep.next } : a
+                ),
+              }
+            : {}),
           // Possuído (SaH): recupera PP ao dormir
           ...(possessionInfo.active && interludeSleep
             ? { possessionPoints: Math.min(possessionInfo.max, possessionInfo.current + possessionInfo.perSleep) }
@@ -4747,8 +4785,9 @@ export function SheetContainer({
         const sleepBaseRec = Math.max(1, Math.floor(peLimitInterlude * effectiveSleepComfortModal));
         const relaxBaseRec = Math.max(1, Math.floor(peLimitInterlude * interludeComfort));
         const selectedDishes = [interludeDish, interludeSecondDish].filter(Boolean);
+        const anteciparPreview = interludeSleep ? getAnteciparVitalidadeSleep(characterAbilities) : null;
         const previewPv =
-          (interludeSleep ? sleepBaseRec : 0) +
+          (interludeSleep && !anteciparPreview ? sleepBaseRec : 0) +
           selectedDishes.filter((d) => d === 'nutritivo').length * (interludeSleep ? peLimitInterlude : 0);
         const previewPe =
           (interludeSleep ? sleepBaseRec : 0) +
@@ -4894,6 +4933,12 @@ export function SheetContainer({
                       Recupera <strong className="text-emerald-300">+{previewPv} PV</strong> e{' '}
                       <strong className="text-amber-300">+{previewPe} PE</strong> (Limite {peLimitInterlude} PE).
                     </span>
+                    {anteciparPreview && (
+                      <span className="block text-[10px] font-bold text-amber-400 mt-0.5">
+                        Antecipar Vitalidade: o sono não cura PV e consome{' '}
+                        {anteciparPreview.charges - anteciparPreview.next} carga(s) (restam {anteciparPreview.next}).
+                      </span>
+                    )}
                     {interludeComfort === 0.5 && upgradesPrecariousSleepModal && (
                       <span className="block text-[10px] font-bold text-emerald-400 mt-0.5">
                         ✓ {modalOriginObj?.name}: descanso precário elevado para Normal (1x)!

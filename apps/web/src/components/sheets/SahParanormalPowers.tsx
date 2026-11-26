@@ -92,7 +92,7 @@ function AnteciparVitalidade(p: Props) {
         <button
           type="button"
           className={SAH_BTN_NEUTRAL}
-          title="Na ação de interlúdio dormir, em vez de recuperar PV você perde cargas"
+          title="Na ação de interlúdio dormir, em vez de recuperar PV você perde cargas. O modal de Interlúdio já faz isso sozinho: use este botão só para dormir fora dele."
           onClick={() => {
             const next = Math.max(0, charges - perSleep);
             setCharges(next);

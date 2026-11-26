@@ -1937,6 +1937,8 @@ export function computeOrdemInventoryDerivedEffects(
   if (abilities.some((ab) => ab.id === 'trail-bibliotecario-99' && ab.isActive !== false)) {
     dynamicModifiers.push({ id: 'dyn-biblio-99-pe', targetType: 'vital_max', targetKey: 'pe', value: attrInt + 1 });
   }
+  // Atributos que podem substituir a Presença no cálculo dos PE (resolvidos depois do Monstruoso)
+  const peKeyAttrCandidates: string[] = [];
   // Monstruoso (Combatente, SaH p. 17-21): efeitos da etapa ritualística do elemento escolhido
   const monstro10 = abilities.find((ab) => ab.id === 'trail-monstruoso-10');
   const monstroEl = (monstro10?.chosenElement || '').toLowerCase();
@@ -1963,8 +1965,6 @@ export function computeOrdemInventoryDerivedEffects(
         }
       }
       const attrFor = Number(sheetData?.attributes?.for ?? 0);
-      const attrVig = Number(sheetData?.attributes?.vig ?? 0);
-      const attrAgi = Number(sheetData?.attributes?.agi ?? 0);
       // 10%: Morte soma FOR nos PV; Conhecimento soma INT na Defesa
       if (monstroEl === 'morte' && attrFor > 0) {
         dynamicModifiers.push({ id: 'dyn-monstro-morte-pv', targetType: 'vital_max', targetKey: 'pv', value: attrFor });
@@ -2004,13 +2004,8 @@ export function computeOrdemInventoryDerivedEffects(
         if (monstroEl === 'conhecimento') {
           dynamicModifiers.push({ id: 'dyn-monstro-conh-int', targetType: 'attribute', targetKey: 'int', value: 1 });
         }
-        const peAttr =
-          monstroEl === 'sangue' ? attrFor : monstroEl === 'morte' ? attrVig : monstroEl === 'conhecimento' ? attrInt + 1 : attrAgi;
-        if (peAttr > attrPre) {
-          const nexVal = Number(sheetData?.nex ?? 5);
-          const steps = nexVal <= 5 ? 1 : nexVal === 99 ? 20 : Math.max(1, Math.floor(nexVal / 5));
-          dynamicModifiers.push({ id: 'dyn-monstro-pe-attr', targetType: 'vital_max', targetKey: 'pe', value: (peAttr - attrPre) * steps });
-        }
+        const peAttrKey = monstroEl === 'sangue' ? 'for' : monstroEl === 'morte' ? 'vig' : monstroEl === 'conhecimento' ? 'int' : 'agi';
+        peKeyAttrCandidates.push(peAttrKey);
       }
     }
   }
@@ -2031,11 +2026,24 @@ export function computeOrdemInventoryDerivedEffects(
     dynamicModifiers.push(...getNexGeneralModifiers(nexVal, monstro10.nexProgChoices, true, attrValues));
     dynamicModifiers.push(...getNexProgressionModifiers(monstroEl, nexVal));
   }
-  // Racionalidade Inflexível: Intelecto no lugar de Presença para os PE (diferença por grau de NEX)
-  if (hasGeneral('sah-pwr-gen-racionalidade-inflexivel', 'racionalidade inflexível') && attrInt > attrPre) {
-    const nexVal = Number(sheetData?.nex ?? 5);
-    const steps = nexVal <= 5 ? 1 : nexVal === 99 ? 20 : Math.max(1, Math.floor(nexVal / 5));
-    dynamicModifiers.push({ id: 'dyn-racionalidade-pe', targetType: 'vital_max', targetKey: 'pe', value: (attrInt - attrPre) * steps });
+  // Racionalidade Inflexível: Intelecto no lugar de Presença para os PE
+  if (hasGeneral('sah-pwr-gen-racionalidade-inflexivel', 'racionalidade inflexível')) {
+    peKeyAttrCandidates.push('int');
+  }
+  // Atributo-chave dos PE trocado (Monstruoso 40% / Racionalidade Inflexível): vale só o maior,
+  // num único modificador (diferença para a Presença por grau de NEX) — os efeitos não se acumulam.
+  if (peKeyAttrCandidates.length > 0) {
+    const effectiveAttr = (k: string) =>
+      Number((sheetData?.attributes as Record<string, number> | undefined)?.[k] ?? 0) +
+      dynamicModifiers
+        .filter((m) => m.targetType === 'attribute' && m.targetKey === k)
+        .reduce((s, m) => s + m.value, 0);
+    const bestPeAttr = Math.max(...peKeyAttrCandidates.map(effectiveAttr));
+    if (bestPeAttr > attrPre) {
+      const nexVal = Number(sheetData?.nex ?? 5);
+      const steps = nexVal <= 5 ? 1 : nexVal === 99 ? 20 : Math.max(1, Math.floor(nexVal / 5));
+      dynamicModifiers.push({ id: 'dyn-pe-key-attr', targetType: 'vital_max', targetKey: 'pe', value: (bestPeAttr - attrPre) * steps });
+    }
   }
   for (const ab of abilities) {
     if (ab.isActive === false) continue;

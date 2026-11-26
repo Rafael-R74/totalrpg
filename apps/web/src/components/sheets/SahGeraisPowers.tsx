@@ -4,6 +4,7 @@ import {
   ORDEM_SKILLS_METADATA,
   getOrdemSkillAttrOverride,
   hasDyingCondition,
+  isUnconsciousCondition,
 } from '@totalrpg/shared';
 import { Dialog } from '../ui/Dialog';
 import { Icon } from '../ui/Icon';
@@ -376,7 +377,8 @@ const TENACIDADE_PREFIX = 'pwr-scene-tenacidade-';
 /** Tenacidade: morrendo e consciente, teste de Fortitude (DT 20 +10 por teste anterior na cena). */
 function Tenacidade(p: Props) {
   const conditions = ((p.sheet as any).conditions || (p.sheet as any).activeConditions || []) as any[];
-  const dying = hasDyingCondition(conditions);
+  // Morrendo, mas consciente (curado a 1+ PV, o "inconsciente" sai e o "morrendo" continua)
+  const dying = hasDyingCondition(conditions) && !conditions.some(isUnconsciousCondition);
   const done = (p.sheet.sceneEffects || []).filter((e) => e.id.startsWith(TENACIDADE_PREFIX)).length;
   const dt = 20 + 10 * done;
   if (!dying) {

@@ -1267,6 +1267,14 @@ async function handleDeliverItemToCharacter(
           tempPe: 0,
           tempPeMax: 0,
           sceneEffects: [],
+          // Rituais sustentados terminam junto com a cena
+          ...(Array.isArray(rawSheet.abilities)
+            ? {
+                abilities: rawSheet.abilities.map((ab: any) =>
+                  ab?.isSustainedActive ? { ...ab, isSustainedActive: false } : ab
+                ),
+              }
+            : {}),
           // Morrendo conta turnos "na mesma cena": cena nova, contador zerado.
           dyingTurns: 0,
         },

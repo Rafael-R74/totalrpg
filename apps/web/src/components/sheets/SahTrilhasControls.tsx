@@ -400,8 +400,15 @@ function Multifacetado(p: Props) {
   const [open, setOpen] = useState(false);
   const [trailId, setTrailId] = useState('');
   const own = (p.sheet as any).trail;
-  const options = ORDEM_TRAILS.filter((t) => (t.classId === 'combatente' || t.classId === 'especialista') && t.id !== own);
+  const options = ORDEM_TRAILS.filter(
+    (t) =>
+      (t.classId === 'combatente' || t.classId === 'especialista') &&
+      t.id !== own &&
+      matchesContentSourceFilter(t.sourceId, [], p.allowedSources, 'ordem-paranormal')
+  );
   const sceneId = 'pwr-scene-multifacetado';
+  // Marcador separado: encerrar o disfarce não libera outro uso na mesma cena
+  const usedSceneId = 'pwr-scene-multifacetado-usado';
   const tempAbilities = p.abilities.filter((a) => a.grantedBy === MULTI_GRANT);
   const sceneActive = (p.sheet.sceneEffects || []).some((e) => e.id === sceneId);
   // A cena acabou (efeito sumiu): remove as habilidades emprestadas
@@ -426,7 +433,7 @@ function Multifacetado(p: Props) {
       </button>
     );
   }
-  if (usedInScene(p, sceneId)) return <span className={SAH_USED}>✓ Disfarce assumido na cena</span>;
+  if (usedInScene(p, usedSceneId)) return <span className={SAH_USED}>✓ Disfarce assumido na cena</span>;
   const chosen = options.find((t) => t.id === trailId);
   return (
     <>
@@ -467,6 +474,9 @@ function Multifacetado(p: Props) {
                 ]);
                 p.onLoseSanity?.(5, `Multifacetado (${chosen.name})`);
                 p.onAddSceneEffect?.({ id: sceneId, name: `Multifacetado: ${chosen.name}`, source: 'Até o fim da cena', description: `Habilidades até NEX 65%: ${powers}` });
+                if (p.isInCampaign) {
+                  p.onAddSceneEffect?.({ id: usedSceneId, name: 'Multifacetado (usado na cena)', source: 'Cena', description: 'Uma vez por cena' });
+                }
                 p.onFeedback(`Multifacetado (-5 SAN): até o fim da cena você usa ${powers}.`);
                 setOpen(false);
               }}
