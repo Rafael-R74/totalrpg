@@ -15,7 +15,8 @@ function weapon(
   critRange: string,
   damageType: string,
   itemSubtype: 'weapon_melee' | 'weapon_ranged' | 'weapon_firearm',
-  range?: string
+  range?: string,
+  ammoCapacity?: number
 ): CompendiumEntryData {
   return {
     id,
@@ -32,6 +33,7 @@ function weapon(
       critRange,
       element: damageType,
       ...(range ? { range } : {}),
+      ...(ammoCapacity !== undefined ? { ammoCapacity } : {}),
       itemSubtype,
       isWeapon: true,
       sourceId: SAH,
@@ -79,7 +81,8 @@ export const SAH_WEAPON_ENTRIES: CompendiumEntryData[] = [
     '20/x4',
     'Perfuração',
     'weapon_ranged',
-    'Curto'
+    'Curto',
+    300
   ),
   weapon(
     'sah-item-estilingue',
@@ -101,7 +104,8 @@ export const SAH_WEAPON_ENTRIES: CompendiumEntryData[] = [
     '19/x3',
     'Perfuração',
     'weapon_firearm',
-    'Curto'
+    'Curto',
+    5
   ),
   // Armas Táticas
   weapon(
@@ -165,7 +169,8 @@ export const SAH_WEAPON_ENTRIES: CompendiumEntryData[] = [
     '20/x2',
     'Perfuração',
     'weapon_ranged',
-    'Curto'
+    'Curto',
+    10
   ),
   weapon(
     'sah-item-pistola-pesada',
@@ -176,7 +181,8 @@ export const SAH_WEAPON_ENTRIES: CompendiumEntryData[] = [
     '18/x2',
     'Balístico',
     'weapon_firearm',
-    'Curto'
+    'Curto',
+    10
   ),
   weapon(
     'sah-item-espingarda-cano-duplo',
@@ -187,7 +193,8 @@ export const SAH_WEAPON_ENTRIES: CompendiumEntryData[] = [
     '20/x3',
     'Balístico',
     'weapon_firearm',
-    'Curto'
+    'Curto',
+    2
   ),
 ];
 
@@ -203,7 +210,7 @@ export const SAH_GENERAL_ITEM_ENTRIES: CompendiumEntryData[] = [
   item('sah-item-notebook', 'Notebook', 0, 2, 'accessory'),
 
   // Explosivos (5)
-  item('sah-item-dinamite', 'Dinamite', 1, 1, 'explosive', { damageFormula: '4d6' }),
+  item('sah-item-dinamite', 'Dinamite', 1, 1, 'explosive', { damageFormula: '4d6+4d6' }),
   item('sah-item-explosivo-plastico', 'Explosivo Plástico', 1, 1, 'explosive', { damageFormula: '16d6' }),
   item('sah-item-galao-vermelho', 'Galão Vermelho', 0, 2, 'explosive', { damageFormula: '12d6' }),
   item('sah-item-granada-gas-sonifero', 'Granada de Gás Sonífero', 1, 1, 'explosive'),

@@ -380,10 +380,12 @@ export function OrdemSheet({
   }
   const reflexosInfo = getDefenseSkillInfo('reflexos');
   const fortitudeInfo = getDefenseSkillInfo('fortitude');
-  const esquivaTotal = totalDefense + reflexosInfo.total;
+  const dodgeBonus = bonuses.dodgeBonus || 0;
+  const esquivaTotal = totalDefense + reflexosInfo.total + dodgeBonus;
   const esquivaCampoProtetor = esquivaTotal + 5;
   const cascaGrossaRd = hasCascaGrossa ? Math.max(0, effectiveVig) : 0;
-  const blockBaseRd = fortitudeInfo.total + cascaGrossaRd;
+  const blockRdBonus = bonuses.blockRdBonus || 0;
+  const blockBaseRd = fortitudeInfo.total + cascaGrossaRd + blockRdBonus;
   const passivePhysicalRd =
     bonuses.damageResistances
       .filter((rd) => {
@@ -988,6 +990,7 @@ export function OrdemSheet({
                   <span className="text-xs font-extrabold text-white block"><Icon name="footprints" /> Se Esquivar</span>
                   <span className="text-[10px] text-zinc-400">
                     Defesa ({totalDefense}) + Reflexos ({reflexosInfo.total >= 0 ? `+${reflexosInfo.total}` : reflexosInfo.total})
+                    {dodgeBonus > 0 ? ` + ${dodgeBonus} (Bastão Policial)` : ''}
                   </span>
                 </div>
                 <span className="text-lg font-black font-mono text-sky-300">
@@ -1022,6 +1025,15 @@ export function OrdemSheet({
                   <span className="text-[10px] text-zinc-400">
                     Fortitude ({fortitudeInfo.total})
                     {cascaGrossaRd > 0 ? ` + ${cascaGrossaRd} VIG (Casca Grossa)` : ''}
+                    {blockRdBonus > 0
+                      ? ` + ${blockRdBonus} (${
+                          blockRdBonus === 2
+                            ? 'Braçadeira'
+                            : blockRdBonus === 20
+                            ? 'Faca Tática'
+                            : 'Braçadeira + Faca Tática'
+                        })`
+                      : ''}
                     {passivePhysicalRd > 0 ? ` + ${passivePhysicalRd} RD passiva` : ''}
                   </span>
                 </div>

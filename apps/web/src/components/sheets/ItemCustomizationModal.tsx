@@ -15,6 +15,7 @@ import {
   getOrdemItemEffectiveCategory,
   getOrdemItemEffectiveSlots,
   inferOrdemItemKind,
+  isOrdemItemParanormal,
   matchesContentSourceFilter,
 } from '@totalrpg/shared';
 
@@ -114,11 +115,17 @@ export function ItemCustomizationModal({
     const nextSlots = getOrdemItemEffectiveSlots(next);
     const hasCurses = (next.curses || []).length > 0;
     const hasParaMod = (next.modifications || []).some((m) => findOrdemModificationDef(m)?.isParanormal);
+    const baseParanormal = isOrdemItemParanormal({
+      ...next,
+      isParanormal: false,
+      curses: [],
+      modifications: [],
+    });
     return {
       ...next,
       category: nextCat,
       slots: nextSlots,
-      isParanormal: next.isParanormal || hasCurses || hasParaMod,
+      isParanormal: baseParanormal || hasCurses || hasParaMod,
     };
   }
 

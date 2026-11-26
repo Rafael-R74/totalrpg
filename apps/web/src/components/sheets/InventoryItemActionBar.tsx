@@ -1,4 +1,5 @@
 import {
+  AttackDamageRollPayload,
   CharacterAbility,
   CompendiumEntryData,
   ComputedBonuses,
@@ -11,8 +12,10 @@ import {
 
 import { Icon } from '../ui/Icon';
 import { SahCursedItemActions, isSahCursedActionItem } from './SahCursedItemActions';
+import { SahItemActions, isSahGeneralActionItem } from './SahItemActions';
 interface InventoryItemActionBarProps {
   item: RPGItem;
+  inventory?: RPGItem[];
   ordemSheetData: OrdemSheetData;
   bonuses: ComputedBonuses;
   abilities: CharacterAbility[];
@@ -23,9 +26,11 @@ interface InventoryItemActionBarProps {
   onSpendResource: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
   onHealPv?: (amount: number, reason?: string) => void;
   onTakePvDamage?: (amount: number, reason?: string) => void;
+  onGrantTempHp?: (amount: number, reason?: string) => void;
   onGrantTempPe?: (amount: number, reason?: string) => void;
   onAddSceneEffect?: (effect: SceneEffect) => void;
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
+  onRemoveCondition?: (condId: string) => void;
   onLoseSanity?: (amount: number, reason: string) => void;
   onAdjustVital?: (barId: 'pv' | 'pe' | 'san', delta: number, reason: string) => void;
   onFeedback: (msg: string) => void;
@@ -35,7 +40,7 @@ interface InventoryItemActionBarProps {
     sides: number,
     modifier: number,
     isDamage?: boolean,
-    attackDamagePayload?: undefined,
+    attackDamagePayload?: AttackDamageRollPayload,
     forcaOpressoraPayload?: undefined,
     extraRollOpts?: {
       explodingDieSide?: number;
@@ -75,6 +80,7 @@ function getSkillRollParams(
 
 export function InventoryItemActionBar({
   item,
+  inventory = [],
   ordemSheetData,
   bonuses,
   abilities,
@@ -85,9 +91,11 @@ export function InventoryItemActionBar({
   onSpendResource,
   onHealPv,
   onTakePvDamage,
+  onGrantTempHp,
   onGrantTempPe,
   onAddSceneEffect,
   onUpdateSceneEffects,
+  onRemoveCondition,
   onLoseSanity,
   onAdjustVital,
   onFeedback,
@@ -97,6 +105,7 @@ export function InventoryItemActionBar({
   const peLimit = getOrdemPeLimit(ordemSheetData.nex, ordemSheetData.origin, abilities);
   const effAgi = (ordemSheetData.attributes.agi || 0) + (bonuses.attributes.agi || 0);
   const effInt = (ordemSheetData.attributes.int || 0) + (bonuses.attributes.int || 0);
+  const effPre = (ordemSheetData.attributes.pre || 0) + (bonuses.attributes.pre || 0);
 
   const hasPeritoExplosivos = abilities.some(
     (ab) =>
@@ -465,33 +474,39 @@ export function InventoryItemActionBar({
   // 4. OPERACIONAIS ATIVOS (Taser, Spray de Pimenta, Lanterna, Pistolas)
   // ============================================================================
   if (ln.includes('taser')) {
-    const charges = item.remainingCharges ?? 2;
+    const hasBateriaPotente = (item.modifications || []).includes('sah-mod-bateria-potente');
+    const taserMaxCharges = hasBateriaPotente ? 4 : 2;
+    const taserSides = hasBateriaPotente ? 8 : 6;
+    const taserDt = grenadeDt + (hasBateriaPotente ? 5 : 0);
+    const charges = item.remainingCharges ?? taserMaxCharges;
     buttons.push(
       <button
         key="use-taser"
         type="button"
         disabled={charges <= 0}
         onClick={() => {
-          useChargeOrConsume(2);
+          useChargeOrConsume(taserMaxCharges);
           onRoll(
-            `Taser [Eletricidade • Fortitude DT ${grenadeDt} ou Atordoado 1 rod.]`,
+            `Taser [Eletricidade • Fortitude DT ${taserDt} ou Atordoado 1 rod.]`,
             1,
-            6,
+            taserSides,
             0,
             true
           );
-          onFeedback(`Taser disparado (1d6 Eletricidade • Fort DT ${grenadeDt}). Cargas restantes: ${Math.max(0, charges - 1)}.`);
+          onFeedback(
+            `Taser disparado (1d${taserSides} Eletricidade • Fort DT ${taserDt}). Cargas restantes: ${Math.max(0, charges - 1)}/${taserMaxCharges}.`
+          );
         }}
         className="px-2.5 py-1 bg-cyan-950/80 hover:bg-cyan-700 disabled:opacity-40 text-cyan-200 border border-cyan-600/80 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
-        <Icon name="zap" /> Disparar (1d6 • Fort DT {grenadeDt} • {charges}/2 cargas)
+        <Icon name="zap" /> Disparar (1d{taserSides} • Fort DT {taserDt} • {charges}/{taserMaxCharges} cargas)
       </button>,
-      ...(charges < 2
+      ...(charges < taserMaxCharges
         ? [
             <button
               key="reload-taser"
               type="button"
-              onClick={() => onUpdateItem({ ...item, remainingCharges: 2 })}
+              onClick={() => onUpdateItem({ ...item, remainingCharges: taserMaxCharges })}
               className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-lg text-[10px] font-bold cursor-pointer"
               title="Recarregar bateria do Taser"
             >
@@ -608,6 +623,8 @@ export function InventoryItemActionBar({
       </button>
     );
   } else if (ln.includes('câmera de aura') || ln.includes('camera de aura')) {
+    const hasLenteRevelacao = (item.modifications || []).includes('sah-mod-lente-revelacao');
+    const lenteDt = 10 + peLimit + effPre;
     buttons.push(
       <button
         key="use-camera-aura"
@@ -621,7 +638,25 @@ export function InventoryItemActionBar({
         className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-600 rounded-lg text-[11px] font-bold transition cursor-pointer"
       >
         Fotografar Aura (-1 PE)
-      </button>
+      </button>,
+      ...(hasLenteRevelacao
+        ? [
+            <button
+              key="use-lente-revelacao"
+              type="button"
+              onClick={() => {
+                if (!onSpendResource(1)) return;
+                onFeedback(
+                  `Lente de Revelação (-1 PE • alcance curto): criatura fotografada perde camuflagem/invisibilidade e torna-se corpórea até o fim da cena (Vontade DT ${lenteDt} evita)!`
+                );
+              }}
+              className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-700 text-purple-200 border border-purple-500 rounded-lg text-[11px] font-bold transition cursor-pointer"
+              title="Lente de Revelação (SaH): permite ver seres invisíveis/incorpóreos; ação padrão + 1 PE remove camuflagem, invisibilidade e incorpóreo até o fim da cena"
+            >
+              <Icon name="eye" /> Revelar Criatura (-1 PE • Von DT {lenteDt})
+            </button>,
+          ]
+        : [])
     );
   } else if (ln.includes('emissor de pulsos')) {
     buttons.push(
@@ -1173,6 +1208,41 @@ export function InventoryItemActionBar({
         </button>
       );
     }
+  }
+
+  // Equipamentos gerais, explosivos, medicamentos e itens paranormais do SaH
+  if (isSahGeneralActionItem(item)) {
+    buttons.push(
+      <SahItemActions
+        key="sah-general"
+        item={item}
+        inventory={inventory}
+        ordemSheetData={ordemSheetData}
+        bonuses={bonuses}
+        abilities={abilities}
+        onUpdateItem={onUpdateItem}
+        onConsumeUnit={onConsumeUnit}
+        onSpendResource={onSpendResource}
+        onGrantTempHp={onGrantTempHp}
+        onAdjustVital={onAdjustVital}
+        onAddSceneEffect={onAddSceneEffect}
+        onUpdateSceneEffects={onUpdateSceneEffects}
+        onRemoveCondition={onRemoveCondition}
+        onFeedback={onFeedback}
+        onRoll={(label, count, sides, modifier, isDamage, extraRollOpts, attackDamagePayload) =>
+          onRoll(
+            label,
+            count,
+            sides,
+            modifier,
+            isDamage ?? sides !== 20,
+            attackDamagePayload,
+            undefined,
+            extraRollOpts
+          )
+        }
+      />
+    );
   }
 
   // Itens amaldiçoados do Sobrevivendo ao Horror (ações próprias)

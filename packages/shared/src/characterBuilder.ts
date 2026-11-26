@@ -1727,8 +1727,11 @@ export function classifyOrdemWeapon(
     nameLower.includes('punhal') ||
     nameLower.includes('faca');
 
-  // 6. Arco Composto (única arma de disparo que soma Força no dano pelas regras oficiais)
-  const isArcoComposto = nameLower.includes('arco composto') || descLower.includes('arco composto');
+  // 6. Arco Composto e Estilingue (SaH p. 37): armas de disparo que somam Força no dano pelas regras oficiais
+  const isArcoComposto =
+    nameLower.includes('arco composto') ||
+    descLower.includes('arco composto') ||
+    nameLower.includes('estilingue');
 
   const skillId: 'pontaria' | 'luta' = isRanged ? 'pontaria' : 'luta';
 

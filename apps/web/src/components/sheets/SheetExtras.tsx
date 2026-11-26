@@ -46,6 +46,8 @@ import {
   formatOrdemDiceLabel,
   inferOrdemItemKind,
   getOrdemItemEffectiveSlots,
+  getOrdemInventoryItemTotalSlots,
+  calculateOrdemEffectiveInventoryLoad,
   getOrdemItemEffectiveCategory,
   computeOrdemWeaponBonusesFromItem,
   doubleCritThreatRange,
@@ -107,6 +109,7 @@ interface SheetExtrasProps {
   onSpendResource: (amount: number, extraSceneEffect?: SceneEffect) => boolean;
   onHealPv?: (amount: number, reason?: string) => void;
   onTakePvDamage?: (amount: number, reason?: string) => void;
+  onGrantTempHp?: (amount: number, reason?: string) => void;
   onGrantTempPe?: (amount: number, reason?: string) => void;
   onLoseSanity?: (amount: number, reason: string) => void;
   /** Dano sofrido nos PV (máximo - atual) */
@@ -300,6 +303,7 @@ export function SheetExtras({
   onSpendResource,
   onHealPv,
   onTakePvDamage,
+  onGrantTempHp,
   onGrantTempPe,
   onLoseSanity,
   pvDamageTaken,
@@ -739,6 +743,10 @@ export function SheetExtras({
     Record<string, 'none' | 'dumdum' | 'explosiva' | 'jurada'>
   >({});
   const [arcabuzDieByAttackId, setArcabuzDieByAttackId] = useState<Record<string, number>>({});
+  const [canoDuploByAttackId, setCanoDuploByAttackId] = useState<Record<string, boolean>>({});
+  const [twoHandPistolaByAttackId, setTwoHandPistolaByAttackId] = useState<Record<string, boolean>>({});
+  const [baionetaFixedHostByAttackId, setBaionetaFixedHostByAttackId] = useState<Record<string, string>>({});
+  const [contraAtaqueFacaByAttackId, setContraAtaqueFacaByAttackId] = useState<Record<string, boolean>>({});
   const [customizingItemId, setCustomizingItemId] = useState<string | null>(null);
   const [inventoryRealmFilter, setInventoryRealmFilter] = useState<'ALL' | 'normal' | 'paranormal'>('ALL');
   const [inventoryFeedback, setRawInventoryFeedback] = useState<string>('');
@@ -1028,19 +1036,10 @@ export function SheetExtras({
   const allowAb = isEditMode && canEditAbilities;
 
   const effectiveMaxSlots = maxLoadSlots + bonuses.loadLimit;
-  const currentLoad = inventory.reduce((acc, item) => {
-    const qty = item.quantity || 1;
-    const rawSlots =
-      system === 'ordem-paranormal' ? getOrdemItemEffectiveSlots(item) : item.slots;
-    // Inventário Organizado (Geral, SaH): itens de 0,5 espaço ocupam 0,25
-    const effectiveSlots =
-      system === 'ordem-paranormal' && rawSlots === 0.5 && hasInventarioOrganizado(abilities) ? 0.25 : rawSlots;
-    if (hasMochilaUtilidades && item.isUtilityBackpackItem) {
-      const reducedFirst = Math.max(0, effectiveSlots - 1);
-      return acc + reducedFirst + effectiveSlots * Math.max(0, qty - 1);
-    }
-    return acc + effectiveSlots * qty;
-  }, 0);
+  const currentLoad =
+    system === 'ordem-paranormal'
+      ? calculateOrdemEffectiveInventoryLoad(inventory, ordemSheetData, abilities)
+      : inventory.reduce((acc, item) => acc + item.slots * (item.quantity || 1), 0);
   const isOverloaded = currentLoad > effectiveMaxSlots;
 
   function isGeneralEquipment(it: RPGItem): boolean {
@@ -2636,6 +2635,35 @@ export function SheetExtras({
 
           {(() => {
             const combatAttacks = attacks.filter((atk) => !isHealingConsumableItem(atk.name));
+            const twoHandedFirearmAttacks = combatAttacks.filter((a) => {
+              const ln = a.name.toLowerCase();
+              const linked =
+                (a.linkedItemId ? inventory.find((it) => it.id === a.linkedItemId) : undefined) ||
+                inventory.find((it) => it.name.toLowerCase() === ln);
+              const d = (linked?.description || '').toLowerCase();
+              const cls = classifyOrdemWeapon(a.name, d, a.isFirearm, a.damageType, Boolean(a.isUnarmed));
+              if (!cls.isFirearm) return false;
+              return (
+                ln.includes('duas mãos') ||
+                ln.includes('duas maos') ||
+                d.includes('duas mãos') ||
+                d.includes('duas maos') ||
+                ln.includes('fuzil') ||
+                ln.includes('espingarda') ||
+                ln.includes('carabina') ||
+                ln.includes('rifle') ||
+                ln.includes('sniper') ||
+                ln.includes('metralhadora') ||
+                ln.includes('bazuca') ||
+                ln.includes('lança-chamas') ||
+                ln.includes('lanca-chamas')
+              );
+            });
+            const attachedBayonetHostIds = new Set(
+              Object.entries(baionetaFixedHostByAttackId)
+                .filter(([bId, hostId]) => Boolean(hostId) && combatAttacks.some((ca) => ca.id === bId))
+                .map(([, hostId]) => hostId)
+            );
             return combatAttacks.length === 0 ? (
               <p className="text-xs text-zinc-500 text-center py-4">
                 Nenhum ataque preparado. Adicione uma arma na aba &quot;<Icon name="backpack" /> Inventário&quot; para gerar seu ataque automaticamente!
@@ -2693,7 +2721,36 @@ export function SheetExtras({
                 const isRanged = weaponClass.isRanged;
                 const isMelee = weaponClass.isMelee;
                 const isThrown = weaponClass.isThrown;
-                const isAgile = weaponClass.isAgile || (isUnarmed && hasArtistaMarcial);
+                const isCanoDuplo =
+                  lowerAtkName.includes('espingarda de cano duplo') ||
+                  lowerAtkName.includes('cano duplo');
+                const isPistolaPesada = lowerAtkName.includes('pistola pesada');
+                const isBaioneta = lowerAtkName.includes('baioneta');
+                const isFacaTatica =
+                  lowerAtkName.includes('faca tática') || lowerAtkName.includes('faca tatica');
+                const isShuriken = lowerAtkName.includes('shuriken');
+                const isPregadorPneumatico =
+                  lowerAtkName.includes('pregador pneumático') ||
+                  lowerAtkName.includes('pregador pneumatico');
+                const countsAsFirearmForPowers = isFirearm || isPregadorPneumatico;
+                const isCanoDuploActive = Boolean(
+                  isOrdemSystem && isCanoDuplo && canoDuploByAttackId[atk.id]
+                );
+                const isTwoHandPistolaActive = Boolean(
+                  isOrdemSystem && isPistolaPesada && twoHandPistolaByAttackId[atk.id]
+                );
+                const fixedHostId = baionetaFixedHostByAttackId[atk.id] || '';
+                const isBaionetaFixedActive = Boolean(isOrdemSystem && isBaioneta && fixedHostId);
+                const hasAttachedBayonet = Boolean(
+                  isOrdemSystem && isFirearm && attachedBayonetHostIds.has(atk.id)
+                );
+                const isContraAtaqueFacaActive = Boolean(
+                  isOrdemSystem && isFacaTatica && contraAtaqueFacaByAttackId[atk.id]
+                );
+                const isAgile =
+                  weaponClass.isAgile ||
+                  (isUnarmed && hasArtistaMarcial) ||
+                  isBaionetaFixedActive;
                 const isArcoComposto = weaponClass.isArcoComposto;
                 const isMotosserra = lowerAtkName.includes('motosserra');
                 const isArcabuz = lowerAtkName.includes('arcabuz dos moretti');
@@ -2738,9 +2795,11 @@ export function SheetExtras({
                   ? arcabuzSides
                   : isUnarmed && hasArtistaMarcial
                   ? artMarcialSides
+                  : isBaionetaFixedActive && rawDmgParsed.sides === 4
+                  ? 6
                   : rawDmgParsed.sides;
 
-                // Dados de Dano extras: Golpe Pesado, Máquina de Matar, Calibre Grosso, Rajada, Empuxo (arremesso)
+                // Dados de Dano extras: Golpe Pesado, Máquina de Matar, Calibre Grosso, Rajada, Empuxo (arremesso), Cano Duplo (4d6 -> 6d6)
                 const golpePesadoExtraDice =
                   hasGolpePesado && isMelee && !isUnarmed ? 1 : 0;
                 const maquinaMatarExtraDice =
@@ -2748,13 +2807,15 @@ export function SheetExtras({
                 const calibreGrossoExtraDice = weaponMods.extraDamageDiceCount;
                 const rajadaExtraDice = isRajadaActive ? 1 : 0;
                 const empuxoExtraDice = isEmpuxoThrown ? 1 : 0;
+                const canoDuploExtraDice = isCanoDuploActive ? 2 : 0;
                 const baseDamageDiceCount =
                   (isArcabuz ? 2 : rawDmgParsed.count) +
                   golpePesadoExtraDice +
                   maquinaMatarExtraDice +
                   calibreGrossoExtraDice +
                   rajadaExtraDice +
-                  empuxoExtraDice;
+                  empuxoExtraDice +
+                  canoDuploExtraDice;
 
                 // Perícias de Ataque em Ordem Paranormal: Pontaria para fogo/disparo, Luta para corpo a corpo (ou Ocultismo/INT se Lâmina Maldita estiver ativo)
                 const pontariaSk = ordemSheetData?.skills.find((s) => s.id === 'pontaria');
@@ -2825,6 +2886,11 @@ export function SheetExtras({
                 const motosserraDicePenalty = isOrdemSystem && isMotosserra ? -1 : 0;
                 const rajadaDicePenalty =
                   isRajadaActive && !weaponMods.hasCompensador ? -1 : 0;
+                const canoDuploDicePenalty = isCanoDuploActive ? -1 : 0;
+                const pistolaPesadaDicePenalty =
+                  isOrdemSystem && isPistolaPesada && !isTwoHandPistolaActive ? -1 : 0;
+                const baionetaRangedPenalty =
+                  isOrdemSystem && isRanged && hasAttachedBayonet ? -1 : 0;
                 const rawAttackDice = isOrdemSystem
                   ? usingLaminaMalditaAttack
                     ? effInt + bonuses.skillDiceAll + (bonuses.skillDice['ocultismo'] || 0)
@@ -2837,6 +2903,9 @@ export function SheetExtras({
                   bonuses.attackDiceBonus +
                   motosserraDicePenalty +
                   rajadaDicePenalty +
+                  canoDuploDicePenalty +
+                  pistolaPesadaDicePenalty +
+                  baionetaRangedPenalty +
                   weaponProfCheck.penaltyDice;
 
                 // Bônus de Ataque (+X):
@@ -2851,13 +2920,15 @@ export function SheetExtras({
                   : lutaSkillBonus;
                 const energeticaAtkBonus = isEnergeticaActive ? 5 : 0;
                 const juradaAtkBonus = activeAmmoMod === 'jurada' ? 10 : 0;
+                const contraAtaqueFacaBonus = isContraAtaqueFacaActive ? 2 : 0;
                 const finalAttackBonus = isOrdemSystem
                   ? combatSkillBonus +
                     bonuses.attackBonus +
                     workToolAtkBonus +
                     weaponMods.attackBonus +
                     energeticaAtkBonus +
-                    juradaAtkBonus
+                    juradaAtkBonus +
+                    contraAtaqueFacaBonus
                   : atk.attackBonus + bonuses.attackBonus + workToolAtkBonus;
 
                 // Modificador de Dano:
@@ -2881,7 +2952,7 @@ export function SheetExtras({
 
                 const specificTypeDamageBonus =
                   (isMelee ? bonuses.meleeDamageBonus : 0) +
-                  (isFirearm ? bonuses.firearmDamageBonus : 0);
+                  (countsAsFirearmForPowers ? bonuses.firearmDamageBonus : 0);
                 const tiroCerteiroBonus =
                   hasTiroCerteiro && (isDisparo || isThrown) ? effAgi : 0;
                 const workToolDmgBonus = atk.isWorkTool || invMatch?.isFavoriteTool ? 1 : 0;
@@ -2915,7 +2986,7 @@ export function SheetExtras({
                   hasDisparoLetal && isRanged && disparoLetalByAttackId[atk.id]
                 );
                 const isAtirarParaMatarActive = Boolean(
-                  isOrdemSystem && hasAtirarParaMatar && isFirearm
+                  isOrdemSystem && hasAtirarParaMatar && countsAsFirearmForPowers
                 );
 
                 // Margem e Multiplicador Crítico: Técnica Letal (+2), Máquina de Matar (+2), Técnica Secreta, Mirar (+5), Disparo Letal (+2), Golpe de Sorte (+1/+1x Afinidade), Arma Atroz
@@ -3287,7 +3358,7 @@ export function SheetExtras({
                               <Icon name="skull" /> Atirar p/ Matar (Crít. Máx.)
                             </span>
                           )}
-                          {hasSegurarGatilho && isFirearm && (
+                          {hasSegurarGatilho && countsAsFirearmForPowers && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700/70">
                               <Icon name="flame" /> Segurar o Gatilho
                             </span>
@@ -3300,6 +3371,14 @@ export function SheetExtras({
                           {isDisparoLetalArmed && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-600">
                               <Icon name="target" /> Disparo Letal (+2 Crít)
+                            </span>
+                          )}
+                          {hasAttachedBayonet && (
+                            <span
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-200 border border-amber-700"
+                              title="Baioneta fixada nesta arma de fogo de duas mãos: ataques à distância com ela sofrem -1d20 (SaH p. 37)"
+                            >
+                              <Icon name="warning" /> Baioneta Fixada (-1d20 Atq)
                             </span>
                           )}
                           {!weaponProfCheck.proficient && (
@@ -3359,6 +3438,180 @@ export function SheetExtras({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
+                        {isOrdemSystem && isCanoDuplo && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCanoDuploByAttackId((prev) => ({
+                                ...prev,
+                                [atk.id]: !prev[atk.id],
+                              }))
+                            }
+                            className={`px-2.5 py-1.5 rounded text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                              isCanoDuploActive
+                                ? 'bg-orange-600 text-white border-orange-300 shadow'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-orange-300 border-orange-800/70'
+                            }`}
+                            title="Disparar os dois canos no mesmo alvo: -1d20 no ataque, mas o dano aumenta para 6d6"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isCanoDuploActive}
+                              readOnly
+                              className="pointer-events-none accent-orange-300 w-3.5 h-3.5"
+                            />
+                            <Icon name="flame" /> 2 Canos (6d6 • -1d20)
+                          </button>
+                        )}
+
+                        {isOrdemSystem && isPistolaPesada && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTwoHandPistolaByAttackId((prev) => ({
+                                ...prev,
+                                [atk.id]: !prev[atk.id],
+                              }))
+                            }
+                            className={`px-2.5 py-1.5 rounded text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                              isTwoHandPistolaActive
+                                ? 'bg-emerald-600 text-white border-emerald-300 shadow'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-amber-300 border-amber-800/70'
+                            }`}
+                            title="Pistola Pesada impõe -1d20 por recuo; empunhar com as duas mãos anula essa penalidade"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isTwoHandPistolaActive}
+                              readOnly
+                              className="pointer-events-none accent-emerald-300 w-3.5 h-3.5"
+                            />
+                            2 Mãos (anula -1d20)
+                          </button>
+                        )}
+
+                        {isOrdemSystem && isBaioneta && (
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setBaionetaFixedHostByAttackId((prev) => ({
+                                  ...prev,
+                                  [atk.id]: prev[atk.id]
+                                    ? ''
+                                    : twoHandedFirearmAttacks[0]?.id || '__generic__',
+                                }))
+                              }
+                              className={`px-2.5 py-1.5 rounded text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                                isBaionetaFixedActive
+                                  ? 'bg-sky-600 text-white border-sky-300 shadow'
+                                  : 'bg-zinc-900 hover:bg-zinc-800 text-sky-300 border-sky-800/70'
+                              }`}
+                              title="Ação de movimento: fixa em arma de fogo de duas mãos (baioneta vira 1d6 ágil; a arma de fogo sofre -1d20 à distância)"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isBaionetaFixedActive}
+                                readOnly
+                                className="pointer-events-none accent-sky-300 w-3.5 h-3.5"
+                              />
+                              Fixada em Fuzil (1d6 Ágil)
+                            </button>
+                            {isBaionetaFixedActive && twoHandedFirearmAttacks.length > 1 && (
+                              <select
+                                value={fixedHostId}
+                                onChange={(e) =>
+                                  setBaionetaFixedHostByAttackId((prev) => ({
+                                    ...prev,
+                                    [atk.id]: e.target.value,
+                                  }))
+                                }
+                                className="px-2 py-1.5 rounded bg-zinc-900 border border-sky-700 text-[11px] text-sky-200"
+                                title="Escolha em qual arma de fogo de duas mãos a baioneta está fixada"
+                              >
+                                {twoHandedFirearmAttacks.map((fa) => (
+                                  <option key={fa.id} value={fa.id}>
+                                    → {fa.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )}
+
+                        {isOrdemSystem && isFacaTatica && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setContraAtaqueFacaByAttackId((prev) => ({
+                                  ...prev,
+                                  [atk.id]: !prev[atk.id],
+                                }))
+                              }
+                              className={`px-2.5 py-1.5 rounded text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                                isContraAtaqueFacaActive
+                                  ? 'bg-emerald-600 text-white border-emerald-300 shadow'
+                                  : 'bg-zinc-900 hover:bg-zinc-800 text-emerald-300 border-emerald-800/70'
+                              }`}
+                              title="Faca Tática (SaH p. 37): fornece +2 no teste de ataque quando usada na reação especial Contra-Ataque"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isContraAtaqueFacaActive}
+                                readOnly
+                                className="pointer-events-none accent-emerald-300 w-3.5 h-3.5"
+                              />
+                              Contra-Ataque (+2 Atq)
+                            </button>
+                            {invMatch && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (
+                                    !onSpendResource(2, {
+                                      id: 'sah-faca-tatica-block-rd',
+                                      name: 'Faca Tática Sacrificada (+20 RD no Bloqueio)',
+                                      source: '1 Bloqueio',
+                                      description:
+                                        '+20 na RD da reação Bloquear (remova após resolver o bloqueio).',
+                                      modifiers: [
+                                        {
+                                          id: 'mod-faca-tatica-block',
+                                          targetType: 'defense',
+                                          targetKey: 'block_rd',
+                                          value: 20,
+                                        },
+                                      ],
+                                    })
+                                  ) {
+                                    return;
+                                  }
+                                  if ((invMatch.quantity || 1) > 1) {
+                                    onUpdateInventory(
+                                      inventory.map((i) =>
+                                        i.id === invMatch.id
+                                          ? { ...i, quantity: (i.quantity || 1) - 1 }
+                                          : i
+                                      )
+                                    );
+                                  } else {
+                                    onUpdateInventory(inventory.filter((i) => i.id !== invMatch.id));
+                                    onUpdateAttacks(attacks.filter((a) => a.id !== atk.id));
+                                  }
+                                  setCombatTabFeedback(
+                                    'Faca Tática sacrificada (-2 PE, -1 un.): +20 aplicado na RD de Se Bloquear!'
+                                  );
+                                }}
+                                className="px-2.5 py-1.5 rounded text-xs font-bold border bg-zinc-900 hover:bg-amber-800 text-amber-300 border-amber-800/70 transition cursor-pointer flex items-center gap-1"
+                                title="Na reação Bloquear: gasta 2 PE e sacrifica a faca tática para somar +20 na RD do bloqueio"
+                              >
+                                <Icon name="shield" /> Sacrificar (+20 RD Bloq. • -2 PE)
+                              </button>
+                            )}
+                          </>
+                        )}
+
                         {isFuzilPrecisao && (
                           <button
                             type="button"
@@ -3411,12 +3664,14 @@ export function SheetExtras({
                           </button>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() => {
+                        {(() => {
+                          const triggerWeaponAttackRoll = (isShurikenExtra = false) => {
                             const suffixParts: string[] = [];
                             const dmgSuffixParts: string[] = [];
 
+                            if (isShurikenExtra) {
+                              suffixParts.push('Ataque Extra (-1 PE)');
+                            }
                             if (isAimingFuzil) {
                               suffixParts.push('Mirando (+5 Crít)');
                             }
@@ -3431,6 +3686,22 @@ export function SheetExtras({
                             }
                             if (isEmpuxoThrown) {
                               suffixParts.push('Empuxo Arremesso (+1 dado)');
+                            }
+                            if (isCanoDuploActive) {
+                              suffixParts.push('2 Canos (6d6 • -1d20)');
+                              dmgSuffixParts.push('2 Canos');
+                            }
+                            if (isOrdemSystem && isPistolaPesada && !isTwoHandPistolaActive) {
+                              suffixParts.push('Recuo 1 Mão (-1d20)');
+                            }
+                            if (isBaionetaFixedActive) {
+                              suffixParts.push('Fixada em Fuzil (1d6 Ágil)');
+                            }
+                            if (hasAttachedBayonet && isRanged) {
+                              suffixParts.push('Baioneta Fixada (-1d20)');
+                            }
+                            if (isContraAtaqueFacaActive) {
+                              suffixParts.push('Contra-Ataque (+2 Atq)');
                             }
                             if (activeAmmoMod === 'dumdum') {
                               suffixParts.push('Dum-Dum (+1x Crít)');
@@ -3449,13 +3720,15 @@ export function SheetExtras({
                             if (armedAtaqueFurtivo) furtivoPe += 1;
                             if (armedAssassinar) furtivoPe += 3;
                             const golpeDemolidorCost = armedGolpeDemolidor ? 1 : 0;
+                            const shurikenExtraPe = isShurikenExtra ? 1 : 0;
 
                             const totalAttackPe =
                               tecnicaSecretaCost +
                               weaponActiveCursePeCost +
                               disparoLetalCost +
                               furtivoPe +
-                              golpeDemolidorCost;
+                              golpeDemolidorCost +
+                              shurikenExtraPe;
                             if (totalAttackPe > 0) {
                               if (isOrdemSystem && totalAttackPe > peTurnLimit) {
                                 setCombatTabFeedback(
@@ -3566,15 +3839,38 @@ export function SheetExtras({
                                 ? { cursePricePrompt: attackCursePrompt }
                                 : undefined
                             );
-                          }}
-                          className="px-2.5 py-1.5 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold transition cursor-pointer"
-                          title="Rolar Teste de Acerto"
-                        >
-                          <Icon name="target" />{' '}
-                          {formatOrdemDiceLabel(finalAttackDice)}
-                          {finalAttackBonus >= 0 ? `+${finalAttackBonus}` : finalAttackBonus}
-                          {weaponActiveCursePeCost > 0 && ` (-${weaponActiveCursePeCost} PE)`}
-                        </button>
+                          };
+
+                          const canShurikenExtraAttack = Boolean(
+                            isOrdemSystem && isShuriken && (pontariaSk?.trainingDegree || 0) >= 10
+                          );
+
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => triggerWeaponAttackRoll(false)}
+                                className="px-2.5 py-1.5 bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border border-zinc-700 rounded text-xs font-mono font-bold transition cursor-pointer"
+                                title="Rolar Teste de Acerto"
+                              >
+                                <Icon name="target" />{' '}
+                                {formatOrdemDiceLabel(finalAttackDice)}
+                                {finalAttackBonus >= 0 ? `+${finalAttackBonus}` : finalAttackBonus}
+                                {weaponActiveCursePeCost > 0 && ` (-${weaponActiveCursePeCost} PE)`}
+                              </button>
+                              {canShurikenExtraAttack && (
+                                <button
+                                  type="button"
+                                  onClick={() => triggerWeaponAttackRoll(true)}
+                                  className="px-2.5 py-1.5 bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border border-amber-700 rounded text-xs font-bold transition cursor-pointer"
+                                  title="Veterano em Pontaria (1x/rodada): gasta 1 PE para fazer um ataque adicional de shuriken contra o mesmo alvo com todos os bônus e dano da arma"
+                                >
+                                  <Icon name="target" /> Ataque Extra (-1 PE)
+                                </button>
+                              )}
+                            </>
+                          );
+                        })()}
 
                         {hasAtaqueEspecial && (
                           <button
@@ -6225,15 +6521,16 @@ export function SheetExtras({
                     system === 'ordem-paranormal'
                       ? getOrdemItemEffectiveCategory(item)
                       : item.category ?? 0;
-                  const effSlotsSingle =
-                    system === 'ordem-paranormal'
-                      ? getOrdemItemEffectiveSlots(item)
-                      : item.slots;
                   const qty = item.quantity || 1;
                   const effSlotsTotal =
-                    hasMochilaUtilidades && item.isUtilityBackpackItem
-                      ? Math.max(0, effSlotsSingle - 1) + effSlotsSingle * Math.max(0, qty - 1)
-                      : effSlotsSingle * qty;
+                    system === 'ordem-paranormal'
+                      ? getOrdemInventoryItemTotalSlots(
+                          item,
+                          inventory,
+                          ordemSheetData,
+                          abilities
+                        )
+                      : item.slots * qty;
                   const hasModsOrCurses =
                     (item.modifications?.length || 0) > 0 || (item.curses?.length || 0) > 0;
 
@@ -6509,16 +6806,31 @@ export function SheetExtras({
                                 )
                               );
                             } else {
-                              onUpdateInventory(inventory.filter((i) => i.id !== id));
+                              const remainingInv = inventory.filter((i) => i.id !== id);
+                              onUpdateInventory(remainingInv);
+                              const targetNameLower = target.name.toLowerCase();
+                              const stillHasSameName = remainingInv.some(
+                                (i) => i.name.toLowerCase() === targetNameLower
+                              );
+                              onUpdateAttacks(
+                                attacks.filter(
+                                  (a) =>
+                                    a.linkedItemId !== id &&
+                                    (stillHasSameName || a.name.toLowerCase() !== targetNameLower)
+                                )
+                              );
                             }
                           }}
                           onOpenCustomize={(id) => setCustomizingItemId(id)}
+                          inventory={inventory}
                           onSpendResource={onSpendResource}
                           onHealPv={onHealPv}
                           onTakePvDamage={onTakePvDamage}
+                          onGrantTempHp={onGrantTempHp}
                           onGrantTempPe={onGrantTempPe}
                           onAddSceneEffect={onAddSceneEffect}
                           onUpdateSceneEffects={onUpdateSceneEffects}
+                          onRemoveCondition={onRemoveCondition}
                           onLoseSanity={onLoseSanity}
                           onAdjustVital={onAdjustVital}
                           onFeedback={(msg) => setInventoryFeedback(msg)}

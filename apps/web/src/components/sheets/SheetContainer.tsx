@@ -57,6 +57,7 @@ import {
   CursePricePrompt,
   CharacterPersonalProfile,
   getOrdemItemEffectiveSlots,
+  calculateOrdemEffectiveInventoryLoad,
   RitualEffectRollPayload,
   DiceRollResult,
   isOrdemRitualAlreadyOwned,
@@ -1390,6 +1391,24 @@ export function SheetContainer({
       ),
     }));
     if (reason) showHoverToast(`${reason}: -${amount} PV.`);
+  }
+
+  function handleGrantTempHp(amount: number, label?: string) {
+    if (!latestCharacterRef.current || amount <= 0) return;
+    let resultingTempHp = amount;
+    applyLocalCharacterUpdate((base) => {
+      const prevRaw = (base.sheetData || {}) as Record<string, any>;
+      const currTempHp = Number(prevRaw.tempHp || 0);
+      const nextTempHp = Math.max(currTempHp, amount);
+      resultingTempHp = nextTempHp;
+      return {
+        ...base,
+        sheetData: { ...prevRaw, tempHp: nextTempHp },
+      };
+    });
+    showHoverToast(
+      `${label || 'PV Temporário'}: +${amount} PV Temp (Ativo: ${resultingTempHp} PV Temp)!`
+    );
   }
 
   function handleGrantTempPe(amount: number, label?: string) {
@@ -2743,20 +2762,17 @@ export function SheetContainer({
         )
       : 10 + Math.max(0, strengthVal * 2);
 
-  const hasMochilaUtilidadesSheet = characterAbilities.some((ab) =>
-    ab.name.toLowerCase().includes('mochila de utilidades')
-  );
-  const currentLoadSlots = (character.inventory || []).reduce((acc, item) => {
-    const qty = item.quantity || 1;
-    const rawSlots = getOrdemItemEffectiveSlots(item);
-    // Inventário Organizado (Geral, SaH): itens de 0,5 espaço ocupam 0,25
-    const effectiveSlots = rawSlots === 0.5 && hasInventarioOrganizado(characterAbilities) ? 0.25 : rawSlots;
-    if (hasMochilaUtilidadesSheet && item.isUtilityBackpackItem) {
-      const reducedFirst = Math.max(0, effectiveSlots - 1);
-      return acc + reducedFirst + effectiveSlots * Math.max(0, qty - 1);
-    }
-    return acc + effectiveSlots * qty;
-  }, 0);
+  const currentLoadSlots =
+    character.system === 'ordem-paranormal'
+      ? calculateOrdemEffectiveInventoryLoad(
+          character.inventory || [],
+          rawSheet as OrdemSheetData,
+          characterAbilities
+        )
+      : (character.inventory || []).reduce(
+          (acc, item) => acc + item.slots * (item.quantity || 1),
+          0
+        );
   const isCharacterOverloaded =
     currentLoadSlots > maxLoadSlots + bonuses.loadLimit;
 
@@ -2842,9 +2858,11 @@ export function SheetContainer({
       return match.metadata.uses;
     }
     const ln = item.name.toLowerCase();
+    if (ln.includes('taser')) {
+      return (item.modifications || []).includes('sah-mod-bateria-potente') ? 4 : 2;
+    }
     if (
       ln.includes('spray de pimenta') ||
-      ln.includes('taser') ||
       ln.includes('pistola de dardos') ||
       ln.includes('pistola sinalizadora')
     ) {
@@ -2902,7 +2920,13 @@ export function SheetContainer({
       dishes.filter((d) => d === 'nutritivo').length * (interludeSleep ? peLimit : 0);
     const extraPe =
       dishes.filter((d) => d === 'energetico').length * (interludeSleep ? peLimit : 0);
-    const extraSan = dishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0);
+    const hasNotebookInInv = (character.inventory || []).some((it) =>
+      /notebook|tablet/i.test(it.name)
+    );
+    const notebookSan = interludeRelax && hasNotebookInInv ? 1 : 0;
+    const extraSan =
+      dishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0) +
+      notebookSan;
 
     // Antecipar Vitalidade: com cargas, o sono não recupera PV (pratos continuam valendo)
     const anteciparSleep = interludeSleep ? getAnteciparVitalidadeSleep(characterAbilities) : null;
@@ -2913,6 +2937,9 @@ export function SheetContainer({
     const summaryParts: string[] = [];
     if (pvGain > 0 || peGain > 0 || sanGain > 0) {
       summaryParts.push(`+${pvGain} PV / +${peGain} PE / +${sanGain} SAN`);
+    }
+    if (notebookSan > 0) {
+      summaryParts.push('Notebook (+1 SAN ao Relaxar)');
     }
     if (anteciparSleep) {
       summaryParts.push(
@@ -4794,9 +4821,13 @@ export function SheetContainer({
         const previewPe =
           (interludeSleep ? sleepBaseRec : 0) +
           selectedDishes.filter((d) => d === 'energetico').length * (interludeSleep ? peLimitInterlude : 0);
+        const hasNotebookModal = (character.inventory || []).some((it) =>
+          /notebook|tablet/i.test(it.name)
+        );
         const previewSan =
           (interludeRelax ? relaxBaseRec : 0) +
-          selectedDishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0);
+          selectedDishes.filter((d) => d === 'favorito').length * (interludeRelax ? 2 : 0) +
+          (interludeRelax && hasNotebookModal ? 1 : 0);
         const previewRapido = selectedDishes.filter((d) => d === 'rapido').length * 5;
 
         const hasChefOrigin =
@@ -4960,6 +4991,11 @@ export function SheetContainer({
                     <span className="text-[11px] text-zinc-400">
                       Recupera <strong className="text-cyan-300">+{previewSan} SAN</strong>.
                     </span>
+                    {hasNotebookModal && (
+                      <span className="block text-[10px] font-bold text-cyan-400 mt-0.5">
+                        ✓ Notebook/Tablet na mochila: +1 SAN ao Relaxar!
+                      </span>
+                    )}
                   </div>
                 </label>
               </div>
@@ -6858,6 +6894,7 @@ export function SheetContainer({
         onSpendResource={handleSpendResource}
         onHealPv={handleHealPv}
         onTakePvDamage={handleTakePvDamage}
+        onGrantTempHp={handleGrantTempHp}
         onGrantTempPe={handleGrantTempPe}
         onLoseSanity={handleLoseSanity}
         onAddSceneEffect={handleAddSceneEffect}

@@ -1217,6 +1217,136 @@ export function getOrdemItemEffectiveSlots(item: RPGItem): number {
   return Math.max(0, base + delta);
 }
 
+/**
+ * Espaços efetivos de uma unidade do item considerando habilidades/perícias do portador:
+ * - Inventário Organizado (SaH p. 35): itens de 0,5 espaço ocupam 0,25;
+ * - Revólver Compacto (SaH p. 37): se treinado em Crime, 1 unidade ocupa 0 espaços.
+ */
+export function getOrdemCharacterItemSlots(
+  item: RPGItem,
+  sheetData?: Partial<OrdemSheetData>,
+  abilities: CharacterAbility[] = [],
+  allowCrimeFreeRevolver = true
+): number {
+  const raw = getOrdemItemEffectiveSlots(item);
+  const ln = (item.name || '').toLowerCase();
+  const trainedCrime = (sheetData?.skills || []).some(
+    (s) => s.id === 'crime' && (s.trainingDegree || 0) >= 5
+  );
+  if (
+    allowCrimeFreeRevolver &&
+    trainedCrime &&
+    (ln.includes('revólver compacto') || ln.includes('revolver compacto'))
+  ) {
+    return 0;
+  }
+  const hasInvOrg = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('inventario-organizado') ||
+        ab.name.toLowerCase().startsWith('inventário organizado'))
+  );
+  return raw === 0.5 && hasInvOrg ? 0.25 : raw;
+}
+
+/**
+ * Espaços totais ocupados por uma entrada `item` dentro de `inventory`, respeitando:
+ * - Modificações de espaço (Discreta, Reforçada, Blindada);
+ * - Inventário Organizado (0,5 -> 0,25);
+ * - Mochila de Utilidades (-1 espaço na 1ª unidade);
+ * - Revólver Compacto (0 espaço apenas em 1 unidade total no inventário se treinado em Crime, SaH p. 37).
+ */
+export function getOrdemInventoryItemTotalSlots(
+  item: RPGItem,
+  inventory: RPGItem[],
+  sheetData?: Partial<OrdemSheetData>,
+  abilities: CharacterAbility[] = []
+): number {
+  const qty = Math.max(1, item.quantity || 1);
+  const unitSlots = getOrdemCharacterItemSlots(item, sheetData, abilities, false);
+  const hasMochila = abilities.some((ab) =>
+    ab.name.toLowerCase().includes('mochila de utilidades')
+  );
+  const trainedCrime = (sheetData?.skills || []).some(
+    (s) => s.id === 'crime' && (s.trainingDegree || 0) >= 5
+  );
+  const firstCompactRevolverId = trainedCrime
+    ? inventory.find((it) => {
+        const n = (it.name || '').toLowerCase();
+        return n.includes('revólver compacto') || n.includes('revolver compacto');
+      })?.id
+    : undefined;
+
+  if (firstCompactRevolverId && item.id === firstCompactRevolverId) {
+    if (qty <= 1) return 0;
+    const remainingQty = qty - 1;
+    if (hasMochila && item.isUtilityBackpackItem) {
+      const reduced = Math.max(0, unitSlots - 1);
+      return reduced + unitSlots * Math.max(0, remainingQty - 1);
+    }
+    return unitSlots * remainingQty;
+  }
+
+  if (hasMochila && item.isUtilityBackpackItem) {
+    const reduced = Math.max(0, unitSlots - 1);
+    return reduced + unitSlots * Math.max(0, qty - 1);
+  }
+  return unitSlots * qty;
+}
+
+/**
+ * Carga total carregada em Ordem Paranormal unificando:
+ * - Modificações de espaço (Discreta, Reforçada, Blindada);
+ * - Inventário Organizado (0,5 -> 0,25);
+ * - Mochila de Utilidades (-1 espaço na 1ª unidade);
+ * - Revólver Compacto (0 espaço em uma unidade se treinado em Crime, SaH p. 37).
+ */
+export function calculateOrdemEffectiveInventoryLoad(
+  inventory: RPGItem[],
+  sheetData?: Partial<OrdemSheetData>,
+  abilities: CharacterAbility[] = []
+): number {
+  const hasInvOrg = abilities.some(
+    (ab) =>
+      ab.isActive !== false &&
+      (ab.id.toLowerCase().includes('inventario-organizado') ||
+        ab.name.toLowerCase().startsWith('inventário organizado'))
+  );
+  const hasMochila = abilities.some((ab) =>
+    ab.name.toLowerCase().includes('mochila de utilidades')
+  );
+  const trainedCrime = (sheetData?.skills || []).some(
+    (s) => s.id === 'crime' && (s.trainingDegree || 0) >= 5
+  );
+  let freeCrimeRevolverAvailable = trainedCrime;
+
+  return inventory.reduce((acc, item) => {
+    const qty = Math.max(1, item.quantity || 1);
+    const raw = getOrdemItemEffectiveSlots(item);
+    const unitSlots = raw === 0.5 && hasInvOrg ? 0.25 : raw;
+    const ln = (item.name || '').toLowerCase();
+    const isCompactRevolver =
+      ln.includes('revólver compacto') || ln.includes('revolver compacto');
+
+    if (isCompactRevolver && freeCrimeRevolverAvailable) {
+      freeCrimeRevolverAvailable = false;
+      if (qty <= 1) return acc;
+      const remainingQty = qty - 1;
+      if (hasMochila && item.isUtilityBackpackItem) {
+        const reduced = Math.max(0, unitSlots - 1);
+        return acc + reduced + unitSlots * Math.max(0, remainingQty - 1);
+      }
+      return acc + unitSlots * remainingQty;
+    }
+
+    if (hasMochila && item.isUtilityBackpackItem) {
+      const reduced = Math.max(0, unitSlots - 1);
+      return acc + reduced + unitSlots * Math.max(0, qty - 1);
+    }
+    return acc + unitSlots * qty;
+  }, 0);
+}
+
 // ============================================================================
 // 5. CÁLCULO DE MODIFICADORES DE ARMA (ATAQUES)
 // ============================================================================
@@ -1384,6 +1514,8 @@ export interface OrdemInventoryDerivedEffects {
   damageResistances: Array<{ type: string; value: number; source: string }>;
   displacementBonus: number;
   ritualDtBonus: number;
+  dodgeBonus: number;
+  blockRdBonus: number;
   ignoresLoadPenaltySkills: string[];
   equippedVestimentaCount: number;
   maxVestimentas: number;
@@ -1747,6 +1879,8 @@ export function computeOrdemInventoryDerivedEffects(
   const rdMap = new Map<string, { value: number; sources: string[] }>();
   let displacementBonus = 0;
   let ritualDtBonus = 0;
+  let dodgeBonus = 0;
+  let blockRdBonus = 0;
   const ignoresLoadPenaltySkills = new Set<string>();
 
   const addRd = (type: string, value: number, source: string) => {
@@ -1813,6 +1947,7 @@ export function computeOrdemInventoryDerivedEffects(
 
   // Kits presentes na mochila (não precisam estar equipados, basta possuir no inventário — ou acessório Instrumental)
   const ownedKitSkills = new Set<string>();
+  let hasCaoAdestrado = false;
 
   // Proficiências efetivas e rastreamento de proteções/escudos equipados sem proficiência (p. 62)
   const effectiveProficiencies = computeOrdemEffectiveProficiencies(sheetData, abilities);
@@ -1828,7 +1963,7 @@ export function computeOrdemInventoryDerivedEffects(
     const mods = item.modifications || [];
     const curses = item.curses || [];
 
-    // 1. Kits de Perícia na mochila
+    // 1. Kits de Perícia e Aliados na mochila (não exigem estar marcados como empunhados/equipados)
     for (const kReq of ORDEM_KIT_REQUIRED_SKILLS) {
       if (kReq.kitKeywords.some((kw) => ln.includes(kw))) {
         ownedKitSkills.add(kReq.skillId);
@@ -1836,6 +1971,9 @@ export function computeOrdemInventoryDerivedEffects(
     }
     if (mods.includes('mod-instrumental') && item.accessoryConfig?.instrumentalSkill) {
       ownedKitSkills.add(item.accessoryConfig.instrumentalSkill.toLowerCase());
+    }
+    if (ln.includes('cão adestrado') || ln.includes('cao adestrado')) {
+      hasCaoAdestrado = true;
     }
 
     // 2. Contabilizar maldições carregadas para O Preço da Maldição (p. 145)
@@ -1865,9 +2003,15 @@ export function computeOrdemInventoryDerivedEffects(
     }
 
     // Vestimentas: limite de 2 simultâneas (p. 63) ou 3 com Mochileiro (SaH, p. 14)
+    const isSpecialSahVestimenta =
+      ln.includes('traje de mergulho') ||
+      ln.includes('traje espacial') ||
+      ln.includes('medidor de condição vertebral') ||
+      ln.includes('medidor de condicao vertebral');
     const isVestimenta =
-      kind === 'accessory' &&
-      (item.accessoryConfig?.accessoryType === 'vestimenta' || ln.includes('vestimenta'));
+      isSpecialSahVestimenta ||
+      (kind === 'accessory' &&
+        (item.accessoryConfig?.accessoryType === 'vestimenta' || ln.includes('vestimenta')));
     let vestimentaAllowed = true;
     if (isVestimenta) {
       equippedVestimentaCount += 1;
@@ -1915,6 +2059,41 @@ export function computeOrdemInventoryDerivedEffects(
     // 5. Itens Operacionais e Amaldiçoados Especiais equipados (RD / Bônus fixos)
     if (ln.includes('traje hazmat')) {
       addRd('Químico', 10, item.name);
+    }
+    if (ln.includes('traje de mergulho') && vestimentaAllowed) {
+      addRd('Químico', 5, item.name);
+    }
+    if (ln.includes('traje espacial') && vestimentaAllowed) {
+      addRd('Químico', 20, item.name);
+    }
+    if (ln.includes('bastão policial') || ln.includes('bastao policial')) {
+      // O bônus de +1 na Esquiva vem de usar um bastão policial na reação (não acumula com dois bastões)
+      dodgeBonus = Math.max(dodgeBonus, 1);
+    }
+    if (ln.includes('braçadeira reforçada') || ln.includes('bracadeira reforcada')) {
+      blockRdBonus = Math.max(blockRdBonus, 2);
+    }
+    if (ln.includes('amuleto sagrado')) {
+      const val = mods.includes('mod-aprimorado') ? 5 : 2;
+      registerItemSkillBonus('religiao', val, item.name);
+      registerItemSkillBonus('vontade', val, item.name);
+    }
+    if (ln.includes('pé de morto') || ln.includes('pe de morto')) {
+      registerItemSkillBonus('furtividade', 5, item.name);
+    }
+    if (
+      (ln.includes('medidor de condição vertebral') || ln.includes('medidor de condicao vertebral')) &&
+      vestimentaAllowed
+    ) {
+      registerItemSkillBonus('fortitude', mods.includes('mod-aprimorado') ? 5 : 2, item.name);
+    }
+    if (
+      ln.includes('manual operacional') &&
+      item.remainingCharges === 1 &&
+      item.accessoryConfig?.primarySkill &&
+      mods.includes('mod-aprimorado')
+    ) {
+      registerItemSkillBonus(item.accessoryConfig.primarySkill, 5, `${item.name} (Aprimorado)`);
     }
     if (ln.includes('casaco de lodo')) {
       addRd('Corte/Impacto/Perfuração/Morte', 5, item.name);
@@ -2008,6 +2187,19 @@ export function computeOrdemInventoryDerivedEffects(
       if (cDef.id === 'curse-acess-protecao-elemental' && c.chosenElement && vestimentaAllowed) {
         addRd(c.chosenElement, 10, `${item.name} (Proteção Elemental)`);
       }
+    }
+  }
+
+  // Cão Adestrado (aliado 0 espaços, SaH p. 42): concede +2 em Investigação e Percepção se treinado em Adestramento
+  if (hasCaoAdestrado) {
+    const trainedAdestramento = (sheetData?.skills || []).some(
+      (s) => s.id === 'adestramento' && (s.trainingDegree || 0) >= 5
+    );
+    if (trainedAdestramento) {
+      dynamicModifiers.push(
+        { id: 'dyn-cao-inv', targetType: 'skill_bonus', targetKey: 'investigacao', value: 2 },
+        { id: 'dyn-cao-per', targetType: 'skill_bonus', targetKey: 'percepcao', value: 2 }
+      );
     }
   }
 
@@ -2282,6 +2474,8 @@ export function computeOrdemInventoryDerivedEffects(
     damageResistances,
     displacementBonus,
     ritualDtBonus,
+    dodgeBonus,
+    blockRdBonus,
     ignoresLoadPenaltySkills: Array.from(ignoresLoadPenaltySkills),
     equippedVestimentaCount,
     maxVestimentas,

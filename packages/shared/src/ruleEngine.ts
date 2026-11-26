@@ -30,6 +30,8 @@ export interface ComputedBonuses {
   damageResistances: Array<{ type: string; value: number; source: string }>;
   displacementBonus: number;
   ritualDtBonus: number;
+  dodgeBonus: number;
+  blockRdBonus: number;
   ignoresLoadPenaltySkills: string[];
   missingSkillKits: Array<{ skillId: string; skillName: string }>;
   cursePriceByAttr: Record<keyof OrdemAttributes, OrdemCursePriceByAttr | null>;
@@ -73,6 +75,8 @@ export function calculateActiveBonuses(
     damageResistances: derived?.damageResistances || [],
     displacementBonus: derived?.displacementBonus || 0,
     ritualDtBonus: derived?.ritualDtBonus || 0,
+    dodgeBonus: derived?.dodgeBonus || 0,
+    blockRdBonus: derived?.blockRdBonus || 0,
     ignoresLoadPenaltySkills: derived?.ignoresLoadPenaltySkills || [],
     missingSkillKits: derived?.missingSkillKits || [],
     cursePriceByAttr: derived?.cursePriceByAttr || {
@@ -175,7 +179,13 @@ export function calculateActiveBonuses(
         break;
 
       case 'defense':
-        result.defense += finalValue;
+        if (key === 'block_rd') {
+          result.blockRdBonus += finalValue;
+        } else if (key === 'dodge') {
+          result.dodgeBonus += finalValue;
+        } else {
+          result.defense += finalValue;
+        }
         break;
 
       case 'attack_bonus':
