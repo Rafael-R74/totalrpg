@@ -241,3 +241,31 @@ export function getOrdemTrailDisplayName(
   }
   return trail.name;
 }
+
+/**
+ * Tamanho do dado bônus da ação de interlúdio Ler:
+ * - Base: d6
+ * - Leitor Contumaz (Bibliotecário 40%): sobe para d8
+ * - Absorver Conhecimento (Conhecimento, SaH p. 48): sobe um passo (d6 -> d8, ou d8 -> d10)
+ */
+/**
+ * Absorver Conhecimento na ficha. O aumento do dado de Ler é permanente, então não depende de
+ * `isActive` (poderes com custo entram na ficha desligados).
+ */
+export function hasAbsorverConhecimento(abilities: CharacterAbility[] | undefined): boolean {
+  return (abilities || []).some(
+    (a) =>
+      (a.id || '').toLowerCase().includes('absorver-conhecimento') ||
+      (a.name || '').toLowerCase().includes('absorver conhecimento')
+  );
+}
+
+export function getLerDieSides(abilities: CharacterAbility[] | undefined): 6 | 8 | 10 {
+  const list = abilities || [];
+  const hasLeitor = list.some((a) => a.id === 'trail-bibliotecario-40');
+  const hasAbsorver = hasAbsorverConhecimento(list);
+  if (hasLeitor && hasAbsorver) return 10;
+  if (hasLeitor || hasAbsorver) return 8;
+  return 6;
+}
+

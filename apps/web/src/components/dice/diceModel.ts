@@ -1,4 +1,4 @@
-import type { DiceRollResult } from '@totalrpg/shared';
+import { isOrdemPenaltyFormula, type DiceRollResult } from '@totalrpg/shared';
 
 /** Faces suportadas pelo tabuleiro 3D */
 export const SUPPORTED_SIDES = [4, 6, 8, 10, 12, 20] as const;
@@ -53,7 +53,7 @@ export function sidesOf(roll: DiceRollResult): number {
  */
 export function buildStageModel(roll: DiceRollResult): StageModel {
   const sides = sidesOf(roll);
-  const isPenalty = roll.formula.includes('2d20 (menor)');
+  const isPenalty = isOrdemPenaltyFormula(roll.formula);
   const isPool = roll.system === 'ordem-paranormal' && sides === 20;
 
   let keptIndex: number | null = null;

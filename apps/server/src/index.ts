@@ -5,7 +5,10 @@ import { Server } from 'socket.io';
 import {
   ClientToServerEvents,
   ServerToClientEvents,
-  DiceRollResult
+  DiceRollResult,
+  getOrdemDiceRollCount,
+  formatOrdemDiceLabel,
+  isOrdemPenaltyFormula,
 } from '@totalrpg/shared';
 import { authRouter } from './routes/auth';
 import { campaignsRouter } from './routes/campaigns';
@@ -251,7 +254,7 @@ io.on('connection', (socket) => {
       const isOrdemZeroDicePenalty =
         system === 'ordem-paranormal' && sides === 20 && count <= 0;
       const safeCount = isOrdemZeroDicePenalty
-        ? 2
+        ? getOrdemDiceRollCount(count)
         : Math.max(1, Math.min(50, count));
       const rolls: number[] =
         Array.isArray(fixedRolls) && fixedRolls.length > 0
@@ -320,7 +323,7 @@ io.on('connection', (socket) => {
       const total = diceTotal + extraDiceGrandTotal + modifier;
       const modString = modifier !== 0 ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : '';
       const baseFormula = isOrdemZeroDicePenalty
-        ? '2d20 (menor)'
+        ? formatOrdemDiceLabel(count)
         : `${safeCount}d${sides}`;
       const extraFormulaStr =
         extraDiceResults.length > 0
@@ -425,7 +428,7 @@ io.on('connection', (socket) => {
     const nextRolls = [...rollResult.rolls];
     nextRolls[idx] = newRollVal;
 
-    const isZeroDicePenalty = rollResult.formula.includes('2d20 (menor)');
+    const isZeroDicePenalty = isOrdemPenaltyFormula(rollResult.formula);
     let diceTotal = 0;
     if (isZeroDicePenalty) {
       diceTotal = Math.min(...nextRolls);
@@ -476,7 +479,7 @@ io.on('connection', (socket) => {
     const sides = Math.max(2, Number(mc.sides || 20));
     const modifier = Number(mc.modifier || 0);
     const isOrdemZeroDice = rollResult.system === 'ordem-paranormal' && sides === 20 && rawCount <= 0;
-    const safeCount = isOrdemZeroDice ? 2 : Math.max(1, Math.min(30, rawCount));
+    const safeCount = isOrdemZeroDice ? getOrdemDiceRollCount(rawCount) : Math.max(1, Math.min(50, rawCount));
 
     const rolls2: number[] = [];
     for (let i = 0; i < safeCount; i++) {
@@ -489,7 +492,7 @@ io.on('connection', (socket) => {
       : rolls2.reduce((a, b) => a + b, 0);
     const total2 = diceTotal2 + modifier;
     const modStr = modifier !== 0 ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : '';
-    const baseFormula2 = isOrdemZeroDice ? '2d20 (menor)' : `${safeCount}d${sides}`;
+    const baseFormula2 = isOrdemZeroDice ? formatOrdemDiceLabel(rawCount) : `${safeCount}d${sides}`;
 
     const updatedResult: DiceRollResult = {
       ...rollResult,

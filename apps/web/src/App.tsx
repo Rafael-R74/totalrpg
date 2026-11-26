@@ -38,6 +38,7 @@ import {
   PreparedAttack,
   ServerToClientEvents,
   ClientToServerEvents,
+  isOrdemPenaltyFormula,
   applyContentPack,
   SessionActivityLogEntry,
   CharacterLivePatch,
@@ -725,7 +726,7 @@ export default function App() {
           selectedAttackRolls.forEach((atkRoll) => {
             const p = atkRoll.attackDamagePayload;
             if (!p) return;
-            const isZeroPenalty = atkRoll.formula.includes('2d20 (menor)');
+            const isZeroPenalty = isOrdemPenaltyFormula(atkRoll.formula);
             const keptNatural = isZeroPenalty
               ? Math.min(...atkRoll.rolls)
               : Math.max(...atkRoll.rolls);

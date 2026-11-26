@@ -43,6 +43,7 @@ import {
   isOrdemCompendiumItemParanormal,
   isOrdemItemParanormal,
   isOrdemItemWeaponEntry,
+  formatOrdemDiceLabel,
   inferOrdemItemKind,
   getOrdemItemEffectiveSlots,
   getOrdemItemEffectiveCategory,
@@ -3570,9 +3571,7 @@ export function SheetExtras({
                           title="Rolar Teste de Acerto"
                         >
                           <Icon name="target" />{' '}
-                          {finalAttackDice <= 0
-                            ? '2d20(menor)'
-                            : `${finalAttackDice}d20`}
+                          {formatOrdemDiceLabel(finalAttackDice)}
                           {finalAttackBonus >= 0 ? `+${finalAttackBonus}` : finalAttackBonus}
                           {weaponActiveCursePeCost > 0 && ` (-${weaponActiveCursePeCost} PE)`}
                         </button>
@@ -3954,7 +3953,7 @@ export function SheetExtras({
                           <span className="text-[11px] font-mono text-zinc-400">
                             {aeTotalInvested <= 0
                               ? 'Escolha ao menos +5 em Acerto ou Dano.'
-                              : `Resultado: ${finalAttackDice <= 0 ? '2d20(menor)' : `${finalAttackDice}d20`}${
+                              : `Resultado: ${formatOrdemDiceLabel(finalAttackDice)}${
                                   finalAttackBonus + appliedAeAtk >= 0
                                     ? `+${finalAttackBonus + appliedAeAtk}`
                                     : finalAttackBonus + appliedAeAtk

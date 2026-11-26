@@ -24,6 +24,9 @@ import {
   getOrdemRitualPeLimit,
   getOrdemRitualDT,
   getOrdemEffectiveCredit,
+  formatOrdemDiceLabel,
+  getLerDieSides,
+  hasAbsorverConhecimento,
 } from '@totalrpg/shared';
 
 import { Icon } from '../ui/Icon';
@@ -204,8 +207,10 @@ export function OrdemSheet({
   const hasConhecimentoAplicado = hasConhecimentoAplicadoPower || hasConhecimentoPratico;
   const intSwapCost = hasConhecimentoAplicadoPower && hasConhecimentoPratico ? 1 : 2;
   const intSwapLabel = hasConhecimentoPratico && !hasConhecimentoAplicadoPower ? 'Conhecimento Prático' : 'Conhecimento Aplicado';
-  // Bibliotecário 40% (Leitor Contumaz): dado de Ler vira d8 e vale para qualquer perícia
+  // Bibliotecário 40% (Leitor Contumaz): dado de Ler vira d8 e vale para qualquer perícia; Absorver Conhecimento sobe +1 passo
   const hasLeitorContumaz = abilities.some((a) => a.id === 'trail-bibliotecario-40');
+  const lerDieSides = getLerDieSides(abilities);
+  const hasAbsorver = hasAbsorverConhecimento(abilities);
   const hasPeritoExplosivos = abilities.some(
     (a) =>
       a.id === 'ord-pwr-esp-perito-explosivos' ||
@@ -1399,7 +1404,7 @@ export function OrdemSheet({
           <span className="text-xs text-zinc-500">
             {allowAttrEdit
               ? 'Modo Edição: altere os valores base'
-              : 'Modo Jogo: clique para rolar d20 (Atributo 0 rola 2d20 e pega o menor)'}
+              : 'Modo Jogo: clique para rolar d20 (0 ou menos rola 2 + |total| dados e pega o menor)'}
           </span>
         </div>
 
@@ -1459,7 +1464,7 @@ export function OrdemSheet({
                   }`}
                 >
                   <Icon name="library" /> Ler ({interludeMental}):{' '}
-                  {`+${hasOriginPower('nerd_entusiasta') ? 2 : 1}d${hasLeitorContumaz ? 8 : 6} ${hasLeitorContumaz ? 'qualquer perícia (Leitor Contumaz)' : 'INT/PRE'}${hasOriginPower('nerd_entusiasta') ? ' (O Inteligentão)' : ''}`}
+                  {`+${hasOriginPower('nerd_entusiasta') ? 2 : 1}d${lerDieSides} ${hasLeitorContumaz ? 'qualquer perícia (Leitor Contumaz)' : 'INT/PRE'}${hasOriginPower('nerd_entusiasta') ? ' (O Inteligentão)' : ''}${hasAbsorver ? ' (Absorver Conhecimento)' : ''}`}
                   {armInterludeMental ? ' ✓ ARMADO' : ''}
                 </button>
                 {hasLeitorContumaz && armInterludeMental && (
@@ -1473,7 +1478,7 @@ export function OrdemSheet({
                         : 'bg-zinc-950 hover:bg-zinc-800 text-purple-300 border-purple-700/70'
                     }`}
                   >
-                    +1d8 (-2 PE){armLeitorExtra ? ' ✓' : ''}
+                    +1d{lerDieSides} (-2 PE){armLeitorExtra ? ' ✓' : ''}
                   </button>
                 )}
                 {allowAttrEdit && (
@@ -1537,11 +1542,15 @@ export function OrdemSheet({
                       adjustInterludeDice('physical', -1);
                       setArmInterludePhysical(false);
                     } else if (isInterludeMentAttr) {
-                      labelSuffix += ` [Ler +${lerDiceBonusCount}d6]`;
+                      const leitorExtra =
+                        hasLeitorContumaz && armLeitorExtra && (!onSpendResource || onSpendResource(2)) ? 1 : 0;
+                      if (armLeitorExtra) setArmLeitorExtra(false);
+                      const lerCount = lerDiceBonusCount + leitorExtra;
+                      labelSuffix += ` [Ler +${lerCount}d${lerDieSides}${leitorExtra ? ' (Leitor Contumaz -2 PE)' : ''}]`;
                       extraDiceForAttr = [
                         {
-                          count: lerDiceBonusCount,
-                          sides: 6,
+                          count: lerCount,
+                          sides: lerDieSides,
                           label:
                             hasOriginPower('nerd_entusiasta')
                               ? 'Ler (O Inteligentão)'
@@ -1596,7 +1605,7 @@ export function OrdemSheet({
                       )}
                     </div>
                     <span className="text-[10px] font-mono text-zinc-500">
-                      {rawTotalDice <= 0 ? '2d20 (menor)' : `${rawTotalDice}d20`}
+                      {formatOrdemDiceLabel(rawTotalDice)}
                     </span>
                   </>
                 )}
@@ -2041,11 +2050,11 @@ export function OrdemSheet({
                   hasLeitorContumaz && armLeitorExtra && (!onSpendResource || onSpendResource(2)) ? 1 : 0;
                 if (armLeitorExtra) setArmLeitorExtra(false);
                 const lerCount = lerDiceBonusSkillCount + leitorExtra;
-                suffixParts.push(`Ler +${lerCount}d${hasLeitorContumaz ? 8 : 6}${leitorExtra ? ' (Leitor Contumaz -2 PE)' : ''}`);
+                suffixParts.push(`Ler +${lerCount}d${lerDieSides}${leitorExtra ? ' (Leitor Contumaz -2 PE)' : ''}`);
                 extraDiceForSkill = [
                   {
                     count: lerCount,
-                    sides: hasLeitorContumaz ? 8 : 6,
+                    sides: lerDieSides,
                     label:
                       hasOriginPower('nerd_entusiasta')
                         ? 'Ler (O Inteligentão)'
@@ -2099,7 +2108,7 @@ export function OrdemSheet({
                         : 'bg-zinc-900 hover:bg-amber-600 text-amber-400 hover:text-white border-zinc-700'
                     }`}
                   >
-                    <Icon name="d20" /> {rawDiceCount <= 0 ? '2d20(menor)' : `${rawDiceCount}d20`}
+                    <Icon name="d20" /> {formatOrdemDiceLabel(rawDiceCount)}
                     {totalBonus >= 0 ? `+${totalBonus}` : totalBonus}
                   </button>
 

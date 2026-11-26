@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { DiceRollResult } from '@totalrpg/shared';
+import { DiceRollResult, formatOrdemDiceLabel, isOrdemPenaltyFormula } from '@totalrpg/shared';
 import { Dialog } from './ui/Dialog';
 import { Icon, stripEmoji } from './ui/Icon';
 import { DiceStage } from './dice/DiceStage';
@@ -287,7 +287,7 @@ export function DiceRollModal({
             <div className={`grid gap-3 ${gridCols(attackRolls.length)}`}>
               {attackRolls.map((atkRoll, idx) => {
                 const isSpinning = Boolean(spinningIds[atkRoll.id]);
-                const isZeroPenalty = atkRoll.formula.includes('2d20 (menor)');
+                const isZeroPenalty = isOrdemPenaltyFormula(atkRoll.formula);
                 const highest = Math.max(...atkRoll.rolls);
                 const keptNatural = isZeroPenalty ? Math.min(...atkRoll.rolls) : highest;
                 const p = atkRoll.attackDamagePayload;
@@ -462,7 +462,7 @@ export function DiceRollModal({
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-xs text-zinc-400 trpg-num">
-                    {sg.baseAttackDice <= 0 ? '2d20 (menor)' : `${sg.baseAttackDice}d20`}
+                    {formatOrdemDiceLabel(sg.baseAttackDice)}
                     {signed(sg.baseAttackBonus + (useAeOnNextShot ? clampedAe.atk * sg.aeMult : 0))} — custa {totalShotPe} PE,
                     limite {sg.peTurnLimit} PE por turno
                   </span>
@@ -571,7 +571,7 @@ export function DiceRollModal({
   // =========================================================================
   // MODO UNITÁRIO PADRÃO
   // =========================================================================
-  const isZeroDicePenalty = roll.formula.includes('2d20 (menor)');
+  const isZeroDicePenalty = isOrdemPenaltyFormula(roll.formula);
   const highestRoll = Math.max(...roll.rolls);
   const keptNaturalRoll = isZeroDicePenalty ? Math.min(...roll.rolls) : highestRoll;
 
@@ -658,7 +658,7 @@ export function DiceRollModal({
                   const isChosen = mcPayload.chosenIndex === opt.idx;
                   const isUnchosen = Boolean(mcPayload.chosenIndex && mcPayload.chosenIndex !== opt.idx);
                   const isBest = opt.data.total === maxTotal;
-                  const isZeroPen = opt.data.formula.includes('2d20 (menor)');
+                  const isZeroPen = isOrdemPenaltyFormula(opt.data.formula);
                   const keptNat = isZeroPen
                     ? Math.min(...opt.data.rolls)
                     : Math.max(...opt.data.rolls);
@@ -971,7 +971,7 @@ export function DiceRollModal({
               const pushBonus = Math.floor(Math.max(0, roll.total) / 10) * 5;
               const fo = roll.forcaOpressoraPayload!;
               const totalEmpurrarBonus = fo.lutaBonus + pushBonus;
-              const diceText = fo.lutaDiceCount <= 0 ? '2d20 (menor)' : `${fo.lutaDiceCount}d20`;
+              const diceText = formatOrdemDiceLabel(fo.lutaDiceCount);
               return (
                 <Notice tone="info" icon="swords" title="Força Opressora (−1 PE)">
                   <div className="grid grid-cols-2 gap-2">

@@ -15,6 +15,8 @@ import {
   RPGItem,
   PreparedAttack,
   calculateActiveBonuses,
+  getOrdemDiceRollCount,
+  formatOrdemDiceLabel,
   buildOrdemOriginModifiers,
   getOrdemOcultismoAttr,
   ORDEM_RENAMED_POWERS,
@@ -2127,7 +2129,7 @@ export function SheetContainer({
       sanLost = form.totalCost;
       permSanLost = form.mode === 'verdadeiro' ? 3 : form.mode === 'discente' ? 2 : 1;
     } else {
-      const numD20 = ocultismoDice <= 0 ? Math.abs(ocultismoDice) + 2 : ocultismoDice;
+      const numD20 = getOrdemDiceRollCount(ocultismoDice);
       for (let i = 0; i < numD20; i++) {
         ocultismoRolls.push(Math.floor(Math.random() * 20) + 1);
       }
@@ -2431,7 +2433,7 @@ export function SheetContainer({
 
     if (originId === 'amnesico') {
       // Vislumbres do Passado (Livro p. 16): Rola Teste de Intelecto DT 10. Se passar, libera o botão para girar 1d4 PE temporários!
-      const numD20 = intAttr <= 0 ? Math.abs(intAttr) + 2 : intAttr;
+      const numD20 = getOrdemDiceRollCount(intAttr);
       const rolls: number[] = [];
       for (let i = 0; i < numD20; i++) {
         rolls.push(Math.floor(Math.random() * 20) + 1);
@@ -3072,7 +3074,7 @@ export function SheetContainer({
           Number(cookSk?.otherModifier || 0) +
           bonuses.skillBonusAll +
           (bonuses.skillBonus[cookSk?.id || 'profissao'] || 0);
-        const numD20 = cookDice <= 0 ? Math.abs(cookDice) + 2 : cookDice;
+        const numD20 = getOrdemDiceRollCount(cookDice);
         const cookRolls: number[] = [];
         for (let i = 0; i < numD20; i++) {
           cookRolls.push(Math.floor(Math.random() * 20) + 1);
@@ -5277,7 +5279,7 @@ export function SheetContainer({
                       ))}
                     </select>
                     <span className="px-2.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono font-bold text-amber-300">
-                      <Icon name="d20" /> {reviewSkillDice <= 0 ? '2d20(menor)' : `${reviewSkillDice}d20`}
+                      <Icon name="d20" /> {formatOrdemDiceLabel(reviewSkillDice)}
                       {reviewSkillMod >= 0 ? `+${reviewSkillMod}` : reviewSkillMod}
                     </span>
                   </div>

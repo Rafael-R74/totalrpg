@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ORDEM_COMPENDIUM_ENTRIES, ORDEM_SKILLS_METADATA } from '@totalrpg/shared';
+import { ORDEM_COMPENDIUM_ENTRIES, ORDEM_SKILLS_METADATA, matchesContentSourceFilter, resolveEntrySourceId } from '@totalrpg/shared';
 import { Icon } from '../ui/Icon';
 import { SAH_BTN_ACTIVE, SAH_BTN_AMBER, SAH_BTN_NEUTRAL, SahPowerProps, attrValue, hasSceneEffect } from './sahPowerKit';
 
@@ -178,8 +178,14 @@ export function MonstruosoTierAbilities({ p, element, active }: { p: Props; elem
     if (t99) {
       const pool = p.compendiumEntries.length ? p.compendiumEntries : ORDEM_COMPENDIUM_ENTRIES;
       const options = pool
-        .filter((e) => e.category === 'spell' && e.metadata?.circle === 4 && /conhecimento/i.test(e.metadata?.element || ''))
-        .map((e) => e.name.replace(/\s*\(4º Círculo\)/i, ''));
+        .filter(
+          (e) =>
+            e.category === 'spell' &&
+            e.metadata?.circle === 4 &&
+            /conhecimento/i.test(e.metadata?.element || '') &&
+            matchesContentSourceFilter(resolveEntrySourceId(e, 'ordem-paranormal'), [], p.allowedSources, 'ordem-paranormal')
+        )
+        .map((e) => e.name.replace(/\s*\(4º Círculo.*\)/i, ''));
       items.push(<GrantRitual key="rit" p={p} options={options} />);
     }
   }

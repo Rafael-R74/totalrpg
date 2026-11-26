@@ -24,6 +24,7 @@ import {
   isOrdemCompendiumItemParanormal,
   matchesContentSourceFilter,
   resolveEntrySourceId,
+  formatOrdemDiceLabel,
 } from '@totalrpg/shared';
 import { CharacterData, createCharacter } from '../services/api';
 import { ImageUploadField } from './ImageUploadField';
@@ -1513,7 +1514,7 @@ export function CharacterWizardModal({
                         </button>
                       </div>
                       <span className="text-[10px] text-zinc-400 font-semibold">
-                        {val <= 0 ? '2d20 (menor)' : `${val}d20 (maior)`}
+                        {formatOrdemDiceLabel(val, true)}
                       </span>
                     </div>
                   );

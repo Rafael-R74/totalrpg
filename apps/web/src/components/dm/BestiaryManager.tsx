@@ -13,6 +13,7 @@ import {
   ThreatActionType,
   ThreatSpecialAbility,
   instantiateCampaignThreatFromTemplate,
+  formatOrdemDiceLabel,
 } from '@totalrpg/shared';
 
 import { Icon } from '../ui/Icon';
@@ -60,10 +61,7 @@ function parseFormula(formula: string): { count: number; sides: number; modifier
 
 function formatD20Pool(diceCount: number, bonus: number): string {
   const modStr = bonus > 0 ? `+${bonus}` : bonus < 0 ? `${bonus}` : '';
-  if (diceCount <= 0) {
-    return `${2 + Math.abs(diceCount)}d20 (menor)${modStr}`;
-  }
-  return `${diceCount}d20${modStr}`;
+  return `${formatOrdemDiceLabel(diceCount)}${modStr}`;
 }
 
 

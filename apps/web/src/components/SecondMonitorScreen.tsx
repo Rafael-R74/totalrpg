@@ -17,6 +17,7 @@ import {
   deathAtOf,
   ServerToClientEvents,
   ClientToServerEvents,
+  isOrdemPenaltyFormula,
 } from '@totalrpg/shared';
 import { DMScreenCampaignData, DMScreenCharacter, fetchDMScreenData } from '../services/api';
 import { CombatantEntry } from './DMScreen';
@@ -1284,7 +1285,7 @@ function BatchOverlay({
           {rollsToShow.map((r, idx) => {
             const isSpinning = Boolean(spinning[r.id]);
             const shotNum = r.batchShotNumber || idx + 1;
-            const isZeroPenalty = r.formula.includes('2d20 (menor)');
+            const isZeroPenalty = isOrdemPenaltyFormula(r.formula);
             const keptNatural = isZeroPenalty ? Math.min(...r.rolls) : Math.max(...r.rolls);
             const isCrit = isDamagePhase
               ? Boolean(r.batchIsCrit)

@@ -263,3 +263,31 @@ export function calculateActiveBonuses(
 
   return result;
 }
+
+/**
+ * Quantidade real de d20 rolados em Ordem Paranormal (Escala Contínua: SaH p. 81 / padrão C.R.I.S.):
+ * - count >= 1: rola `count` dados e escolhe o maior;
+ * - count <= 0: rola `2 + |count|` dados e escolhe o menor (0 -> 2d20, -1 -> 3d20, -2 -> 4d20).
+ */
+export function getOrdemDiceRollCount(count: number, maxDice = 50): number {
+  if (count <= 0) {
+    return Math.min(maxDice, 2 + Math.abs(Math.trunc(count)));
+  }
+  return Math.min(maxDice, Math.trunc(count));
+}
+
+/**
+ * Rótulo padronizado da parada de d20 de Ordem Paranormal.
+ * Mantém sempre `${n}d20` no início para preservar parsers como `/d(\d+)/i`.
+ */
+export function formatOrdemDiceLabel(count: number, withPositiveHint = false): string {
+  if (count <= 0) {
+    return `${getOrdemDiceRollCount(count)}d20 (menor)`;
+  }
+  return `${Math.trunc(count)}d20${withPositiveHint ? ' (maior)' : ''}`;
+}
+
+/** Identifica se uma fórmula de rolagem aplica penalidade de dados de Ordem ("Xd20 (menor)"). */
+export function isOrdemPenaltyFormula(formula?: string | null): boolean {
+  return Boolean(formula && formula.includes('(menor)'));
+}
