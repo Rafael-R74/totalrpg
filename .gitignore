@@ -18,6 +18,7 @@ OVERHAUL_PROGRESS.md
 DEPLOY_VPS.md
 scripts/*.local.ps1
 apps/web/src/components/dice/DiceLab.tsx
+.serena
 
 # Local Content Packs (BYOC - textos de livros de regras fora do Git)
 data/packs/*.local.json
