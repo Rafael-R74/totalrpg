@@ -10,6 +10,7 @@ import {
 } from '@totalrpg/shared';
 
 import { Icon } from '../ui/Icon';
+import { SahCursedItemActions, isSahCursedActionItem } from './SahCursedItemActions';
 interface InventoryItemActionBarProps {
   item: RPGItem;
   ordemSheetData: OrdemSheetData;
@@ -24,6 +25,9 @@ interface InventoryItemActionBarProps {
   onTakePvDamage?: (amount: number, reason?: string) => void;
   onGrantTempPe?: (amount: number, reason?: string) => void;
   onAddSceneEffect?: (effect: SceneEffect) => void;
+  onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
+  onLoseSanity?: (amount: number, reason: string) => void;
+  onAdjustVital?: (barId: 'pv' | 'pe' | 'san', delta: number, reason: string) => void;
   onFeedback: (msg: string) => void;
   onRoll: (
     label: string,
@@ -83,6 +87,9 @@ export function InventoryItemActionBar({
   onTakePvDamage,
   onGrantTempPe,
   onAddSceneEffect,
+  onUpdateSceneEffects,
+  onLoseSanity,
+  onAdjustVital,
   onFeedback,
   onRoll,
 }: InventoryItemActionBarProps) {
@@ -1166,6 +1173,29 @@ export function InventoryItemActionBar({
         </button>
       );
     }
+  }
+
+  // Itens amaldiçoados do Sobrevivendo ao Horror (ações próprias)
+  if (isSahCursedActionItem(item)) {
+    buttons.push(
+      <SahCursedItemActions
+        key="sah-cursed"
+        item={item}
+        ordemSheetData={ordemSheetData}
+        bonuses={bonuses}
+        abilities={abilities}
+        onUpdateItem={onUpdateItem}
+        onConsumeUnit={onConsumeUnit}
+        onSpendResource={onSpendResource}
+        onTakePvDamage={onTakePvDamage}
+        onAddSceneEffect={onAddSceneEffect}
+        onUpdateSceneEffects={onUpdateSceneEffects}
+        onLoseSanity={onLoseSanity}
+        onAdjustVital={onAdjustVital}
+        onFeedback={onFeedback}
+        onRoll={(label, count, sides, modifier) => onRoll(label, count, sides, modifier, sides !== 20)}
+      />
+    );
   }
 
   if (buttons.length === 0) return null;

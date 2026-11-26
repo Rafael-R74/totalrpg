@@ -1,6 +1,7 @@
 // ARQUIVO GERADO a partir do Livro de Regras Ordem Paranormal v1.3 (Cap. 5 — Lista de Rituais, pp. 122–150).
 // Descrições completas são carregadas em runtime via Content Pack local (BYOC). Mecânicas automatizadas ficam em ordemRituals.ts.
 import type { OrdemRitualDef } from './ordemRituals';
+import { SAH_RITUALS_DATA } from './sahRitualsData';
 
 export const ORDEM_RITUALS_DATA: OrdemRitualDef[] = [
   {"id": "ord-rit-alterar-destino", "name": "Alterar Destino", "circle": 4, "element": "Energia", "execution": "reação", "range": "pessoal", "targetLabel": "Alvo", "target": "você", "duration": "instantânea", "description": "Consulte o Livro de Regras v1.3 para a descrição completa deste ritual.", "verdadeiro": {"extraCost": 5, "requiredCircle": 4, "requiresAffinity": false, "text": "Forma Verdadeira — consulte o Livro de Regras v1.3."}},
@@ -85,4 +86,6 @@ export const ORDEM_RITUALS_DATA: OrdemRitualDef[] = [
   {"id": "ord-rit-vinculo-sangue", "name": "Vínculo de Sangue", "circle": 4, "element": "Sangue", "execution": "padrão", "range": "curto", "targetLabel": "Alvo", "target": "1 ser", "duration": "cena", "resistance": "Fortitude anula", "description": "Consulte o Livro de Regras v1.3 para a descrição completa deste ritual."},
   {"id": "ord-rit-vomitar-pestes", "name": "Vomitar Pestes", "circle": 3, "element": "Sangue", "execution": "padrão", "range": "médio", "targetLabel": "Efeito", "target": "1 enxame Grande (quadrado de 3m)", "duration": "sustentada", "resistance": "Reflexos reduz à metade", "description": "Consulte o Livro de Regras v1.3 para a descrição completa deste ritual.", "discente": {"extraCost": 2, "requiredCircle": 3, "requiresAffinity": false, "text": "Forma Discente — consulte o Livro de Regras v1.3."}, "verdadeiro": {"extraCost": 5, "requiredCircle": 3, "requiresAffinity": false, "text": "Forma Verdadeira — consulte o Livro de Regras v1.3."}},
   {"id": "ord-rit-zerar-entropia", "name": "Zerar Entropia", "circle": 3, "element": "Morte", "execution": "padrão", "range": "curto", "targetLabel": "Alvo", "target": "1 pessoa", "duration": "cena", "resistance": "Vontade parcial", "description": "Consulte o Livro de Regras v1.3 para a descrição completa deste ritual.", "discente": {"extraCost": 4, "requiredCircle": 4, "requiresAffinity": false, "text": "Forma Discente — consulte o Livro de Regras v1.3."}, "verdadeiro": {"extraCost": 11, "requiredCircle": 4, "requiresAffinity": true, "text": "Forma Verdadeira — consulte o Livro de Regras v1.3."}},
+  // Sobrevivendo ao Horror (p. 49-57)
+  ...SAH_RITUALS_DATA,
 ];

@@ -1,3 +1,4 @@
+import { SAH_CURSED_ITEM_NAME_KEYS } from './sahParanormalData';
 import { getNexGeneralModifiers, getNexProgressionModifiers } from './nexProgression';
 import {
   CharacterAbility,
@@ -847,7 +848,8 @@ export function isOrdemItemParanormal(item: RPGItem): boolean {
     ln.includes('tela do pesadelo') ||
     ln.includes('veículo energizado') ||
     ln.includes('jaqueta de veríssimo') ||
-    ln.includes('dedo decepado')
+    ln.includes('dedo decepado') ||
+    SAH_CURSED_ITEM_NAME_KEYS.some((k) => ln.includes(k))
   );
 }
 
@@ -1812,6 +1814,16 @@ export function computeOrdemInventoryDerivedEffects(
     }
     if (ln.includes('jaqueta de veríssimo') || ln.includes('jaqueta de verissimo')) {
       addRd('Paranormal (Todos)', 15, item.name);
+    }
+    // Retalho Tenebroso (SaH): no rosto = equipado. -2d20 em perícias sociais e +1 de dano por dia seguido
+    if (ln.includes('retalho tenebroso')) {
+      for (const sk of ['diplomacia', 'enganacao', 'intimidacao']) {
+        dynamicModifiers.push({ id: `dyn-retalho-${sk}-${item.id}`, targetType: 'skill_dice', targetKey: sk, value: -2 });
+      }
+      const days = Number(item.dailyUses || 0);
+      if (days > 0) {
+        dynamicModifiers.push({ id: `dyn-retalho-dmg-${item.id}`, targetType: 'damage_bonus', targetKey: 'all', value: days });
+      }
     }
     if (ln.includes('dedo decepado')) {
       dynamicModifiers.push({

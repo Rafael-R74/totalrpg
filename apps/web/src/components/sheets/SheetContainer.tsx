@@ -36,6 +36,7 @@ import {
   ORDEM_NEX_PROGRESSION,
   ORDEM_TRAILS,
   getOrdemTrailDisplayName,
+  describeSahRitualCast,
   getMissingNexGeneralChoices,
   ORDEM_COMPENDIUM_ENTRIES,
   ORDEM_INSANITY_EFFECTS,
@@ -1728,6 +1729,11 @@ export function SheetContainer({
           recurringFormula: form.damageFormula,
           recurringLabel: 'Contato Paranormal (Dado de Auxílio)',
         };
+      // SaH: dano que o próprio conjurador sofre por rodada (ignora resistências)
+      case 'sah-rit-fedor-putrido':
+        return { recurringFormula: '1d4', recurringLabel: 'Fedor Pútrido (1d4 de Morte em você)' };
+      case 'sah-rit-tremeluzir':
+        return { recurringFormula: '1d4', recurringLabel: 'Tremeluzir (1d4 de Energia em você; +1d4 se terminar dentro de um objeto)' };
       default:
         return {};
     }
@@ -1743,6 +1749,8 @@ export function SheetContainer({
       acelerar?: boolean;
       catalystItemIds?: string[];
       parareligiosidade?: string;
+      sahChoice?: string;
+      primeiraAdaga?: boolean;
     }
   ) {
     if (!character) return;
@@ -2054,13 +2062,26 @@ export function SheetContainer({
     if (skippedCatalysts.length > 0) {
       showHoverToast(`Catalisador não usado (não foi consumido): ${skippedCatalysts.join(' • ')}`);
     }
+    // A Primeira Adaga (SaH): os 4 catalisadores e conjuração em 1 rodada, ao custo de metade dos PV totais
+    const adagaPvLoss = castOptions?.primeiraAdaga ? Math.floor((pvBar?.max || 0) / 2) : 0;
+    if (castOptions?.primeiraAdaga) {
+      if (effectType === 'damage' && effectFormula) effectFormula = addOneDieToFormula(effectFormula);
+      effectNotes.push(
+        `A Primeira Adaga: ${Object.values(CATALYST_INFO)
+          .map((c) => c.effect)
+          .join(' + ')}; conjuração em 1 rodada; -${adagaPvLoss} PV`
+      );
+    }
+    // Rituais do Sobrevivendo ao Horror: resumo do efeito (e escolha feita no diálogo)
+    const sahNote = describeSahRitualCast(ritualDefId, form.mode, castOptions?.sahChoice);
+    if (sahNote) effectNotes.unshift(sahNote);
 
     const ritualEffectPayload: RitualEffectRollPayload = {
       ritualId: ritual.id,
       ritualName: ritual.name,
       formLabel: form.label,
       peSpent: usePoderDoFlagelo ? 0 : form.totalCost,
-      pvSpent: usePoderDoFlagelo ? pvCostFlagelo : undefined,
+      pvSpent: (usePoderDoFlagelo ? pvCostFlagelo : 0) + adagaPvLoss || undefined,
       custoParanormalDt: dt,
       effectType,
       effectFormula,
@@ -2143,8 +2164,8 @@ export function SheetContainer({
       }
 
       const vitalsAfterCast = base.vitals.map((bar) => {
-        if (bar.id === 'pv' && usePoderDoFlagelo) {
-          return { ...bar, current: Math.max(0, bar.current - pvCostFlagelo) };
+        if (bar.id === 'pv' && (usePoderDoFlagelo || adagaPvLoss > 0)) {
+          return { ...bar, current: Math.max(0, bar.current - pvCostFlagelo - adagaPvLoss) };
         }
         if (bar.id === 'pe' && remPe > 0) {
           return { ...bar, current: Math.max(0, bar.current - remPe) };
@@ -2197,7 +2218,7 @@ export function SheetContainer({
       ritualName: ritual.name,
       formLabel: form.label,
       peSpent: usePoderDoFlagelo ? 0 : form.totalCost,
-      pvSpent: usePoderDoFlagelo ? pvCostFlagelo : undefined,
+      pvSpent: (usePoderDoFlagelo ? pvCostFlagelo : 0) + adagaPvLoss || undefined,
       dt,
       ocultismoRolls,
       ocultismoMod,
@@ -3578,6 +3599,11 @@ export function SheetContainer({
               upgradedModifiers = [
                 { id: 'm2', targetType: 'vital_max', targetKey: 'pv', value: 2, scaleWithLevel: true },
                 { id: 'm-sf-fort-af', targetType: 'skill_bonus', targetKey: 'fortitude', value: 5 },
+              ];
+            } else if (pEntry.id === 'sah-para-sang-espreitar-besta' || pEntry.name.toLowerCase().includes('espreitar da besta')) {
+              // Espreitar da Besta (SaH): Furtividade +5 -> +10
+              upgradedModifiers = [
+                { id: 'm-sah-espreitar-fur', targetType: 'skill_bonus', targetKey: 'furtividade', value: 10 },
               ];
             }
             nextAbilities[existingIdx] = {

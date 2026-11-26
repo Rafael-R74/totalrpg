@@ -24,6 +24,8 @@ export interface OrdemRitualDef {
   discente?: OrdemRitualFormDef;
   verdadeiro?: OrdemRitualFormDef;
   requiresTrail?: string;
+  /** Livro de origem (ausente = livro base) */
+  sourceId?: string;
 }
 
 export interface OrdemRitualFormMechanics {
@@ -579,7 +581,79 @@ export const ORDEM_RITUAL_MECHANICS: Record<string, OrdemRitualMechanics> = {
   'ord-rit-presenca-medo': {
     normal: { damageFormula: '10d8', isPersonalSelf: true },
   },
+
+  // === SOBREVIVENDO AO HORROR (p. 49-57) ===
+  'sah-rit-esfolar': {
+    normal: { damageFormula: '3d4+3' },
+    discente: { damageFormula: '5d4+5' },
+    verdadeiro: { damageFormula: '10d4+10' },
+  },
+  'sah-rit-sede-adrenalina': {
+    normal: { isPersonalSelf: true },
+    discente: { isPersonalSelf: true },
+    verdadeiro: { isPersonalSelf: true },
+  },
+  'sah-rit-odor-cacada': {
+    normal: { isPersonalSelf: true },
+  },
+  'sah-rit-martirio-sangue': {
+    normal: {
+      isPersonalSelf: true,
+      tempHpFlat: 30,
+      sceneModifiers: SAH_MARTIRIO_MODS(10),
+    },
+    discente: {
+      isPersonalSelf: true,
+      tempHpFlat: 50,
+      sceneModifiers: SAH_MARTIRIO_MODS(20),
+    },
+  },
+  'sah-rit-apagar-luzes': {
+    normal: { isPersonalSelf: true },
+    discente: { isPersonalSelf: true },
+    verdadeiro: { isPersonalSelf: true },
+  },
+  'sah-rit-fedor-putrido': {
+    normal: {
+      isPersonalSelf: true,
+      sceneModifiers: [
+        { id: 'rit-fedor-fur', targetType: 'skill_bonus', targetKey: 'furtividade', value: 5 },
+        { id: 'rit-fedor-dip', targetType: 'skill_dice', targetKey: 'diplomacia', value: -3 },
+      ],
+    },
+  },
+  'sah-rit-desfazer-sinapses': {
+    normal: { damageFormula: '2d6+2' },
+    discente: { damageFormula: '3d6+3' },
+    verdadeiro: { damageFormula: '8d6+8' },
+  },
+  'sah-rit-overclock': {
+    normal: { isPersonalSelf: true },
+    discente: { isPersonalSelf: true },
+    verdadeiro: { isPersonalSelf: true },
+  },
+  'sah-rit-tremeluzir': {
+    normal: { isPersonalSelf: true },
+  },
+  'sah-rit-mutar': {
+    normal: {
+      isPersonalSelf: true,
+      sceneModifiers: [{ id: 'rit-mutar-fur', targetType: 'skill_bonus', targetKey: 'furtividade', value: 10 }],
+    },
+  },
 };
+
+/** Martírio de Sangue: +X em ataque/dano corpo a corpo e Defesa; -3d20 em perícias sociais. */
+function SAH_MARTIRIO_MODS(bonus: number): RuleModifier[] {
+  return [
+    { id: 'rit-mart-atk', targetType: 'attack_bonus', targetKey: 'melee', value: bonus },
+    { id: 'rit-mart-dmg', targetType: 'damage_bonus', targetKey: 'melee', value: bonus },
+    { id: 'rit-mart-def', targetType: 'defense', targetKey: 'defesa', value: bonus },
+    { id: 'rit-mart-dip', targetType: 'skill_dice', targetKey: 'diplomacia', value: -3 },
+    { id: 'rit-mart-eng', targetType: 'skill_dice', targetKey: 'enganacao', value: -3 },
+    { id: 'rit-mart-int', targetType: 'skill_dice', targetKey: 'intimidacao', value: -3 },
+  ];
+}
 
 export function buildOrdemRitualCompendiumEntries(): CompendiumEntryData[] {
   return [...ORDEM_RITUALS_DATA]
@@ -630,6 +704,7 @@ export function buildOrdemRitualCompendiumEntries(): CompendiumEntryData[] {
           resistance: r.resistance,
           requiresTrail: r.requiresTrail,
           damageFormula: baseDmg,
+          ...(r.sourceId ? { sourceId: r.sourceId } : {}),
         },
       };
     });

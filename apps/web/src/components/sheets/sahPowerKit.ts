@@ -76,7 +76,7 @@ export function matchSahPower(
 }
 
 export const SAH_BTN =
-  'px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5';
+  'px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed';
 export const SAH_BTN_AMBER = `${SAH_BTN} bg-amber-950/70 hover:bg-amber-700 text-amber-200 hover:text-white border-amber-700`;
 export const SAH_BTN_NEUTRAL = `${SAH_BTN} bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700`;
 export const SAH_BTN_ACTIVE = `${SAH_BTN} bg-amber-600 hover:bg-amber-700 text-white border-amber-300`;

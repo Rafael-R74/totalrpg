@@ -72,6 +72,8 @@ import { SahEspecialistaPowerControls, isSahEspecialistaControlled } from './Sah
 import { SahOcultistaPowerControls, isSahOcultistaControlled } from './SahOcultistaPowers';
 import { SahGeraisPowerControls, isSahGeraisControlled } from './SahGeraisPowers';
 import { SahTrilhasPowerControls, isSahTrilhasControlled } from './SahTrilhasPowers';
+import { SahParanormalPowerControls, isSahParanormalControlled } from './SahParanormalPowers';
+import { PendingSahCast, SAH_RITUALS_WITH_CAST_DIALOG, SahRitualCastDialog } from './SahRitualCast';
 import type { FlashbackChoice, SahPowerProps } from './sahPowerKit';
 interface SheetExtrasProps {
   system: SystemId;
@@ -138,6 +140,10 @@ interface SheetExtrasProps {
       acelerar?: boolean;
       catalystItemIds?: string[];
       parareligiosidade?: string;
+      /** Escolha feita no diálogo de rituais do SaH (Pronunciar Sigilo, Milagre Ionizante, Martírio) */
+      sahChoice?: string;
+      /** A Primeira Adaga (SaH) usada como componente ritualístico */
+      primeiraAdaga?: boolean;
     }
   ) => void;
   onUpdateSceneEffects?: (effects: SceneEffect[]) => void;
@@ -518,7 +524,8 @@ export function SheetExtras({
       isSahEspecialistaControlled(ab) ||
       isSahOcultistaControlled(ab) ||
       isSahGeraisControlled(ab) ||
-      isSahTrilhasControlled(ab)
+      isSahTrilhasControlled(ab) ||
+      isSahParanormalControlled(ab)
     ) {
       return true;
     }
@@ -762,6 +769,10 @@ export function SheetExtras({
   const [ritualAcelerar, setRitualAcelerar] = useState(false);
   // Catalisadores Ritualísticos (SaH) escolhidos para o próximo ritual (2 diferentes com Domínio Esotérico)
   const [ritualCatalystIds, setRitualCatalystIds] = useState<string[]>([]);
+  const [ritualPrimeiraAdaga, setRitualPrimeiraAdaga] = useState(false);
+  const [pendingSahCast, setPendingSahCast] = useState<
+    (PendingSahCast & { opts: Parameters<NonNullable<SheetExtrasProps['onCastOrdemRitual']>>[2] }) | null
+  >(null);
   // Parareligiosidade (Exorcista 65%, SaH): +2 PE para um efeito de catalisador sem gastar item
   const [ritualParareligiosidade, setRitualParareligiosidade] = useState<string>('');
   const [ritualPoderFlagelo, setRitualPoderFlagelo] = useState(false);
@@ -4241,6 +4252,8 @@ export function SheetExtras({
             const catalystItems = inventory.filter((it) => getCatalystType(it) && (it.quantity ?? 1) > 0);
             const maxCatalysts = hasDominioEsoterico(abilities) ? 2 : 1;
             const hasParareligiosidade = abilities.some((a) => a.id === 'trail-exorcista-65');
+            // A Primeira Adaga (SaH): componente com os 4 catalisadores, ao custo de metade dos PV totais
+            const primeiraAdagaItem = inventory.find((it) => it.name.toLowerCase().includes('primeira adaga'));
             const selectedCatalysts = ritualCatalystIds.filter((id) => catalystItems.some((it) => it.id === id));
             const toggleCatalyst = (itemId: string) => {
               const item = catalystItems.find((it) => it.id === itemId);
@@ -4298,6 +4311,17 @@ export function SheetExtras({
 
             return (
               <div className="space-y-2.5">
+              <SahRitualCastDialog
+                pending={pendingSahCast}
+                ownConditions={ordemConditions || []}
+                onCancel={() => setPendingSahCast(null)}
+                onConfirm={(choice, removeOwnConditionId) => {
+                  if (!pendingSahCast || !onCastOrdemRitual) return;
+                  onCastOrdemRitual(pendingSahCast.ab, pendingSahCast.form, { ...pendingSahCast.opts, sahChoice: choice });
+                  if (removeOwnConditionId) onRemoveCondition?.(removeOwnConditionId);
+                  setPendingSahCast(null);
+                }}
+              />
               <div className="bg-purple-950/30 border border-purple-800/50 px-3.5 py-2.5 rounded-xl text-[11px] text-purple-200 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
@@ -4332,7 +4356,7 @@ export function SheetExtras({
                   )}
                 </div>
 
-                {(hasCamuflarPower || hasAmpliarPower || hasAcelerarPower || hasFlageloPower || hasLaminaMalditaPower || catalystItems.length > 0 || hasParareligiosidade) && (
+                {(hasCamuflarPower || hasAmpliarPower || hasAcelerarPower || hasFlageloPower || hasLaminaMalditaPower || catalystItems.length > 0 || hasParareligiosidade || primeiraAdagaItem) && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-purple-900/60">
                     <span className="text-[10px] font-bold uppercase text-purple-400 mr-1">Modificadores de Conjuração:</span>
                     {hasCamuflarPower && (
@@ -4412,6 +4436,28 @@ export function SheetExtras({
                             </button>
                           );
                         })}
+                      </div>
+                    )}
+                    {primeiraAdagaItem && (
+                      <div className="flex flex-wrap items-center gap-1.5 basis-full pt-1">
+                        <button
+                          type="button"
+                          aria-pressed={ritualPrimeiraAdaga}
+                          onClick={() => setRitualPrimeiraAdaga((v) => !v)}
+                          title="Componente ritualístico: efeitos dos catalisadores ampliador, perturbador, potencializador e prolongador e conjuração em 1 rodada. Custa metade dos seus PV totais."
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border transition inline-flex items-center gap-1 ${
+                            ritualPrimeiraAdaga
+                              ? 'bg-red-700 text-white border-red-400'
+                              : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-red-500'
+                          }`}
+                        >
+                          <Icon name="sword" /> A Primeira Adaga
+                        </button>
+                        {ritualPrimeiraAdaga && (
+                          <span className="text-[10px] text-red-300">
+                            Próximo ritual: os 4 catalisadores e conjuração em 1 rodada, mas você perde metade dos PV totais.
+                          </span>
+                        )}
                       </div>
                     )}
                     {catalystItems.length > 0 && (
@@ -4856,17 +4902,24 @@ export function SheetExtras({
                                 type="button"
                                 onClick={() =>
                                 {
-                                  onCastOrdemRitual(ab, f, {
+                                  const opts = {
                                     usePoderDoFlagelo: ritualPoderFlagelo,
                                     camuflar: ritualCamuflar,
                                     ampliar: ritualAmpliar,
                                     acelerar: ritualAcelerar,
                                     catalystItemIds: ritualCatalystIds,
                                     parareligiosidade: ritualParareligiosidade || undefined,
-                                  });
-                                  // Catalisadores são consumidos: a seleção vale só para este ritual
+                                    primeiraAdaga: ritualPrimeiraAdaga || undefined,
+                                  };
+                                  // Catalisadores e a Primeira Adaga valem só para este ritual
                                   setRitualCatalystIds([]);
                                   setRitualParareligiosidade('');
+                                  setRitualPrimeiraAdaga(false);
+                                  if (ritualDef && SAH_RITUALS_WITH_CAST_DIALOG.has(ritualDef.id)) {
+                                    setPendingSahCast({ ritualId: ritualDef.id, ab, form: f, opts });
+                                    return;
+                                  }
+                                  onCastOrdemRitual(ab, f, opts);
                                 }}
                                 title={f.description}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap cursor-pointer ${
@@ -5333,6 +5386,7 @@ export function SheetExtras({
                                 <SahOcultistaPowerControls {...sahProps} />
                                 <SahGeraisPowerControls {...sahProps} />
                                 <SahTrilhasPowerControls {...sahProps} onHealPv={onHealPv} />
+                                <SahParanormalPowerControls {...sahProps} />
                               </>
                             );
                           })()}
@@ -6464,6 +6518,9 @@ export function SheetExtras({
                           onTakePvDamage={onTakePvDamage}
                           onGrantTempPe={onGrantTempPe}
                           onAddSceneEffect={onAddSceneEffect}
+                          onUpdateSceneEffects={onUpdateSceneEffects}
+                          onLoseSanity={onLoseSanity}
+                          onAdjustVital={onAdjustVital}
                           onFeedback={(msg) => setInventoryFeedback(msg)}
                           onRoll={onRoll}
                         />

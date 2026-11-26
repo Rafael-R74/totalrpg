@@ -1,6 +1,7 @@
 import { CompendiumEntryData } from './index';
 import { buildOrdemRitualCompendiumEntries } from './ordemRituals';
 import { buildOrdemOriginCompendiumEntries } from './wizardData';
+import { SAH_CURSED_ITEM_ENTRIES, SAH_PARANORMAL_POWER_ENTRIES } from './sahParanormalData';
 import { DYING_CONDITION_DESCRIPTION, UNCONSCIOUS_CONDITION_DESCRIPTION } from './dyingRules';
 
 export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
@@ -1411,6 +1412,8 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     modifiers: [],
     metadata: { element: 'Sangue', requirements: 'Sangue 1' },
   },
+  // --- Sobrevivendo ao Horror (p. 47-48) ---
+  ...SAH_PARANORMAL_POWER_ENTRIES,
 
   // ==========================================================================
   // 5. TODOS OS RITUAIS DE 1º A 4º CÍRCULO (Livro v1.3, p. 122-150)
@@ -3001,5 +3004,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     modifiers: [{ id: 'c-vuln', targetType: 'defense', targetKey: 'defense', value: -2 }],
     metadata: {},
   },
-];
 
+  // --- Itens Amaldiçoados Especiais — Sobrevivendo ao Horror (p. 58-62) ---
+  ...SAH_CURSED_ITEM_ENTRIES,
+];
