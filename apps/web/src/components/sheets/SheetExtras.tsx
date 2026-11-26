@@ -6035,6 +6035,7 @@ export function SheetExtras({
           <ItemCustomizationModal
             item={targetItem}
             compendiumEntries={compendiumEntries}
+            allowedSources={allowedSources}
             onClose={() => setCustomizingItemId(null)}
             onSave={(updatedItem) => {
               onUpdateInventory(

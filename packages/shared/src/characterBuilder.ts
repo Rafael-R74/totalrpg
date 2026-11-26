@@ -1666,13 +1666,16 @@ export function classifyOrdemWeapon(
     'cartuchos',
   ];
 
-  const hasFirearmKeyword = firearmKeywords.some(
-    (kw) => nameLower.includes(kw) || descLower.includes(kw) || dmgLower.includes(kw)
-  );
+  const hasFirearmKeyword =
+    !nameLower.includes('pregador pneumático') &&
+    !nameLower.includes('pregador pneumatico') &&
+    firearmKeywords.some(
+      (kw) => nameLower.includes(kw) || descLower.includes(kw) || dmgLower.includes(kw)
+    );
 
   const isFirearm = Boolean(explicitIsFirearm) || hasFirearmKeyword;
 
-  // 2. Armas de Disparo (à distância, mas não de fogo: arcos, bestas, balestras)
+  // 2. Armas de Disparo (à distância, mas não de fogo: arcos, bestas, balestras, estilingue, shuriken)
   const disparoKeywords = [
     'disparo',
     'arma de disparo',
@@ -1684,6 +1687,9 @@ export function classifyOrdemWeapon(
     'virote',
     'virotes',
     'estilingue',
+    'pregador pneumático',
+    'pregador pneumatico',
+    'shuriken',
     'funda',
   ];
 

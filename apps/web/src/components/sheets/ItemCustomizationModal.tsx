@@ -15,13 +15,16 @@ import {
   getOrdemItemEffectiveCategory,
   getOrdemItemEffectiveSlots,
   inferOrdemItemKind,
+  matchesContentSourceFilter,
 } from '@totalrpg/shared';
 
 import { Icon } from '../ui/Icon';
 import { ElementBadge, elementChoiceClasses } from '../ui/ElementBadge';
+import { ContentSourceFilterBar, SourceTagBadge } from '../ui/ContentSourceFilterBar';
 interface ItemCustomizationModalProps {
   item: RPGItem;
   compendiumEntries: CompendiumEntryData[];
+  allowedSources?: string[] | null;
   onSave: (updatedItem: RPGItem) => void;
   onClose: () => void;
 }
@@ -46,6 +49,7 @@ const CAT_ROMAN = ['0', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 export function ItemCustomizationModal({
   item,
   compendiumEntries,
+  allowedSources,
   onSave,
   onClose,
 }: ItemCustomizationModalProps) {
@@ -59,12 +63,22 @@ export function ItemCustomizationModal({
   }));
 
   const [activeTab, setActiveTab] = useState<'modifications' | 'curses'>('modifications');
+  const [modSourceFilter, setModSourceFilter] = useState<string[]>([]);
   const [curseElementFilter, setCurseElementFilter] = useState<string>('ALL');
   const [pendingChoiceCurseId, setPendingChoiceCurseId] = useState<string | null>(null);
   const [pendingRitualInput, setPendingRitualInput] = useState<string>('');
 
   const itemKind = inferOrdemItemKind(draft);
-  const eligibleMods = getOrdemEligibleModifications(draft);
+  const allEligibleMods = getOrdemEligibleModifications(draft).filter(
+    (m) =>
+      (draft.modifications || []).includes(m.id) ||
+      matchesContentSourceFilter(m.sourceId || 'ordem-base', [], allowedSources, 'ordem-paranormal')
+  );
+  const eligibleMods = allEligibleMods.filter(
+    (m) =>
+      (draft.modifications || []).includes(m.id) ||
+      matchesContentSourceFilter(m.sourceId || 'ordem-base', modSourceFilter, allowedSources, 'ordem-paranormal')
+  );
   const eligibleCurses = getOrdemEligibleCurses(draft);
   const filteredCurses = eligibleCurses.filter(
     (c) =>
@@ -99,11 +113,12 @@ export function ItemCustomizationModal({
     const nextCat = getOrdemItemEffectiveCategory(next);
     const nextSlots = getOrdemItemEffectiveSlots(next);
     const hasCurses = (next.curses || []).length > 0;
+    const hasParaMod = (next.modifications || []).some((m) => findOrdemModificationDef(m)?.isParanormal);
     return {
       ...next,
       category: nextCat,
       slots: nextSlots,
-      isParanormal: next.isParanormal || hasCurses,
+      isParanormal: next.isParanormal || hasCurses || hasParaMod,
     };
   }
 
@@ -437,59 +452,79 @@ export function ItemCustomizationModal({
         {/* Conteúdo da Aba Ativa */}
         <div className="flex-1 overflow-y-auto pr-1 space-y-2">
           {activeTab === 'modifications' ? (
-            eligibleMods.length === 0 ? (
+            allEligibleMods.length === 0 ? (
               <p className="text-xs text-zinc-500 text-center py-6">
-                Este tipo de item não possui modificações oficiais no Capítulo 3.
+                Este tipo de item não possui modificações oficiais disponíveis.
               </p>
             ) : (
-              eligibleMods.map((mod) => {
-                const isApplied = (draft.modifications || []).includes(mod.id);
-                const check = isApplied
-                  ? { allowed: true }
-                  : canApplyModificationToItem(draft, mod);
-                return (
-                  <div
-                    key={mod.id}
-                    className={`p-3 rounded-xl border flex justify-between items-center gap-3 transition ${
-                      isApplied
-                        ? 'bg-amber-950/35 border-amber-500/80'
-                        : check.allowed
-                        ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'
-                        : 'bg-zinc-950/50 border-zinc-900 opacity-60'
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-bold text-white">{mod.name}</span>
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60">
-                          {mod.shortEffect}
-                        </span>
-                        <span className="text-[10px] font-mono text-zinc-500">+I Cat.</span>
+              <>
+                <ContentSourceFilterBar
+                  system="ordem-paranormal"
+                  selectedSources={modSourceFilter}
+                  onChange={setModSourceFilter}
+                  allowedSources={allowedSources}
+                />
+                {eligibleMods.length === 0 ? (
+                  <p className="text-xs text-zinc-500 text-center py-4">
+                    Nenhuma modificação encontrada para o filtro selecionado.
+                  </p>
+                ) : (
+                  eligibleMods.map((mod) => {
+                    const isApplied = (draft.modifications || []).includes(mod.id);
+                    const check = isApplied
+                      ? { allowed: true }
+                      : canApplyModificationToItem(draft, mod);
+                    return (
+                      <div
+                        key={mod.id}
+                        className={`p-3 rounded-xl border flex justify-between items-center gap-3 transition ${
+                          isApplied
+                            ? 'bg-amber-950/35 border-amber-500/80'
+                            : check.allowed
+                            ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'
+                            : 'bg-zinc-950/50 border-zinc-900 opacity-60'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-white">{mod.name}</span>
+                            <SourceTagBadge sourceId={mod.sourceId} system="ordem-paranormal" />
+                            {mod.isParanormal && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-700/70">
+                                Paranormal
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60">
+                              {mod.shortEffect}
+                            </span>
+                            <span className="text-[10px] font-mono text-zinc-500">+I Cat.</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 mt-0.5">{mod.description}</p>
+                          {!isApplied && !check.allowed && check.reason && (
+                            <span className="inline-block mt-1 text-[10px] font-bold text-red-400">
+                              <Icon name="lock" /> {check.reason}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!isApplied && !check.allowed}
+                          onClick={() => handleToggleModification(mod.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition ${
+                            isApplied
+                              ? 'bg-red-950/80 hover:bg-red-700 text-red-200 border-red-700 cursor-pointer'
+                              : check.allowed
+                              ? 'bg-emerald-700 hover:bg-emerald-600 text-white border-emerald-500 cursor-pointer'
+                              : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                          }`}
+                        >
+                          {isApplied ? '✕ Remover' : '+ Aplicar'}
+                        </button>
                       </div>
-                      <p className="text-[11px] text-zinc-400 mt-0.5">{mod.description}</p>
-                      {!isApplied && !check.allowed && check.reason && (
-                        <span className="inline-block mt-1 text-[10px] font-bold text-red-400">
-                          <Icon name="lock" /> {check.reason}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={!isApplied && !check.allowed}
-                      onClick={() => handleToggleModification(mod.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition ${
-                        isApplied
-                          ? 'bg-red-950/80 hover:bg-red-700 text-red-200 border-red-700 cursor-pointer'
-                          : check.allowed
-                          ? 'bg-emerald-700 hover:bg-emerald-600 text-white border-emerald-500 cursor-pointer'
-                          : 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                      }`}
-                    >
-                      {isApplied ? '✕ Remover' : '+ Aplicar'}
-                    </button>
-                  </div>
-                );
-              })
+                    );
+                  })
+                )}
+              </>
             )
           ) : (
             <>

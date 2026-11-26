@@ -13,6 +13,7 @@ export * from './sahRules';
 export * from './nexProgression';
 export * from './sahParanormalData';
 export * from './sahRitualsData';
+export * from './sahEquipmentData';
 // Sistemas de RPG suportados
 export type SystemId = 'tormenta20' | 'ordem-paranormal' | 'duna';
 

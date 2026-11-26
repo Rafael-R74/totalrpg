@@ -2,6 +2,11 @@ import { CompendiumEntryData } from './index';
 import { buildOrdemRitualCompendiumEntries } from './ordemRituals';
 import { buildOrdemOriginCompendiumEntries } from './wizardData';
 import { SAH_CURSED_ITEM_ENTRIES, SAH_PARANORMAL_POWER_ENTRIES } from './sahParanormalData';
+import {
+  SAH_GENERAL_ITEM_ENTRIES,
+  SAH_PARANORMAL_ITEM_ENTRIES,
+  SAH_WEAPON_ENTRIES,
+} from './sahEquipmentData';
 import { DYING_CONDITION_DESCRIPTION, UNCONSCIOUS_CONDITION_DESCRIPTION } from './dyingRules';
 
 export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
@@ -2160,6 +2165,10 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
     metadata: { slots: 2, categoryLevel: 1, itemSubtype: 'operational', isWeapon: false },
   },
 
+  // --- Armas, Acessórios, Explosivos e Operacionais/Medicamentos (Sobrevivendo ao Horror v1.3, p. 37-44) ---
+  ...SAH_WEAPON_ENTRIES,
+  ...SAH_GENERAL_ITEM_ENTRIES,
+
   // ==========================================================================
   // 6B. ITENS PARANORMAIS (Cap. 3, p. 66-67) & AMALDIÇOADOS ESPECIAIS (Cap. 6, p. 148-151)
   // ==========================================================================
@@ -2323,6 +2332,7 @@ export const ORDEM_COMPENDIUM_ENTRIES: CompendiumEntryData[] = [
       sourceId: 'sobrevivendo-ao-horror',
     },
   },
+  ...SAH_PARANORMAL_ITEM_ENTRIES,
 
   // --- Itens Amaldiçoados Especiais — SANGUE (Cap. 6, p. 148) ---
   {

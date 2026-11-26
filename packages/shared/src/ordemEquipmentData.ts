@@ -1,4 +1,5 @@
 import { SAH_CURSED_ITEM_NAME_KEYS } from './sahParanormalData';
+import { SAH_PARANORMAL_ITEM_NAME_KEYS } from './sahEquipmentData';
 import { getNexGeneralModifiers, getNexProgressionModifiers } from './nexProgression';
 import {
   CharacterAbility,
@@ -112,6 +113,8 @@ export interface OrdemEquipmentModificationDef {
   onlyLightProtection?: boolean;
   onlyBulletsAmmo?: boolean;   // Dum Dum / Explosiva: apenas balas curtas e longas
   incompatibleWith?: string[];
+  sourceId?: string;
+  isParanormal?: boolean;      // Ex.: Lente de Revelação (SaH, p. 45)
 }
 
 export const ORDEM_EQUIPMENT_MODIFICATIONS: OrdemEquipmentModificationDef[] = [
@@ -366,6 +369,39 @@ export const ORDEM_EQUIPMENT_MODIFICATIONS: OrdemEquipmentModificationDef[] = [
     shortEffect: 'Funciona como Kit de Perícia',
     description: 'Consulte o Livro de Regras v1.3 para a descrição completa.',
     categoryIncrease: 1,
+  },
+
+  // --- Sobrevivendo ao Horror v1.3 (p. 38, 39 e 45) ---
+  {
+    id: 'sah-mod-carregador-rapido',
+    name: 'Carregador Rápido',
+    group: 'weapon_firearm',
+    targetKinds: ['weapon_firearm', 'weapon_ranged'],
+    shortEffect: 'Recarga livre 1x/rodada (fogo) ou 5x c/ 1 mão (besta/balestra)',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror v1.3 para a descrição completa.',
+    categoryIncrease: 1,
+    sourceId: 'sobrevivendo-ao-horror',
+  },
+  {
+    id: 'sah-mod-bateria-potente',
+    name: 'Bateria Potente',
+    group: 'accessory',
+    targetKinds: ['accessory', 'operational'],
+    shortEffect: 'Dobra bateria/luz; Taser: 2x usos, 1d8 dano e +5 DT',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror v1.3 para a descrição completa.',
+    categoryIncrease: 1,
+    sourceId: 'sobrevivendo-ao-horror',
+  },
+  {
+    id: 'sah-mod-lente-revelacao',
+    name: 'Lente de Revelação',
+    group: 'accessory',
+    targetKinds: ['paranormal'],
+    shortEffect: 'Vê invisíveis/incorpóreos; 1 PE fotografa (Von DT Pre ou revela na cena)',
+    description: 'Consulte o suplemento Sobrevivendo ao Horror v1.3 para a descrição completa.',
+    categoryIncrease: 1,
+    isParanormal: true,
+    sourceId: 'sobrevivendo-ao-horror',
   },
 ];
 
@@ -804,13 +840,15 @@ export function isOrdemCompendiumItemParanormal(entry: CompendiumEntryData): boo
     ln.includes('catalisador ritual') ||
     ln.includes('selo paranormal') ||
     ln.includes('amaldiçoado') ||
-    ln.includes('paranormal')
+    ln.includes('paranormal') ||
+    SAH_PARANORMAL_ITEM_NAME_KEYS.some((k) => ln.includes(k))
   );
 }
 
 export function isOrdemItemParanormal(item: RPGItem): boolean {
   if (item.isParanormal || item.isCursedSpecial) return true;
   if (Array.isArray(item.curses) && item.curses.length > 0) return true;
+  if ((item.modifications || []).some((m) => findOrdemModificationDef(m)?.isParanormal)) return true;
   if (item.itemKind === 'paranormal' || item.itemKind === 'cursed_special') return true;
   const ln = item.name.toLowerCase();
   return (
@@ -849,7 +887,8 @@ export function isOrdemItemParanormal(item: RPGItem): boolean {
     ln.includes('veículo energizado') ||
     ln.includes('jaqueta de veríssimo') ||
     ln.includes('dedo decepado') ||
-    SAH_CURSED_ITEM_NAME_KEYS.some((k) => ln.includes(k))
+    SAH_CURSED_ITEM_NAME_KEYS.some((k) => ln.includes(k)) ||
+    SAH_PARANORMAL_ITEM_NAME_KEYS.some((k) => ln.includes(k))
   );
 }
 
@@ -907,7 +946,17 @@ export function inferOrdemItemKind(item: Pick<RPGItem, 'name' | 'description' | 
   if (ln.includes('proteção leve') || ln.includes('protecao leve') || ln.includes('colete kevlar')) {
     return 'protection_light';
   }
-  if (ln.includes('utensílio') || ln.includes('utensilio') || ln.includes('vestimenta')) {
+  if (
+    ln.includes('utensílio') ||
+    ln.includes('utensilio') ||
+    ln.includes('vestimenta') ||
+    ln.includes('amuleto sagrado') ||
+    ln.includes('celular') ||
+    ln.includes('chave de fenda universal') ||
+    ln.includes('documentos falsos') ||
+    ln.includes('manual operacional') ||
+    ln.includes('notebook')
+  ) {
     return 'accessory';
   }
   if (
@@ -921,10 +970,23 @@ export function inferOrdemItemKind(item: Pick<RPGItem, 'name' | 'description' | 
   ) {
     return 'ammo';
   }
-  if (ln.includes('granada') || ln.includes('mina antipessoal')) return 'explosive';
+  if (
+    ln.includes('granada') ||
+    ln.includes('mina antipessoal') ||
+    ln.includes('dinamite') ||
+    ln.includes('explosivo plástico') ||
+    ln.includes('explosivo plastico') ||
+    ln.includes('galão vermelho') ||
+    ln.includes('galao vermelho')
+  ) {
+    return 'explosive';
+  }
   if (
     ln.includes('soqueira') ||
     ln.includes('faca') ||
+    ln.includes('baioneta') ||
+    ln.includes('gancho de carne') ||
+    ln.includes('picareta') ||
     ln.includes('martelo') ||
     ln.includes('punhal') ||
     ln.includes('bastão') ||
@@ -977,6 +1039,10 @@ export function inferOrdemItemKind(item: Pick<RPGItem, 'name' | 'description' | 
     ln.includes('arco') ||
     ln.includes('besta') ||
     ln.includes('balestra') ||
+    ln.includes('estilingue') ||
+    ln.includes('pregador pneumático') ||
+    ln.includes('pregador pneumatico') ||
+    ln.includes('shuriken') ||
     ld.includes('disparo')
   ) {
     return 'weapon_ranged';
@@ -1004,17 +1070,53 @@ export function isBulletAmmo(item: Pick<RPGItem, 'name'>): boolean {
   return ln.includes('balas curtas') || ln.includes('balas longas');
 }
 
+export function isOrdemElectricItem(item: Pick<RPGItem, 'name' | 'description'>): boolean {
+  const ln = (item.name || '').toLowerCase();
+  const ld = (item.description || '').toLowerCase();
+  return (
+    ln.includes('lanterna') ||
+    ln.includes('celular') ||
+    ln.includes('notebook') ||
+    ln.includes('tablet') ||
+    ln.includes('taser') ||
+    ln.includes('visão noturna') ||
+    ln.includes('visao noturna') ||
+    ln.includes('visão térmica') ||
+    ln.includes('visao termica') ||
+    ln.includes('alarme de movimento') ||
+    ln.includes('equipamento de escuta') ||
+    ln.includes('bloqueador de sinal') ||
+    ln.includes('elétric') ||
+    ln.includes('eletric') ||
+    ln.includes('eletrônic') ||
+    ln.includes('eletronic') ||
+    ld.includes('bateria') ||
+    ld.includes('elétric') ||
+    ld.includes('eletric')
+  );
+}
+
 export function canApplyModificationToItem(
   item: RPGItem,
   mod: OrdemEquipmentModificationDef
 ): { allowed: boolean; reason?: string } {
   const kind = inferOrdemItemKind(item);
+  const ln = (item.name || '').toLowerCase();
   const existingMods = item.modifications || [];
   if (existingMods.includes(mod.id)) {
     return { allowed: false, reason: 'Modificação já aplicada' };
   }
   if (!mod.targetKinds.includes(kind)) {
     return { allowed: false, reason: 'Incompatível com este tipo de item' };
+  }
+  if (mod.id === 'sah-mod-carregador-rapido' && kind === 'weapon_ranged' && !ln.includes('besta') && !ln.includes('balestra')) {
+    return { allowed: false, reason: 'Em armas de disparo, apenas para bestas e balestras' };
+  }
+  if (mod.id === 'sah-mod-bateria-potente' && !isOrdemElectricItem(item)) {
+    return { allowed: false, reason: 'Apenas para objetos elétricos (lanterna, celular, notebook, taser, etc.)' };
+  }
+  if (mod.id === 'sah-mod-lente-revelacao' && !ln.includes('câmera de aura') && !ln.includes('camera de aura')) {
+    return { allowed: false, reason: 'Apenas para Câmera de Aura Paranormal' };
   }
   if (mod.id === 'mod-aprimorado-extra' && !existingMods.includes('mod-funcao-adicional')) {
     return { allowed: false, reason: 'Requer Função Adicional primeiro' };
@@ -1450,6 +1552,7 @@ export function classifyOrdemWeaponProficiency(
     ln.includes('submetralhadora') ||
     ln.includes('espingarda') ||
     ln.includes('escopeta') ||
+    ln.includes('pistola pesada') ||
     ln.includes('fuzil de assalto') ||
     ln.includes('fuzil de precisão') ||
     ln.includes('fuzil de precisao') ||
@@ -1471,7 +1574,7 @@ export function classifyOrdemWeaponProficiency(
   }
 
   // Armas Táticas de Disparo (exceto fogo)
-  if (ln.includes('arco composto') || ln.includes('balestra')) {
+  if (ln.includes('arco composto') || ln.includes('balestra') || ln.includes('shuriken') || ln.includes('tática de arremesso') || ln.includes('tatica de arremesso')) {
     return {
       category: 'tatica_disparo',
       usesBalasLongas: false,
@@ -1481,6 +1584,13 @@ export function classifyOrdemWeaponProficiency(
 
   // Armas Táticas Corpo a Corpo
   if (
+    ln.includes('baioneta') ||
+    ln.includes('faca tática') ||
+    ln.includes('faca tatica') ||
+    ln.includes('gancho de carne') ||
+    ln.includes('bastão policial') ||
+    ln.includes('bastao policial') ||
+    ln.includes('picareta') ||
     ln.includes('machadinha') ||
     ln.includes('nunchaku') ||
     ln.includes('corrente') ||
